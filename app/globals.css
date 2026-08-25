@@ -1,0 +1,249 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  /* Dark application chrome */
+  --color-topbar: var(--topbar);
+  --color-topbar-foreground: var(--topbar-foreground);
+  --color-topbar-muted: var(--topbar-muted);
+  --color-topbar-active: var(--topbar-active);
+
+  /* Plant map surfaces */
+  --color-canvas: var(--canvas);
+  --color-belt: var(--belt);
+  --color-zone: var(--zone);
+
+  /* Table fill grid */
+  --color-cell-fill: var(--cell-fill);
+  --color-cell-empty: var(--cell-empty);
+
+  /* Equipment / table status semantics */
+  --color-active: var(--active);
+  --color-active-fg: var(--active-fg);
+  --color-warning: var(--warning);
+  --color-warning-fg: var(--warning-fg);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-line: var(--warning-line);
+  --color-error: var(--error);
+  --color-error-fg: var(--error-fg);
+  --color-error-soft: var(--error-soft);
+  --color-error-line: var(--error-line);
+  --color-idle: var(--idle);
+  --color-offline: var(--offline);
+
+  --radius-sm: calc(var(--radius) * 0.45);
+  --radius-md: calc(var(--radius) * 0.7);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.3);
+  --radius-2xl: calc(var(--radius) * 1.7);
+  --radius-3xl: calc(var(--radius) * 2.1);
+}
+
+:root {
+  color-scheme: light;
+  --radius: 0.625rem;
+
+  --background: oklch(0.973 0.0018 253);
+  --foreground: oklch(0.215 0.019 265);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.215 0.019 265);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.215 0.019 265);
+
+  /* Map canvas is a hair lighter than the page so cards read as objects on it. */
+  --canvas: oklch(0.988 0.0012 253);
+  --belt: oklch(0.947 0.0022 253);
+
+  --primary: oklch(0.215 0.028 265);
+  --primary-foreground: oklch(0.99 0 0);
+
+  --secondary: oklch(0.965 0.002 253);
+  --secondary-foreground: oklch(0.34 0.013 265);
+  --muted: oklch(0.968 0.002 253);
+  --muted-foreground: oklch(0.575 0.012 262);
+  --accent: oklch(0.962 0.002 253);
+  --accent-foreground: oklch(0.3 0.013 265);
+
+  --destructive: oklch(0.598 0.208 25);
+  --border: oklch(0.921 0.0028 253);
+  --input: oklch(0.906 0.0032 253);
+  --ring: oklch(0.55 0.16 259);
+
+  --topbar: oklch(0.202 0.028 264);
+  --topbar-foreground: oklch(0.988 0 0);
+  --topbar-muted: oklch(0.735 0.016 262);
+  --topbar-active: oklch(0.288 0.036 264);
+
+  /* Blue used for zone captions and the active rail item. */
+  --zone: oklch(0.53 0.185 259);
+
+  --cell-fill: oklch(0.688 0.158 150);
+  --cell-empty: oklch(0.906 0.0035 253);
+
+  --active: oklch(0.712 0.183 149);
+  --active-fg: oklch(0.598 0.161 149);
+  --warning: oklch(0.775 0.155 74);
+  --warning-fg: oklch(0.63 0.14 62);
+  --warning-soft: oklch(0.98 0.028 88);
+  --warning-line: oklch(0.925 0.055 84);
+  --error: oklch(0.628 0.211 25);
+  --error-fg: oklch(0.564 0.196 26);
+  --error-soft: oklch(0.976 0.014 20);
+  --error-line: oklch(0.918 0.036 22);
+  --idle: oklch(0.72 0.014 260);
+  --offline: oklch(0.598 0.198 258);
+
+  --chart-1: oklch(0.53 0.185 259);
+  --chart-2: oklch(0.688 0.158 150);
+  --chart-3: oklch(0.775 0.155 74);
+  --chart-4: oklch(0.628 0.211 25);
+  --chart-5: oklch(0.6 0.015 262);
+
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.215 0.019 265);
+  --sidebar-primary: oklch(0.53 0.185 259);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.966 0.002 253);
+  --sidebar-accent-foreground: oklch(0.34 0.013 265);
+  --sidebar-border: oklch(0.921 0.0028 253);
+  --sidebar-ring: oklch(0.55 0.16 259);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Uppercase blue zone caption used on every group and table card. */
+@utility zone-caption {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--zone);
+}
+
+/* Small uppercase gray label used by the KPI cards. */
+@utility kpi-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Segmented tick pattern that makes a strip read as a conveyor. */
+.belt-ticks {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--border) 0px,
+    var(--border) 1px,
+    transparent 1px,
+    transparent 22px
+  );
+}
+
+/*
+ * Batches ride the belt as one stream at a fixed pitch. Shifting the row by
+ * exactly one pitch loops seamlessly, so travel is always left-to-right with
+ * no backwards slide, and speed stays constant on short and long belts alike.
+ */
+@keyframes belt-stream {
+  from {
+    transform: translate3d(calc(-1 * var(--belt-pitch)), 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.belt-stream {
+  animation: belt-stream var(--belt-duration) linear infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .belt-stream {
+    animation: none;
+  }
+}
+
+@keyframes cell-in {
+  from {
+    opacity: 0.35;
+    transform: scaleX(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+.animate-cell-in {
+  animation: cell-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left center;
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 2s ease-in-out infinite;
+}
