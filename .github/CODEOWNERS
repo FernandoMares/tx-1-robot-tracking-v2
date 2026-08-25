@@ -1,0 +1,5 @@
+# Every change to this repository requires review from its owner.
+* @FernandoMares
+
+# Protect the ownership rule itself explicitly.
+/.github/CODEOWNERS @FernandoMares
