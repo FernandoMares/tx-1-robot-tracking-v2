@@ -5,19 +5,23 @@ import { ArrowLeft, ArrowRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Mockup controls:
+ * - Lower speed = slower tubes. The previous value was 45 px/s.
+ * - Larger spacing = fewer tube batches visible on every conveyor.
+ */
+const CONVEYOR_SPEED_PX_S = 9
+const TUBE_BATCH_SPACING_PX = 120
+
 /** Pieces carried side by side in one batch. */
 const BATCH_SIZE = 5
 /** Chip footprint and the spacing between chips of the same batch, in px. */
 const PIECE_W = 14
 const PIECE_GAP = 2
-/** Clear space between consecutive batches. */
-const BATCH_GAP = 44
-/** Travel speed, identical on every belt regardless of its length. */
-const SPEED_PX_S = 45
 
 const BATCH_W = BATCH_SIZE * PIECE_W + (BATCH_SIZE - 1) * PIECE_GAP
 /** Distance from one batch to the next, and the seamless loop step. */
-const PITCH = BATCH_W + BATCH_GAP
+const PITCH = BATCH_W + TUBE_BATCH_SPACING_PX
 
 interface ConveyorBeltProps {
   /** Direction in which both the bundles and arrow travel. */
@@ -85,9 +89,9 @@ export function ConveyorBelt({
         <div
           className="belt-stream absolute inset-y-0 left-0 flex items-center"
           style={{
-            gap: `${BATCH_GAP}px`,
+            gap: `${TUBE_BATCH_SPACING_PX}px`,
             "--belt-pitch": `${PITCH}px`,
-            "--belt-duration": `${PITCH / SPEED_PX_S}s`,
+            "--belt-duration": `${PITCH / CONVEYOR_SPEED_PX_S}s`,
             animationPlayState: running ? "running" : "paused",
             animationDirection: direction === "left" ? "reverse" : "normal",
           } as React.CSSProperties}
