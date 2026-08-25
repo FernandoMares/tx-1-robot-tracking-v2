@@ -8,6 +8,8 @@ interface TableCardProps {
   table: PlantTable
   /** Renders the uppercase blue zone caption inside the card. */
   showZoneLabel?: boolean
+  /** Omits the repeated table name when the zone caption is the visual title. */
+  hideName?: boolean
   /** Dimmed because active filters exclude this table. */
   muted?: boolean
   selected?: boolean
@@ -19,7 +21,15 @@ interface TableCardProps {
  * One table (mesa). The cell grid is the primary read: filled cells are
  * derived from `fillPct` so the grid and the corner percentage always agree.
  */
-export function TableCard({ table, showZoneLabel, muted, selected, onSelect, className }: TableCardProps) {
+export function TableCard({
+  table,
+  showZoneLabel,
+  hideName,
+  muted,
+  selected,
+  onSelect,
+  className,
+}: TableCardProps) {
   const meta = STATUS_META[table.status]
   const total = table.rows * table.columns
   const filled = Math.round((table.fillPct / 100) * total)
@@ -39,7 +49,7 @@ export function TableCard({ table, showZoneLabel, muted, selected, onSelect, cla
     >
       {showZoneLabel && <span className="zone-caption">{table.zoneLabel}</span>}
 
-      <span className="text-lg leading-none font-semibold text-foreground">{table.name}</span>
+      {!hideName && <span className="text-lg leading-none font-semibold text-foreground">{table.name}</span>}
 
       <div className="flex items-center justify-between gap-1.5">
         <span className="text-xs whitespace-nowrap text-muted-foreground">{table.bundleCount} bundles</span>

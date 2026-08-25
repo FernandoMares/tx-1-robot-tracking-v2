@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ArrowRight } from "lucide-react"
+import { ArrowLeft, ArrowRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -20,8 +20,12 @@ const BATCH_W = BATCH_SIZE * PIECE_W + (BATCH_SIZE - 1) * PIECE_GAP
 const PITCH = BATCH_W + BATCH_GAP
 
 interface ConveyorBeltProps {
-  /** Optional arrow rendered at the tail, as on the cross conveyor. */
-  showTailArrow?: boolean
+  /** Direction in which both the bundles and arrow travel. */
+  direction?: "left" | "right"
+  /** Optional direction arrow before the moving track. */
+  showStartArrow?: boolean
+  /** Direction arrow after the moving track. */
+  showEndArrow?: boolean
   /** Freezes travel when the board is paused. */
   running?: boolean
   className?: string
@@ -32,9 +36,16 @@ interface ConveyorBeltProps {
  * The row is two batches longer than the visible track and shifts by exactly
  * one pitch per cycle, so the stream repeats without gaps at the loop seam.
  */
-export function ConveyorBelt({ showTailArrow, running = true, className }: ConveyorBeltProps) {
+export function ConveyorBelt({
+  direction = "right",
+  showStartArrow = false,
+  showEndArrow = true,
+  running = true,
+  className,
+}: ConveyorBeltProps) {
   const trackRef = useRef<HTMLDivElement>(null)
   const [trackW, setTrackW] = useState(0)
+  const DirectionIcon = direction === "left" ? ArrowLeft : ArrowRight
 
   // Belts vary from ~280px to ~2600px, so the batch count is measured rather
   // than configured; that also keeps px/s speed identical across all of them.
@@ -46,8 +57,10 @@ export function ConveyorBelt({ showTailArrow, running = true, className }: Conve
     return () => observer.disconnect()
   }, [])
 
-  const batchCount = trackW > 0 ? Math.ceil(trackW / PITCH) + 2 : 0
-  const inTransit = Math.floor(trackW / PITCH) * BATCH_SIZE
+  // Keep the first paint populated while ResizeObserver measures the track.
+  // The stream is clipped, so this fallback also works for short conveyors.
+  const batchCount = trackW > 0 ? Math.ceil(trackW / PITCH) + 2 : 8
+  const inTransit = trackW > 0 ? Math.floor(trackW / PITCH) * BATCH_SIZE : BATCH_SIZE
 
   return (
     <div
@@ -58,8 +71,8 @@ export function ConveyorBelt({ showTailArrow, running = true, className }: Conve
       role="img"
       aria-label={`Conveyor with ${inTransit} bundles in transit, in batches of ${BATCH_SIZE}`}
     >
-      {showTailArrow && (
-        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.5} aria-hidden />
+      {showStartArrow && (
+        <DirectionIcon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.5} aria-hidden />
       )}
 
       {/*
@@ -76,6 +89,7 @@ export function ConveyorBelt({ showTailArrow, running = true, className }: Conve
             "--belt-pitch": `${PITCH}px`,
             "--belt-duration": `${PITCH / SPEED_PX_S}s`,
             animationPlayState: running ? "running" : "paused",
+            animationDirection: direction === "left" ? "reverse" : "normal",
           } as React.CSSProperties}
         >
           {Array.from({ length: batchCount }, (_, batch) => (
@@ -93,7 +107,9 @@ export function ConveyorBelt({ showTailArrow, running = true, className }: Conve
         </div>
       </div>
 
-      <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.5} aria-hidden />
+      {showEndArrow && (
+        <DirectionIcon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.5} aria-hidden />
+      )}
     </div>
   )
 }

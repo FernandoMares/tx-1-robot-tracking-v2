@@ -20,12 +20,6 @@ interface PlantMapProps {
   matchedIds: Set<string> | null
 }
 
-/**
- * Column template shared by the entry row and the upper band. Keeping one
- * definition is what lets the entry belt stop exactly at the Bundler edge.
- */
-const UPPER_COLS = "xl:grid-cols-[minmax(0,2.75fr)_minmax(0,0.58fr)_minmax(0,0.55fr)_minmax(0,0.68fr)]"
-
 /** Uppercase caption used above a group of tables. */
 function ZoneHeading({ children }: { children: string }) {
   return <span className="zone-caption">{children}</span>
@@ -74,104 +68,136 @@ export function PlantMap({
         </div>
       </header>
 
-      {/* Canvas */}
-      <div className="flex flex-col gap-4 rounded-lg border border-border bg-canvas m-4 p-4 lg:p-5">
-        {/* Entry row. The belt spans the stackers and bundler columns. */}
-        <div className={cn("grid items-center gap-4", UPPER_COLS)}>
-          <div className="flex items-center gap-3 xl:col-span-2">
-            <span className="shrink-0 text-xs font-semibold tracking-wide text-muted-foreground">ENTRY</span>
-            <ArrowRight className="size-4 shrink-0 text-muted-foreground" strokeWidth={2.5} aria-hidden />
-            <ConveyorBelt running={live} className="flex-1" />
-          </div>
-        </div>
+      {/*
+       * The floor plan deliberately keeps a minimum width. Reflowing these
+       * nodes would break the physical routes, so smaller screens scroll the
+       * complete mockup horizontally instead.
+       */}
+      <div
+        className="overflow-x-auto overscroll-x-contain p-4"
+        tabIndex={0}
+        aria-label="Scrollable plant floor diagram"
+      >
+        <div className="relative min-w-[73rem] rounded-lg border border-border bg-canvas p-4 lg:p-5">
+          <div className="grid grid-cols-[repeat(14,minmax(0,1fr))] grid-rows-[auto_auto_auto_auto] gap-x-3 gap-y-5">
+            {/* Entry belt stops at the far edge of the bundler. */}
+            <div className="col-[1/9] row-[1] flex items-center gap-3">
+              <span className="shrink-0 text-xs font-semibold tracking-wide text-muted-foreground">ENTRY</span>
+              <ArrowRight className="size-4 shrink-0 text-muted-foreground" strokeWidth={2.5} aria-hidden />
+              <ConveyorBelt running={live} className="flex-1" />
+            </div>
 
-        {/* Upper band: stackers group, bundler, robot 2, bay 2 */}
-        <div className={cn("grid items-start gap-4", UPPER_COLS)}>
-          <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3">
-            <ZoneHeading>Stackers</ZoneHeading>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {stackers.map((item) => (
+            {/* Upper process line. */}
+            <div className="col-[1/7] row-[2] flex h-[14.5rem] flex-col gap-3 rounded-lg border border-border bg-card p-3">
+              <ZoneHeading>Stackers</ZoneHeading>
+              <div className="grid min-h-0 flex-1 grid-cols-4 gap-2.5">
+                {stackers.map((item) => (
+                  <TableCard
+                    key={item.id}
+                    table={item}
+                    muted={isMuted(item.id)}
+                    selected={selectedId === item.id}
+                    onSelect={onSelectTable}
+                    className="h-full min-w-0 gap-2.5 p-2.5"
+                  />
+                ))}
+              </div>
+            </div>
+
+            {bundler && (
+              <div className="col-[7/9] row-[2] flex h-[14.5rem] flex-col gap-3 rounded-lg border border-border bg-card p-3">
+                <ZoneHeading>Bundler</ZoneHeading>
                 <TableCard
-                  key={item.id}
-                  table={item}
-                  muted={isMuted(item.id)}
-                  selected={selectedId === item.id}
+                  table={bundler}
+                  hideName
+                  muted={isMuted(bundler.id)}
+                  selected={selectedId === bundler.id}
                   onSelect={onSelectTable}
-                  className="min-h-[13rem]"
+                  className="min-h-0 flex-1 gap-2.5 border-transparent p-0 hover:shadow-none"
                 />
-              ))}
-            </div>
-          </div>
+              </div>
+            )}
 
-          {bundler && (
-            <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3">
-              <ZoneHeading>Bundler</ZoneHeading>
+            <div className="col-[9/12] row-[2] flex h-[14.5rem] flex-col justify-between gap-3">
+              <RobotCard robot={ROBOT_2} className="mx-auto h-[10.5rem] w-36" />
+              <ConveyorBelt running={live} />
+            </div>
+
+            {bay2 && (
               <TableCard
-                table={bundler}
-                muted={isMuted(bundler.id)}
-                selected={selectedId === bundler.id}
+                table={bay2}
+                showZoneLabel
+                hideName
+                muted={isMuted(bay2.id)}
+                selected={selectedId === bay2.id}
                 onSelect={onSelectTable}
-                className="min-h-[13rem] border-transparent p-0 hover:shadow-none"
+                className="col-[12/15] row-[2] h-[14.5rem] gap-2.5 p-4"
               />
+            )}
+
+            {/* The central conveyor is the spine of the lower process. */}
+            <div className="relative col-[1/-1] row-[3] pt-4">
+              <span className="zone-caption absolute top-0 left-1/2 -translate-x-1/2">Cross conveyor</span>
+              <ConveyorBelt
+                direction="left"
+                showStartArrow
+                showEndArrow={false}
+                running={live}
+              />
+              <span
+                className="absolute top-full left-[11.5%] h-9 border-l border-border"
+                aria-hidden
+              >
+                <ArrowDown
+                  className="absolute -bottom-1 -left-2 size-4 text-muted-foreground"
+                  strokeWidth={2.5}
+                />
+              </span>
             </div>
-          )}
 
-          {/* Robot 2 sits above the belt that carries bundles to Bay 2. */}
-          <div className="flex flex-col gap-3">
-            <RobotCard robot={ROBOT_2} />
-            <ConveyorBelt running={live} />
-          </div>
+            {/* Lower line: two Bay 1 tables fed through Robot 1. */}
+            {bay1a && (
+              <TableCard
+                table={bay1a}
+                showZoneLabel
+                hideName
+                muted={isMuted(bay1a.id)}
+                selected={selectedId === bay1a.id}
+                onSelect={onSelectTable}
+                className="col-[1/4] row-[4] h-[13rem] gap-2.5 p-4"
+              />
+            )}
 
-          {bay2 && (
-            <TableCard
-              table={bay2}
-              showZoneLabel
-              muted={isMuted(bay2.id)}
-              selected={selectedId === bay2.id}
-              onSelect={onSelectTable}
-              className="min-h-[15rem]"
+            <ConveyorBelt
+              direction="left"
+              showStartArrow
+              showEndArrow={false}
+              running={live}
+              className="col-[4/7] row-[4] self-center"
             />
-          )}
-        </div>
 
-        {/* Cross conveyor */}
-        <div className="flex flex-col gap-1.5">
-          <span className="zone-caption self-center">Cross conveyor</span>
-          <ConveyorBelt showTailArrow running={live} />
-          <div className="flex items-start justify-between px-8" aria-hidden>
-            <ArrowDown className="size-4 text-muted-foreground" strokeWidth={2.5} />
-            <ArrowDown className="size-4 text-muted-foreground" strokeWidth={2.5} />
-          </div>
-        </div>
-
-        {/* Lower band: bay 1 table, robot 1, bay 1 table */}
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,1fr)]">
-          {bay1a && (
-            <TableCard
-              table={bay1a}
-              showZoneLabel
-              muted={isMuted(bay1a.id)}
-              selected={selectedId === bay1a.id}
-              onSelect={onSelectTable}
-              className="min-h-[13rem]"
+            <RobotCard
+              robot={ROBOT_1}
+              className="col-[7/9] row-[4] h-40 self-center"
             />
-          )}
 
-          <div className="flex flex-col gap-3">
-            <RobotCard robot={ROBOT_1} />
-            <ConveyorBelt running={live} />
-          </div>
-
-          {bay1b && (
-            <TableCard
-              table={bay1b}
-              showZoneLabel
-              muted={isMuted(bay1b.id)}
-              selected={selectedId === bay1b.id}
-              onSelect={onSelectTable}
-              className="min-h-[13rem]"
+            <ConveyorBelt
+              running={live}
+              className="col-[9/12] row-[4] self-center"
             />
-          )}
+
+            {bay1b && (
+              <TableCard
+                table={bay1b}
+                showZoneLabel
+                hideName
+                muted={isMuted(bay1b.id)}
+                selected={selectedId === bay1b.id}
+                onSelect={onSelectTable}
+                className="col-[12/15] row-[4] h-[13rem] gap-2.5 p-4"
+              />
+            )}
+          </div>
         </div>
       </div>
 
