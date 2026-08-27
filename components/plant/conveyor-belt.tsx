@@ -8,10 +8,11 @@ import { cn } from "@/lib/utils"
 /**
  * Mockup controls:
  * - Lower speed = slower tubes. The previous value was 45 px/s.
- * - Larger spacing = fewer tube batches visible on every conveyor.
+ * - Larger spacing = fewer tube batches visible on every conveyor/rack.
+ * These shared values also drive the official Main tube racks.
  */
-const CONVEYOR_SPEED_PX_S = 9
-const TUBE_BATCH_SPACING_PX = 120
+export const CONVEYOR_SPEED_PX_S = 9
+export const TUBE_BATCH_SPACING_PX = 120
 
 /** Pieces carried side by side in one batch. */
 const BATCH_SIZE = 5

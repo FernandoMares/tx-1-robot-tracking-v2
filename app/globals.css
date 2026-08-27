@@ -212,8 +212,45 @@
   will-change: transform;
 }
 
+/* Horizontal guide lines used by every storage rack in the official layout. */
+.tube-rack-lines {
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 11px,
+    color-mix(in oklab, var(--foreground), transparent 78%) 11px,
+    color-mix(in oklab, var(--foreground), transparent 78%) 12px
+  );
+}
+
+@keyframes tube-rack-x {
+  from {
+    transform: translate3d(calc(-1 * var(--tube-rack-pitch)), 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes tube-rack-y {
+  from {
+    transform: translate3d(0, calc(-1 * var(--tube-rack-pitch)), 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.tube-rack-stream {
+  animation-duration: var(--tube-rack-duration);
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .belt-stream {
+  .belt-stream,
+  .tube-rack-stream {
     animation: none;
   }
 }

@@ -6,20 +6,20 @@ import { AlertsPanel } from "@/components/alerts-panel"
 import { AppHeader } from "@/components/app-header"
 import { DEFAULT_FILTERS, FiltersPanel, type PlantFilters } from "@/components/filters-panel"
 import { KpiCards } from "@/components/kpi-cards"
+import { BayOneSchematic } from "@/components/plant/bay-one-schematic"
+import { BayTwoSchematic } from "@/components/plant/bay-two-schematic"
 import { PlantMap } from "@/components/plant/plant-map"
+import { StackersSchematic } from "@/components/plant/stackers-schematic"
 import { ZoneView } from "@/components/plant/zone-view"
 import { SideRail } from "@/components/side-rail"
 import { TableDetailPanel } from "@/components/table-detail-panel"
 import { usePlantState } from "@/hooks/use-plant-state"
-import type { PlantTable, PlantView, ZoneId } from "@/lib/types"
+import type { PlantTable, PlantView } from "@/lib/types"
 
-/** Copy for each single-zone screen. */
-const ZONE_VIEWS: Record<Exclude<PlantView, "overview">, { zone: ZoneId; title: string; description: string }> = {
-  stackers: { zone: "stackers", title: "Stackers", description: "The four stacker tables on the line" },
-  bundler: { zone: "bundler", title: "Bundler", description: "Bundler table and its current fill" },
-  "bay-1": { zone: "bay-1", title: "Bay 1", description: "Bay 1 tables and their current fill" },
-  "bay-2": { zone: "bay-2", title: "Bay 2", description: "Bay 2 tables and their current fill" },
-}
+const BUNDLER_VIEW = {
+  title: "Bundler",
+  description: "Bundler table and its current fill",
+} as const
 
 export function Dashboard() {
   const { tables, alerts, kpis, updatedAt, live, setLive } = usePlantState()
@@ -53,8 +53,6 @@ export function Dashboard() {
     setDetailOpen(true)
   }
 
-  const zoneConfig = view === "overview" ? null : ZONE_VIEWS[view]
-
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <AppHeader
@@ -83,17 +81,27 @@ export function Dashboard() {
                 tables={tables}
                 updatedAt={updatedAt}
                 live={live}
-                selectedId={selected?.id ?? null}
-                onSelectTable={handleSelectTable}
                 matchedIds={matchedIds}
               />
             )}
 
-            {zoneConfig && (
+            {view === "stackers" && (
+              <StackersSchematic updatedAt={updatedAt} live={live} matchedIds={matchedIds} />
+            )}
+
+            {view === "bay-1" && (
+              <BayOneSchematic updatedAt={updatedAt} live={live} matchedIds={matchedIds} />
+            )}
+
+            {view === "bay-2" && (
+              <BayTwoSchematic updatedAt={updatedAt} live={live} matchedIds={matchedIds} />
+            )}
+
+            {view === "bundler" && (
               <ZoneView
-                title={zoneConfig.title}
-                description={zoneConfig.description}
-                tables={filteredTables.filter((table) => table.zone === zoneConfig.zone)}
+                title={BUNDLER_VIEW.title}
+                description={BUNDLER_VIEW.description}
+                tables={filteredTables.filter((table) => table.zone === "bundler")}
                 updatedAt={updatedAt}
                 selectedId={selected?.id ?? null}
                 onSelectTable={handleSelectTable}

@@ -75,7 +75,7 @@ export const BAY_2_TABLE: PlantTable = {
   columns: 3,
 }
 
-/** Bay 1 runs two tables, one on each side of Robot 1. */
+/** Bay 1 runs two tables along the lower production line. */
 export const BAY_1_TABLES: PlantTable[] = [
   {
     id: "bay1-t1",
@@ -104,12 +104,11 @@ export const BAY_1_TABLES: PlantTable[] = [
 export const ALL_TABLES: PlantTable[] = [...STACKER_TABLES, BUNDLER_TABLE, BAY_2_TABLE, ...BAY_1_TABLES]
 
 export const ROBOT_2: Robot = { id: "robot-2", label: "Robot 2", online: true, note: "Operational" }
-export const ROBOT_1: Robot = { id: "robot-1", label: "Robot 1", online: true, note: "Operational" }
 
 export const INITIAL_ALERTS: PlantAlert[] = [
   { id: "al-1", source: "Bay 2 - Table 3", message: "Table overloaded", severity: "error", ageMin: 2 },
   { id: "al-2", source: "Stacker C", message: "Misaligned bundle", severity: "warning", ageMin: 5 },
-  { id: "al-3", source: "Robot 1", message: "Temporarily offline", severity: "warning", ageMin: 12 },
+  { id: "al-3", source: "Scale Weight Station", message: "Calibration check due", severity: "warning", ageMin: 12 },
 ]
 
 /** Options backing the three filter selects in the left column. */
