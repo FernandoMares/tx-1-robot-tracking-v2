@@ -7,16 +7,23 @@ import {
   ModuleRack,
   TraceabilityPanel,
 } from "@/components/plant/zoom-schematic-primitives"
+import type { TrackingRuntimeState } from "@/lib/tracking-api"
 import { STACKERS_TRACKED_LOADS } from "@/lib/zone-layout-data"
 
 interface StackersSchematicProps {
-  updatedAt: Date
-  live: boolean
+  updatedAt: Date | null
+  animationRunning: boolean
   matchedIds: Set<string> | null
+  tracking: TrackingRuntimeState
 }
 
 /** Detailed recreation of the official STACKERS worksheet. */
-export function StackersSchematic({ updatedAt, live, matchedIds }: StackersSchematicProps) {
+export function StackersSchematic({
+  updatedAt,
+  animationRunning,
+  matchedIds,
+  tracking,
+}: StackersSchematicProps) {
   const muted = Boolean(
     matchedIds && ["stk-a", "stk-b", "stk-c", "stk-d"].every((id) => !matchedIds.has(id)),
   )
@@ -26,7 +33,8 @@ export function StackersSchematic({ updatedAt, live, matchedIds }: StackersSchem
       title="Stackers"
       description="Detailed flow from Stackers A-D through the stacker banders"
       updatedAt={updatedAt}
-      live={live}
+      animationRunning={animationRunning}
+      tracking={tracking}
       canvasWidth={1280}
       canvasHeight={430}
       muted={muted}
@@ -47,7 +55,8 @@ export function StackersSchematic({ updatedAt, live, matchedIds }: StackersSchem
         </div>
         <TubeRack
           direction="right"
-          running={live}
+          running={animationRunning}
+          illustrative={tracking.mode === "live"}
           label="Stacker output rack"
           className="absolute top-[6.5rem] left-0 h-[8.125rem] w-full rounded-sm"
         />
@@ -61,22 +70,27 @@ export function StackersSchematic({ updatedAt, live, matchedIds }: StackersSchem
         left={688}
         top={60}
         width={544}
-        running={live}
+        running={animationRunning}
+        illustrative={tracking.mode === "live"}
         rackHeight={130}
       />
 
-      <TraceabilityPanel
-        load={STACKERS_TRACKED_LOADS.bundler501}
-        left={178}
-        top={300}
-        width={240}
-      />
-      <TraceabilityPanel
-        load={STACKERS_TRACKED_LOADS.bundler500}
-        left={840}
-        top={300}
-        width={240}
-      />
+      {tracking.mode === "mock" && (
+        <>
+          <TraceabilityPanel
+            load={STACKERS_TRACKED_LOADS.bundler501}
+            left={178}
+            top={300}
+            width={240}
+          />
+          <TraceabilityPanel
+            load={STACKERS_TRACKED_LOADS.bundler500}
+            left={840}
+            top={300}
+            width={240}
+          />
+        </>
+      )}
     </SchematicScreen>
   )
 }

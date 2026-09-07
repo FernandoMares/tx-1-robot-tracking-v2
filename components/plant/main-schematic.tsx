@@ -5,12 +5,13 @@ import { ArrowDown, ArrowRight } from "lucide-react"
 import { RobotCard } from "@/components/plant/robot-card"
 import { TubeRack, type TubeDirection } from "@/components/plant/tube-rack"
 import { MAIN_TRACKED_LOADS, type TrackedLoad } from "@/lib/main-layout-data"
-import { ROBOT_2 } from "@/lib/mock-data"
+import { ROBOT_2, ROBOT_2_UNKNOWN } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 
 interface MainSchematicProps {
-  live: boolean
+  animationRunning: boolean
   matchedIds: Set<string> | null
+  showDemoData: boolean
 }
 
 interface PositionedProps {
@@ -108,6 +109,7 @@ function BufferRack({
   running,
   empty,
   muted,
+  illustrative,
   label,
 }: PositionedProps & {
   height: number
@@ -115,6 +117,7 @@ function BufferRack({
   running: boolean
   empty?: boolean
   muted?: boolean
+  illustrative?: boolean
   label: string
 }) {
   return (
@@ -123,6 +126,7 @@ function BufferRack({
       running={running}
       empty={empty}
       muted={muted}
+      illustrative={illustrative}
       label={label}
       className="absolute z-10 rounded-sm"
       style={{ left, top, width, height } as React.CSSProperties}
@@ -138,12 +142,14 @@ function ProcessStation({
   width,
   running,
   muted,
+  illustrative,
   label,
 }: PositionedProps & {
   title: string
   units: string[]
   running: boolean
   muted?: boolean
+  illustrative?: boolean
   label: string
 }) {
   return (
@@ -172,6 +178,7 @@ function ProcessStation({
       <TubeRack
         direction="right"
         running={running}
+        illustrative={illustrative}
         label={label}
         className="mt-0 h-[4.5rem] rounded-sm"
       />
@@ -194,7 +201,8 @@ function StackerStation({
   width,
   running,
   muted,
-}: PositionedProps & { running: boolean; muted?: boolean }) {
+  illustrative,
+}: PositionedProps & { running: boolean; muted?: boolean; illustrative?: boolean }) {
   return (
     <div
       className={cn("absolute z-10", muted && "opacity-35 saturate-50")}
@@ -218,6 +226,7 @@ function StackerStation({
       <TubeRack
         direction="right"
         running={running}
+        illustrative={illustrative}
         label="Stacker output rack"
         className="mt-5 h-[4.5rem] rounded-sm"
       />
@@ -248,8 +257,9 @@ function ScaleStation({
 
 /** Fixed-coordinate recreation of the workbook's Main sheet. */
 export function MainSchematic({
-  live,
+  animationRunning,
   matchedIds,
+  showDemoData,
 }: MainSchematicProps) {
   // Main shows physical zones, so a table filter keeps its complete shared
   // production cell visible instead of implying that a traced load is a table.
@@ -270,20 +280,23 @@ export function MainSchematic({
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-zone via-cell-fill to-zone" aria-hidden />
 
       {/* Upper production line: bundlers, LMD 1-4 and scale. */}
-      <TraceabilityCard
-        load={MAIN_TRACKED_LOADS.bundler505}
-        muted={upperMuted}
-        left={340}
-        top={92}
-        width={225}
-      />
+      {showDemoData && (
+        <TraceabilityCard
+          load={MAIN_TRACKED_LOADS.bundler505}
+          muted={upperMuted}
+          left={340}
+          top={92}
+          width={225}
+        />
+      )}
       <BufferRack
         left={340}
         top={208}
         width={270}
         height={72}
-        running={live}
+        running={animationRunning}
         muted={upperMuted}
+        illustrative={!showDemoData}
         label="Bundler input rack"
       />
       <FlowArrow left={611} top={224} muted={upperMuted} />
@@ -293,17 +306,20 @@ export function MainSchematic({
         left={656}
         top={151}
         width={340}
-        running={live}
+        running={animationRunning}
         muted={upperMuted}
+        illustrative={!showDemoData}
         label="Bund bundlers output rack"
       />
-      <TraceabilityCard
-        load={MAIN_TRACKED_LOADS.bundler504}
-        muted={upperMuted}
-        left={710}
-        top={306}
-        width={200}
-      />
+      {showDemoData && (
+        <TraceabilityCard
+          load={MAIN_TRACKED_LOADS.bundler504}
+          muted={upperMuted}
+          left={710}
+          top={306}
+          width={200}
+        />
+      )}
       <FlowArrow left={997} top={224} muted={upperMuted} />
       <ScaleStation left={1025} top={168} width={115} muted={upperMuted} />
       <FlowArrow left={1123} top={224} muted={upperMuted || bay2Muted} />
@@ -316,30 +332,45 @@ export function MainSchematic({
         width={180}
         height={462}
         direction="up"
-        running={live}
+        running={animationRunning}
         muted={bay2Muted}
+        illustrative={!showDemoData}
         label="Bay 2 vertical rack"
       />
       <div className={cn("absolute z-20", bay2Muted && "opacity-35 saturate-50")} style={{ left: 1362, top: 35 }}>
-        <RobotCard robot={ROBOT_2} className="h-[9.75rem] w-[7.25rem] bg-white/95" />
+        <RobotCard
+          robot={showDemoData ? ROBOT_2 : ROBOT_2_UNKNOWN}
+          className="h-[9.75rem] w-[7.25rem] bg-white/95"
+        />
       </div>
-      <TraceabilityCard
-        load={MAIN_TRACKED_LOADS.bundle497}
-        muted={bay2Muted}
-        left={1355}
-        top={216}
-        width={145}
-      />
+      {showDemoData && (
+        <TraceabilityCard
+          load={MAIN_TRACKED_LOADS.bundle497}
+          muted={bay2Muted}
+          left={1355}
+          top={216}
+          width={145}
+        />
+      )}
 
       {/* Lower production line: stackers, banders, scale and down branch. */}
-      <StackerStation left={20} top={354} width={286} running={live} muted={stackersMuted} />
-      <TraceabilityCard
-        load={MAIN_TRACKED_LOADS.bundler501}
+      <StackerStation
+        left={20}
+        top={354}
+        width={286}
+        running={animationRunning}
         muted={stackersMuted}
-        left={136}
-        top={533}
-        width={170}
+        illustrative={!showDemoData}
       />
+      {showDemoData && (
+        <TraceabilityCard
+          load={MAIN_TRACKED_LOADS.bundler501}
+          muted={stackersMuted}
+          left={136}
+          top={533}
+          width={170}
+        />
+      )}
       <FlowArrow left={307} top={435} muted={stackersMuted} />
       <ProcessStation
         title="Stacker Banders"
@@ -347,26 +378,30 @@ export function MainSchematic({
         left={354}
         top={354}
         width={310}
-        running={live}
+        running={animationRunning}
         muted={stackersMuted}
+        illustrative={!showDemoData}
         label="Stacker banders output rack"
       />
-      <TraceabilityCard
-        load={MAIN_TRACKED_LOADS.bundler500}
-        muted={stackersMuted}
-        left={395}
-        top={533}
-        width={225}
-      />
+      {showDemoData && (
+        <TraceabilityCard
+          load={MAIN_TRACKED_LOADS.bundler500}
+          muted={stackersMuted}
+          left={395}
+          top={533}
+          width={225}
+        />
+      )}
       <FlowArrow left={665} top={435} muted={stackersMuted} />
       <BufferRack
         left={710}
         top={421}
         width={165}
         height={72}
-        running={live}
+        running={animationRunning}
         empty
         muted={bay1Muted}
+        illustrative={!showDemoData}
         label="Bay 1 transfer rack"
       />
       <FlowArrow left={876} top={435} muted={bay1Muted} />
@@ -381,17 +416,20 @@ export function MainSchematic({
         width={180}
         height={135}
         direction="down"
-        running={live}
+        running={animationRunning}
         muted={bay1Muted}
+        illustrative={!showDemoData}
         label="Bay 1 down rack"
       />
-      <TraceabilityCard
-        load={MAIN_TRACKED_LOADS.bundle499}
-        muted={bay1Muted}
-        left={1120}
-        top={526}
-        width={155}
-      />
+      {showDemoData && (
+        <TraceabilityCard
+          load={MAIN_TRACKED_LOADS.bundle499}
+          muted={bay1Muted}
+          left={1120}
+          top={526}
+          width={155}
+        />
+      )}
     </div>
   )
 }

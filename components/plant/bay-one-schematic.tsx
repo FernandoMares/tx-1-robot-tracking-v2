@@ -7,12 +7,14 @@ import {
   EquipmentHeader,
   TraceabilityPanel,
 } from "@/components/plant/zoom-schematic-primitives"
+import type { TrackingRuntimeState } from "@/lib/tracking-api"
 import { BAY_1_TRACKED_LOADS } from "@/lib/zone-layout-data"
 
 interface BayOneSchematicProps {
-  updatedAt: Date
-  live: boolean
+  updatedAt: Date | null
+  animationRunning: boolean
   matchedIds: Set<string> | null
+  tracking: TrackingRuntimeState
 }
 
 interface StkBundStationProps {
@@ -20,6 +22,7 @@ interface StkBundStationProps {
   top: number
   width: number
   running: boolean
+  illustrative: boolean
 }
 
 /** STK BUND is drawn with three unlabelled machine pads in the workbook. */
@@ -28,6 +31,7 @@ function StkBundStation({
   top,
   width,
   running,
+  illustrative,
 }: StkBundStationProps) {
   return (
     <div
@@ -47,6 +51,7 @@ function StkBundStation({
       <TubeRack
         direction="right"
         running={running}
+        illustrative={illustrative}
         label="STK BUND rack"
         className="absolute top-[5.25rem] left-0 w-full rounded-sm"
         style={{ height: 116 }}
@@ -62,7 +67,12 @@ function StkBundStation({
 }
 
 /** Detailed recreation of the official BAY 1 worksheet. */
-export function BayOneSchematic({ updatedAt, live, matchedIds }: BayOneSchematicProps) {
+export function BayOneSchematic({
+  updatedAt,
+  animationRunning,
+  matchedIds,
+  tracking,
+}: BayOneSchematicProps) {
   const muted = Boolean(matchedIds && ["bay1-t1", "bay1-t2"].every((id) => !matchedIds.has(id)))
 
   return (
@@ -70,25 +80,34 @@ export function BayOneSchematic({ updatedAt, live, matchedIds }: BayOneSchematic
       title="Bay 1"
       description="Detailed flow through STK BUND and the scale weight station"
       updatedAt={updatedAt}
-      live={live}
+      animationRunning={animationRunning}
+      tracking={tracking}
       canvasWidth={1500}
       canvasHeight={560}
       muted={muted}
     >
       <TubeRack
         direction="right"
-        running={live}
+        running={animationRunning}
+        illustrative={tracking.mode === "live"}
         label="Bay 1 entry rack"
         className="absolute top-[180px] left-10 h-[116px] w-[250px] rounded-sm"
       />
       <DiagramArrow left={304} top={206} size={64} />
 
-      <StkBundStation left={384} top={96} width={370} running={live} />
+      <StkBundStation
+        left={384}
+        top={96}
+        width={370}
+        running={animationRunning}
+        illustrative={tracking.mode === "live"}
+      />
       <DiagramArrow left={765} top={206} size={64} />
 
       <TubeRack
         direction="right"
-        running={live}
+        running={animationRunning}
+        illustrative={tracking.mode === "live"}
         empty
         label="Bay 1 transfer rack"
         className="absolute top-[180px] left-[840px] h-[116px] w-[200px] rounded-sm"
@@ -104,30 +123,35 @@ export function BayOneSchematic({ updatedAt, live, matchedIds }: BayOneSchematic
       />
       <TubeRack
         direction="down"
-        running={live}
+        running={animationRunning}
+        illustrative={tracking.mode === "live"}
         label="Bay 1 scale output rack"
         className="absolute top-[180px] left-[1120px] h-[344px] w-[210px] rounded-sm"
       />
       <DiagramArrow direction="down" left={1197} top={365} size={56} />
 
-      <TraceabilityPanel
-        load={BAY_1_TRACKED_LOADS.bundle500}
-        left={50}
-        top={348}
-        width={240}
-      />
-      <TraceabilityPanel
-        load={BAY_1_TRACKED_LOADS.bundle499}
-        left={450}
-        top={348}
-        width={240}
-      />
-      <TraceabilityPanel
-        load={BAY_1_TRACKED_LOADS.bundle498}
-        left={1340}
-        top={252}
-        width={146}
-      />
+      {tracking.mode === "mock" && (
+        <>
+          <TraceabilityPanel
+            load={BAY_1_TRACKED_LOADS.bundle500}
+            left={50}
+            top={348}
+            width={240}
+          />
+          <TraceabilityPanel
+            load={BAY_1_TRACKED_LOADS.bundle499}
+            left={450}
+            top={348}
+            width={240}
+          />
+          <TraceabilityPanel
+            load={BAY_1_TRACKED_LOADS.bundle498}
+            left={1340}
+            top={252}
+            width={146}
+          />
+        </>
+      )}
     </SchematicScreen>
   )
 }

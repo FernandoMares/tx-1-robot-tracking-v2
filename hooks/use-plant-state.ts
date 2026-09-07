@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
+import { useTrackingApi } from "@/hooks/use-tracking-api"
 import { ALL_TABLES, INITIAL_ALERTS } from "@/lib/mock-data"
 import type { PlantKpis, PlantTable } from "@/lib/types"
 
@@ -39,22 +40,24 @@ function driftTables(tables: PlantTable[], tick: number): PlantTable[] {
 
 export function usePlantState() {
   const [state, setState] = useState<PlantState>(initialState)
-  const [live, setLive] = useState(true)
-  const [tick, setTick] = useState(0)
+  const [animationRunning, setAnimationRunning] = useState(true)
+  const mockTick = useRef(0)
+  const { tracking, retry, config } = useTrackingApi()
 
   useEffect(() => {
-    if (!live) return
+    if (tracking.mode !== "mock") return
+
     const timer = window.setInterval(() => {
-      setTick((prev) => prev + 1)
+      mockTick.current += 1
       setState((prev) => ({
         ...prev,
-        tables: driftTables(prev.tables, tick),
-        completed: prev.completed + (Math.random() > 0.72 ? 1 : 0),
+        tables: driftTables(prev.tables, mockTick.current),
+        completed: prev.completed + (mockTick.current % 4 === 0 ? 1 : 0),
         updatedAt: new Date(),
       }))
     }, TICK_MS)
     return () => window.clearInterval(timer)
-  }, [live, tick])
+  }, [tracking.mode])
 
   const kpis: PlantKpis = useMemo(() => {
     const onTables = state.tables.reduce((sum, table) => sum + table.bundleCount, 0)
@@ -68,12 +71,26 @@ export function usePlantState() {
     }
   }, [state.tables, state.completed])
 
+  const bundlesByZone = useMemo(() => {
+    const grouped: Record<string, NonNullable<typeof tracking.trackingState>["Bundles"]> = {}
+    for (const bundle of tracking.trackingState?.Bundles ?? []) {
+      if (!bundle.CurrentZone) continue
+      grouped[bundle.CurrentZone] ??= []
+      grouped[bundle.CurrentZone].push(bundle)
+    }
+    return grouped
+  }, [tracking.trackingState])
+
   return {
     tables: state.tables,
-    alerts: INITIAL_ALERTS,
+    alerts: tracking.mode === "mock" ? INITIAL_ALERTS : [],
     kpis,
-    updatedAt: state.updatedAt,
-    live,
-    setLive,
+    updatedAt: tracking.mode === "live" ? tracking.lastSuccessfulPollAt : state.updatedAt,
+    animationRunning,
+    setAnimationRunning,
+    tracking,
+    trackingConfig: config,
+    bundlesByZone,
+    retryTracking: retry,
   }
 }

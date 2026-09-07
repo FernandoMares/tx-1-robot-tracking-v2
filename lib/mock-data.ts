@@ -104,6 +104,12 @@ export const BAY_1_TABLES: PlantTable[] = [
 export const ALL_TABLES: PlantTable[] = [...STACKER_TABLES, BUNDLER_TABLE, BAY_2_TABLE, ...BAY_1_TABLES]
 
 export const ROBOT_2: Robot = { id: "robot-2", label: "Robot 2", online: true, note: "Operational" }
+export const ROBOT_2_UNKNOWN: Robot = {
+  id: "robot-2",
+  label: "Robot 2",
+  online: null,
+  note: "Not provided by tracking API",
+}
 
 export const INITIAL_ALERTS: PlantAlert[] = [
   { id: "al-1", source: "Bay 2 - Table 3", message: "Table overloaded", severity: "error", ageMin: 2 },

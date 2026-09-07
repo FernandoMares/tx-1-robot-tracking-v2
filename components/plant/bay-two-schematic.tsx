@@ -8,17 +8,24 @@ import {
   EquipmentHeader,
   TraceabilityPanel,
 } from "@/components/plant/zoom-schematic-primitives"
-import { ROBOT_2 } from "@/lib/mock-data"
+import { ROBOT_2, ROBOT_2_UNKNOWN } from "@/lib/mock-data"
+import type { TrackingRuntimeState } from "@/lib/tracking-api"
 import { BAY_2_TRACKED_LOADS } from "@/lib/zone-layout-data"
 
 interface BayTwoSchematicProps {
-  updatedAt: Date
-  live: boolean
+  updatedAt: Date | null
+  animationRunning: boolean
   matchedIds: Set<string> | null
+  tracking: TrackingRuntimeState
 }
 
 /** Detailed recreation of the workbook's BAY 2 worksheet. */
-export function BayTwoSchematic({ updatedAt, live, matchedIds }: BayTwoSchematicProps) {
+export function BayTwoSchematic({
+  updatedAt,
+  animationRunning,
+  matchedIds,
+  tracking,
+}: BayTwoSchematicProps) {
   const muted = Boolean(matchedIds && !matchedIds.has("bay2-t3"))
 
   return (
@@ -26,7 +33,8 @@ export function BayTwoSchematic({ updatedAt, live, matchedIds }: BayTwoSchematic
       title="Bay 2"
       description="Bundler transfers, weighing station and Robot 2 output"
       updatedAt={updatedAt}
-      live={live}
+      animationRunning={animationRunning}
+      tracking={tracking}
       canvasWidth={1400}
       canvasHeight={760}
       muted={muted}
@@ -34,7 +42,8 @@ export function BayTwoSchematic({ updatedAt, live, matchedIds }: BayTwoSchematic
       {/* The central storage cell receives both transfers and carries them up. */}
       <TubeRack
         direction="up"
-        running={live}
+        running={animationRunning}
+        illustrative={tracking.mode === "live"}
         label="Bay 2 vertical transfer rack"
         className="absolute z-10 rounded-sm"
         style={{ left: 480, top: 52, width: 440, height: 530 }}
@@ -50,18 +59,21 @@ export function BayTwoSchematic({ updatedAt, live, matchedIds }: BayTwoSchematic
       />
       <TubeRack
         direction="right"
-        running={live}
+        running={animationRunning}
+        illustrative={tracking.mode === "live"}
         label="Bundler station incoming rack"
         className="absolute z-10 rounded-sm"
         style={{ left: 44, top: 250, width: 380, height: 96 }}
       />
       <DiagramArrow left={430} top={274} size={48} />
-      <TraceabilityPanel
-        load={BAY_2_TRACKED_LOADS.incoming498}
-        left={220}
-        top={62}
-        width={220}
-      />
+      {tracking.mode === "mock" && (
+        <TraceabilityPanel
+          load={BAY_2_TRACKED_LOADS.incoming498}
+          left={220}
+          top={62}
+          width={220}
+        />
+      )}
 
       {/* Lower feed from the scale enters the same vertical transfer cell. */}
       <EquipmentHeader
@@ -73,7 +85,8 @@ export function BayTwoSchematic({ updatedAt, live, matchedIds }: BayTwoSchematic
       />
       <TubeRack
         direction="right"
-        running={live}
+        running={animationRunning}
+        illustrative={tracking.mode === "live"}
         label="Scale weight station output rack"
         className="absolute z-10 rounded-sm"
         style={{ left: 44, top: 480, width: 380, height: 96 }}
@@ -82,28 +95,37 @@ export function BayTwoSchematic({ updatedAt, live, matchedIds }: BayTwoSchematic
 
       {/* Robot and currently tracked bundle at the upper output. */}
       <div className="absolute z-20" style={{ left: 970, top: 52 }}>
-        <RobotCard robot={ROBOT_2} className="h-[11rem] w-[9rem] bg-white/95" />
+        <RobotCard
+          robot={tracking.mode === "mock" ? ROBOT_2 : ROBOT_2_UNKNOWN}
+          className="h-[11rem] w-[9rem] bg-white/95"
+        />
       </div>
-      <TraceabilityPanel
-        load={BAY_2_TRACKED_LOADS.bundle497}
-        left={1138}
-        top={52}
-        width={230}
-      />
+      {tracking.mode === "mock" && (
+        <TraceabilityPanel
+          load={BAY_2_TRACKED_LOADS.bundle497}
+          left={1138}
+          top={52}
+          width={230}
+        />
+      )}
 
       {/* Finished locations shown below the shared Bay 2 rack. */}
-      <TraceabilityPanel
-        load={BAY_2_TRACKED_LOADS.output499}
-        left={44}
-        top={604}
-        width={260}
-      />
-      <TraceabilityPanel
-        load={BAY_2_TRACKED_LOADS.output498}
-        left={550}
-        top={604}
-        width={310}
-      />
+      {tracking.mode === "mock" && (
+        <>
+          <TraceabilityPanel
+            load={BAY_2_TRACKED_LOADS.output499}
+            left={44}
+            top={604}
+            width={260}
+          />
+          <TraceabilityPanel
+            load={BAY_2_TRACKED_LOADS.output498}
+            left={550}
+            top={604}
+            width={310}
+          />
+        </>
+      )}
     </SchematicScreen>
   )
 }

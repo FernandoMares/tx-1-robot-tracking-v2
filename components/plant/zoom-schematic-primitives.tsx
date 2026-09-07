@@ -103,11 +103,13 @@ export function ModuleRack({
   top,
   width,
   running,
+  illustrative = false,
   rackHeight = 96,
 }: DiagramPosition & {
   title: string
   modules: string[]
   running: boolean
+  illustrative?: boolean
   rackHeight?: number
 }) {
   return (
@@ -129,6 +131,7 @@ export function ModuleRack({
       <TubeRack
         direction="right"
         running={running}
+        illustrative={illustrative}
         label={`${title} rack`}
         className="absolute top-[5.25rem] left-0 w-full rounded-sm"
         style={{ height: rackHeight }}

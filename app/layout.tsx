@@ -9,7 +9,7 @@ const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono'
 export const metadata: Metadata = {
   title: 'Texas 1 Tracking · Plant Overview',
   description:
-    'Real-time status of every table in the plant: stackers, bundler, bays 1 and 2, robots and conveyors, with live data from PLC.',
+    'Texas 1 HMI layout with explicit demo and MaterialTrackingService data modes.',
   generator: 'v0.app',
 }
 

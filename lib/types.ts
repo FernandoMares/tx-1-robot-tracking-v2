@@ -31,7 +31,8 @@ export interface PlantTable {
 export interface Robot {
   id: string
   label: string
-  online: boolean
+  /** Null when the current API contract does not expose robot health. */
+  online: boolean | null
   /** Sub-caption under the icon, e.g. "Operational". */
   note: string
 }

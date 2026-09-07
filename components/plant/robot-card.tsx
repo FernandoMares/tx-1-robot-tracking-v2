@@ -32,22 +32,26 @@ function RobotArmIcon({ className }: { className?: string }) {
 
 /** A robot cell node, shown between the tables it feeds. */
 export function RobotCard({ robot, className }: RobotCardProps) {
+  const connectionLabel = robot.online == null ? "Status unavailable" : robot.online ? "Online" : "Offline"
+
   return (
     <div
       className={cn("flex flex-col items-center gap-3 rounded-lg border border-border bg-card p-3", className)}
       role="group"
-      aria-label={`${robot.label}, ${robot.online ? "online" : "offline"}, ${robot.note}`}
+      aria-label={`${robot.label}, ${connectionLabel.toLowerCase()}, ${robot.note}`}
     >
       <span className="zone-caption self-start">{robot.label}</span>
 
-      <RobotArmIcon className={cn("size-12", robot.online ? "text-cell-fill" : "text-muted-foreground")} />
+      <RobotArmIcon
+        className={cn("size-12", robot.online === true ? "text-cell-fill" : "text-muted-foreground")}
+      />
 
       <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <span
-          className={cn("size-1.5 rounded-full", robot.online ? "bg-active" : "bg-idle")}
+          className={cn("size-1.5 rounded-full", robot.online === true ? "bg-active" : "bg-idle")}
           aria-hidden
         />
-        {robot.online ? "Online" : "Offline"}
+        {connectionLabel}
       </span>
 
       <span className="text-xs text-muted-foreground">{robot.note}</span>

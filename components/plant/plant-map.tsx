@@ -3,14 +3,17 @@
 import { Network } from "lucide-react"
 
 import { MainSchematic } from "@/components/plant/main-schematic"
+import { TrackingSyncBadge } from "@/components/tracking-connection-banner"
 import { LEGEND, STATUS_META, formatClock } from "@/lib/status"
+import type { TrackingRuntimeState } from "@/lib/tracking-api"
 import type { PlantTable } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface PlantMapProps {
   tables: PlantTable[]
-  updatedAt: Date
-  live: boolean
+  updatedAt: Date | null
+  animationRunning: boolean
+  tracking: TrackingRuntimeState
   /** Ids passing the active filters, or null when no filter is set. */
   matchedIds: Set<string> | null
 }
@@ -18,7 +21,8 @@ interface PlantMapProps {
 export function PlantMap({
   tables,
   updatedAt,
-  live,
+  animationRunning,
+  tracking,
   matchedIds,
 }: PlantMapProps) {
   return (
@@ -34,15 +38,10 @@ export function PlantMap({
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="tabular text-xs text-muted-foreground">Last update: {formatClock(updatedAt)}</span>
-          <span
-            className={cn(
-              "rounded-md border px-2.5 py-1 text-xs font-medium",
-              live ? "border-active/30 bg-active/10 text-active-fg" : "border-border bg-muted text-muted-foreground",
-            )}
-          >
-            {live ? "Live data" : "Paused"}
+          <span className="tabular text-xs text-muted-foreground">
+            Last update: {updatedAt ? formatClock(updatedAt) : "Pending"}
           </span>
+          <TrackingSyncBadge tracking={tracking} />
         </div>
       </header>
 
@@ -55,8 +54,9 @@ export function PlantMap({
           Scroll horizontally to view the complete layout.
         </p>
         <MainSchematic
-          live={live}
+          animationRunning={animationRunning}
           matchedIds={matchedIds}
+          showDemoData={tracking.mode === "mock"}
         />
       </div>
 
@@ -72,7 +72,9 @@ export function PlantMap({
         </ul>
         <span className="flex items-center gap-2 text-xs text-muted-foreground">
           <Network className="size-3.5" aria-hidden />
-          Real-time data from PLC
+          {tracking.mode === "mock"
+            ? "Simulated preview data"
+            : "API tracking data; equipment motion is illustrative"}
         </span>
       </footer>
     </section>

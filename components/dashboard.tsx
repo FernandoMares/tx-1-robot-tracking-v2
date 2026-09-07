@@ -13,6 +13,8 @@ import { StackersSchematic } from "@/components/plant/stackers-schematic"
 import { ZoneView } from "@/components/plant/zone-view"
 import { SideRail } from "@/components/side-rail"
 import { TableDetailPanel } from "@/components/table-detail-panel"
+import { TrackingBundlesPanel } from "@/components/tracking-bundles-panel"
+import { TrackingConnectionBanner } from "@/components/tracking-connection-banner"
 import { usePlantState } from "@/hooks/use-plant-state"
 import type { PlantTable, PlantView } from "@/lib/types"
 
@@ -22,7 +24,16 @@ const BUNDLER_VIEW = {
 } as const
 
 export function Dashboard() {
-  const { tables, alerts, kpis, updatedAt, live, setLive } = usePlantState()
+  const {
+    tables,
+    alerts,
+    kpis,
+    updatedAt,
+    animationRunning,
+    setAnimationRunning,
+    tracking,
+    retryTracking,
+  } = usePlantState()
 
   const [view, setView] = useState<PlantView>("overview")
   const [filters, setFilters] = useState<PlantFilters>(DEFAULT_FILTERS)
@@ -58,43 +69,67 @@ export function Dashboard() {
       <AppHeader
         view={view}
         onViewChange={setView}
-        live={live}
-        onToggleLive={() => setLive((prev) => !prev)}
+        animationRunning={animationRunning}
+        onToggleAnimation={() => setAnimationRunning((previous) => !previous)}
+        showAnimationControl={view !== "bundler"}
         alertCount={alerts.length}
-        operatorInitials="RT"
+        operatorInitials={tracking.mode === "mock" ? "RT" : null}
       />
 
       <div className="flex flex-1">
         <SideRail />
 
         <main className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4 sm:px-5">
-          <KpiCards kpis={kpis} />
+          <TrackingConnectionBanner tracking={tracking} onRetry={retryTracking} />
+          <KpiCards kpis={kpis} tracking={tracking} />
 
           <div className="grid items-start gap-4 xl:grid-cols-[16rem_minmax(0,1fr)]">
             <div className="flex flex-col gap-4">
-              <AlertsPanel alerts={alerts} />
-              <FiltersPanel filters={filters} onChange={setFilters} />
+              {tracking.mode === "mock" ? (
+                <>
+                  <AlertsPanel alerts={alerts} />
+                  <FiltersPanel filters={filters} onChange={setFilters} />
+                </>
+              ) : (
+                <TrackingBundlesPanel tracking={tracking} />
+              )}
             </div>
 
             {view === "overview" && (
               <PlantMap
                 tables={tables}
                 updatedAt={updatedAt}
-                live={live}
+                animationRunning={animationRunning}
+                tracking={tracking}
                 matchedIds={matchedIds}
               />
             )}
 
             {view === "stackers" && (
-              <StackersSchematic updatedAt={updatedAt} live={live} matchedIds={matchedIds} />
+              <StackersSchematic
+                updatedAt={updatedAt}
+                animationRunning={animationRunning}
+                matchedIds={matchedIds}
+                tracking={tracking}
+              />
             )}
 
             {view === "bay-1" && (
-              <BayOneSchematic updatedAt={updatedAt} live={live} matchedIds={matchedIds} />
+              <BayOneSchematic
+                updatedAt={updatedAt}
+                animationRunning={animationRunning}
+                matchedIds={matchedIds}
+                tracking={tracking}
+              />
             )}
 
             {view === "bay-2" && (
-              <BayTwoSchematic updatedAt={updatedAt} live={live} matchedIds={matchedIds} />
+              <BayTwoSchematic
+                updatedAt={updatedAt}
+                animationRunning={animationRunning}
+                matchedIds={matchedIds}
+                tracking={tracking}
+              />
             )}
 
             {view === "bundler" && (
@@ -105,6 +140,11 @@ export function Dashboard() {
                 updatedAt={updatedAt}
                 selectedId={selected?.id ?? null}
                 onSelectTable={handleSelectTable}
+                showDemoData={tracking.mode === "mock"}
+                liveSyncStatus={tracking.syncStatus}
+                liveBundleCount={
+                  tracking.trackingState?.Bundles.filter((bundle) => bundle.SourceArea === "BUND").length ?? null
+                }
               />
             )}
           </div>

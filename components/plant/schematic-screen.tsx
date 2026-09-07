@@ -3,14 +3,17 @@
 import type { ReactNode } from "react"
 import { Network } from "lucide-react"
 
+import { TrackingSyncBadge } from "@/components/tracking-connection-banner"
 import { LEGEND, STATUS_META, formatClock } from "@/lib/status"
+import type { TrackingRuntimeState } from "@/lib/tracking-api"
 import { cn } from "@/lib/utils"
 
 interface SchematicScreenProps {
   title: string
   description: string
-  updatedAt: Date
-  live: boolean
+  updatedAt: Date | null
+  animationRunning: boolean
+  tracking: TrackingRuntimeState
   canvasWidth: number
   canvasHeight: number
   muted?: boolean
@@ -22,7 +25,8 @@ export function SchematicScreen({
   title,
   description,
   updatedAt,
-  live,
+  animationRunning,
+  tracking,
   canvasWidth,
   canvasHeight,
   muted = false,
@@ -36,15 +40,10 @@ export function SchematicScreen({
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="tabular text-xs text-muted-foreground">Last update: {formatClock(updatedAt)}</span>
-          <span
-            className={cn(
-              "rounded-md border px-2.5 py-1 text-xs font-medium",
-              live ? "border-active/30 bg-active/10 text-active-fg" : "border-border bg-muted text-muted-foreground",
-            )}
-          >
-            {live ? "Live data" : "Paused"}
+          <span className="tabular text-xs text-muted-foreground">
+            Last update: {updatedAt ? formatClock(updatedAt) : "Pending"}
           </span>
+          <TrackingSyncBadge tracking={tracking} />
         </div>
       </header>
 
@@ -78,7 +77,10 @@ export function SchematicScreen({
         </ul>
         <span className="flex items-center gap-2 text-xs text-muted-foreground">
           <Network className="size-3.5" aria-hidden />
-          Real-time data from PLC
+          {tracking.mode === "mock"
+            ? "Simulated preview data"
+            : "API tracking data; equipment motion is illustrative"}
+          {!animationRunning && " · motion paused"}
         </span>
       </footer>
     </section>

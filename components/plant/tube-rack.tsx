@@ -15,6 +15,8 @@ interface TubeRackProps {
   running?: boolean
   empty?: boolean
   muted?: boolean
+  /** Neutral visual motion only; it does not represent API bundle positions. */
+  illustrative?: boolean
   className?: string
   label?: string
   style?: React.CSSProperties
@@ -24,7 +26,7 @@ const HORIZONTAL_LOAD_W = 116
 const VERTICAL_LOAD_H = 58
 const TUBE_ROWS = 7
 
-function TubeLoad({ vertical }: { vertical: boolean }) {
+function TubeLoad({ vertical, illustrative }: { vertical: boolean; illustrative: boolean }) {
   return (
     <span
       className={cn(
@@ -35,7 +37,7 @@ function TubeLoad({ vertical }: { vertical: boolean }) {
       aria-hidden
     >
       {Array.from({ length: TUBE_ROWS }, (_, row) => (
-        <span key={row} className="rounded-[2px] bg-cell-fill" />
+        <span key={row} className={cn("rounded-[2px]", illustrative ? "bg-slate-300" : "bg-cell-fill")} />
       ))}
     </span>
   )
@@ -50,6 +52,7 @@ export function TubeRack({
   running = true,
   empty = false,
   muted = false,
+  illustrative = false,
   className,
   label = "Tube rack",
   style,
@@ -87,6 +90,8 @@ export function TubeRack({
       aria-label={
         empty
           ? `${label}, empty`
+          : illustrative
+            ? `${label}, illustrative motion only, not live bundle position data${running ? "" : ", paused"}`
           : `${label}, tubes, flow direction ${direction}${running ? "" : ", paused"}`
       }
     >
@@ -110,7 +115,7 @@ export function TubeRack({
           }
         >
           {Array.from({ length: loadCount }, (_, load) => (
-            <TubeLoad key={load} vertical={vertical} />
+            <TubeLoad key={load} vertical={vertical} illustrative={illustrative} />
           ))}
         </div>
       )}

@@ -17,10 +17,11 @@ const TABS: { id: PlantView; label: string }[] = [
 interface AppHeaderProps {
   view: PlantView
   onViewChange: (view: PlantView) => void
-  live: boolean
-  onToggleLive: () => void
+  animationRunning: boolean
+  onToggleAnimation: () => void
+  showAnimationControl: boolean
   alertCount: number
-  operatorInitials: string
+  operatorInitials: string | null
 }
 
 /**
@@ -61,7 +62,15 @@ function ViewTabs({
   )
 }
 
-export function AppHeader({ view, onViewChange, live, onToggleLive, alertCount, operatorInitials }: AppHeaderProps) {
+export function AppHeader({
+  view,
+  onViewChange,
+  animationRunning,
+  onToggleAnimation,
+  showAnimationControl,
+  alertCount,
+  operatorInitials,
+}: AppHeaderProps) {
   return (
     <header className="sticky top-0 z-30 bg-topbar text-topbar-foreground">
       <div className="flex h-14 items-center gap-4 px-4 sm:px-5">
@@ -73,18 +82,24 @@ export function AppHeader({ view, onViewChange, live, onToggleLive, alertCount, 
 
         <span className="flex-1 lg:hidden" aria-hidden />
 
-        <button
-          type="button"
-          onClick={onToggleLive}
-          aria-pressed={live}
-          className="flex shrink-0 items-center gap-2 rounded-md border border-topbar-active px-2.5 py-1 text-xs font-medium transition hover:bg-topbar-active focus-visible:ring-2 focus-visible:ring-topbar-foreground/40 focus-visible:outline-none"
-        >
-          <span
-            className={cn("size-1.5 rounded-full", live ? "animate-soft-pulse bg-active" : "bg-topbar-muted")}
-            aria-hidden
-          />
-          {live ? "Live" : "Paused"}
-        </button>
+        {showAnimationControl && (
+          <button
+            type="button"
+            onClick={onToggleAnimation}
+            aria-pressed={animationRunning}
+            aria-label={animationRunning ? "Pause diagram motion" : "Resume diagram motion"}
+            className="flex shrink-0 items-center gap-2 rounded-md border border-topbar-active px-2.5 py-1 text-xs font-medium transition hover:bg-topbar-active focus-visible:ring-2 focus-visible:ring-topbar-foreground/40 focus-visible:outline-none"
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                animationRunning ? "animate-soft-pulse bg-active" : "bg-topbar-muted",
+              )}
+              aria-hidden
+            />
+            {animationRunning ? "Motion on" : "Motion paused"}
+          </button>
+        )}
 
         <button
           type="button"
@@ -97,9 +112,11 @@ export function AppHeader({ view, onViewChange, live, onToggleLive, alertCount, 
 
         <span
           className="flex size-8 shrink-0 items-center justify-center rounded-full bg-topbar-active text-xs font-semibold"
-          aria-label={`Operator ${operatorInitials}`}
         >
-          {operatorInitials}
+          <span aria-hidden>{operatorInitials ?? "—"}</span>
+          <span className="sr-only">
+            {operatorInitials ? `Operator ${operatorInitials}` : "Operator identity unavailable"}
+          </span>
         </span>
       </div>
 
