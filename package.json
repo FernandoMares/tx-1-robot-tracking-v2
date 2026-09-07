@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "simulator": "node scripts/tracking-api-simulator.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit --incremental false",

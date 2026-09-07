@@ -20,13 +20,23 @@ function readPositiveInteger(value: string | undefined, fallback: number, minimu
   return Number.isInteger(parsed) && parsed >= minimum ? parsed : fallback
 }
 
-function normalizeHttpUrl(value: string | undefined): { baseUrl: string | null; error: string | null } {
+function normalizeApiBaseUrl(value: string | undefined): { baseUrl: string | null; error: string | null } {
   const raw = value?.trim()
   if (!raw) {
     return {
       baseUrl: null,
       error: "NEXT_PUBLIC_TRACKING_API_URL is required when live mode is enabled.",
     }
+  }
+
+  if (raw.startsWith("/") && !raw.startsWith("//")) {
+    if (raw.includes("?") || raw.includes("#")) {
+      return {
+        baseUrl: null,
+        error: "A relative tracking API URL cannot include a query or fragment.",
+      }
+    }
+    return { baseUrl: raw.replace(/\/+$/, ""), error: null }
   }
 
   try {
@@ -78,6 +88,6 @@ export function getTrackingApiConfig(): TrackingApiConfig {
     return { mode, baseUrl: null, pollMs, staleMs, timeoutMs, error: null }
   }
 
-  const { baseUrl, error } = normalizeHttpUrl(process.env.NEXT_PUBLIC_TRACKING_API_URL)
+  const { baseUrl, error } = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_TRACKING_API_URL)
   return { mode, baseUrl, pollMs, staleMs, timeoutMs, error }
 }

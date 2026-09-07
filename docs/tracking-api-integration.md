@@ -1,18 +1,20 @@
 # Integracion de solo lectura con Tracking API
 
+Para probar el flujo completo sin acceso al servidor, consulta [Simulador local de Tracking API](./tracking-api-simulator.md).
+
 Esta primera integracion permite conectar el frontend con la API de tracking sin habilitar operaciones que modifiquen el estado del proceso. El modo predeterminado sigue siendo `mock`, de modo que clonar y ejecutar el proyecto no genera trafico hacia el entorno de pruebas.
 
-## Arquitectura elegida para las pruebas
+## Arquitectura elegida
 
-Durante esta etapa, el navegador consulta la API directamente:
+El navegador consulta una ruta del mismo frontend. Next.js reenvia exclusivamente los endpoints GET aprobados hacia el servicio:
 
 ```text
-Navegador dentro del RDP -> http://localhost:8085 -> MaterialTrackingService
+Navegador -> /tracking-api -> proxy GET de Next.js -> MaterialTrackingService :8085
 ```
 
-Esta arquitectura es adecuada para validar la lectura en el entorno de pruebas porque el frontend y el servicio pueden ejecutarse en la misma maquina remota. No implica que sea la arquitectura definitiva de produccion. Para produccion se debe decidir entre acceso directo con HTTPS y CORS restringido, o un reverse proxy/API route de mismo origen.
+Esto evita que el navegador necesite acceso directo al puerto 8085 y elimina bloqueos de CORS, contenido mixto o permisos de red local durante las pruebas. El proxy usa una lista permitida y no expone los endpoints POST del backend.
 
-El acceso por RDP no crea por si mismo un tunel de red. Si el frontend se ejecuta en la computadora local y la API solo es accesible dentro del RDP, el navegador local no podra consultar `localhost:8085`: `localhost` siempre se refiere a la maquina donde corre el navegador.
+El acceso por RDP no crea por si mismo un tunel de red. El proceso de Next.js debe ejecutarse en una maquina que pueda alcanzar al servicio configurado en `TRACKING_API_PROXY_TARGET`.
 
 ## Configuracion
 
@@ -25,7 +27,8 @@ Copy-Item -LiteralPath .env.example -Destination .env.local
 | Variable | Valor de ejemplo | Funcion |
 | --- | --- | --- |
 | `NEXT_PUBLIC_PLANT_DATA_MODE` | `mock` | Selecciona `mock` o `live`. |
-| `NEXT_PUBLIC_TRACKING_API_URL` | `http://localhost:8085` | URL base que usara el navegador en modo `live`. |
+| `NEXT_PUBLIC_TRACKING_API_URL` | `/tracking-api` | Ruta de mismo origen que usara el navegador en modo `live`. |
+| `TRACKING_API_PROXY_TARGET` | `http://localhost:8085` | URL privada que usara Next.js para llegar al servicio. |
 | `NEXT_PUBLIC_TRACKING_POLL_MS` | `1000` | Intervalo normal entre lecturas de estado. |
 | `NEXT_PUBLIC_TRACKING_STALE_MS` | `3500` | Tiempo sin una lectura exitosa antes de considerar viejos los datos. |
 | `NEXT_PUBLIC_TRACKING_TIMEOUT_MS` | `4000` | Limite de tiempo de cada solicitud HTTP. |
@@ -34,10 +37,11 @@ Para activar datos reales en el entorno de pruebas:
 
 ```dotenv
 NEXT_PUBLIC_PLANT_DATA_MODE=live
-NEXT_PUBLIC_TRACKING_API_URL=http://localhost:8085
+NEXT_PUBLIC_TRACKING_API_URL=/tracking-api
+TRACKING_API_PROXY_TARGET=http://localhost:8085
 ```
 
-Las variables `NEXT_PUBLIC_*` quedan expuestas al navegador y normalmente se incorporan durante el build de Next.js. Nunca deben contener contrasenas, API keys ni tokens. Despues de modificarlas hay que reiniciar `pnpm dev`; para un despliegue hay que reconstruir la aplicacion con los valores del ambiente destino.
+Las variables `NEXT_PUBLIC_*` quedan expuestas al navegador y normalmente se incorporan durante el build de Next.js. `TRACKING_API_PROXY_TARGET` solo se usa en el servidor, pero tampoco debe contener credenciales. Despues de modificar estas variables hay que reiniciar `pnpm dev`; para un despliegue hay que reconstruir la aplicacion con los valores del ambiente destino.
 
 El modo `live` no debe caer silenciosamente a datos simulados cuando la API falle. Debe conservar, si existe, la ultima lectura valida y marcarla como desconectada o desactualizada. El modo `mock` debe identificarse como tal y no realizar solicitudes a la API.
 
@@ -50,7 +54,7 @@ El modo `live` no debe caer silenciosamente a datos simulados cuando la API fall
    curl.exe -i --connect-timeout 3 --max-time 5 http://localhost:8085/api/tracking/status
    ```
 
-3. Crea `.env.local`, configura `NEXT_PUBLIC_PLANT_DATA_MODE=live` y conserva `http://localhost:8085` si el servicio corre en la misma maquina.
+3. Crea `.env.local`, configura `NEXT_PUBLIC_PLANT_DATA_MODE=live`, usa `/tracking-api` como URL publica y conserva `http://localhost:8085` como `TRACKING_API_PROXY_TARGET` si el servicio corre en la misma maquina.
 4. Instala dependencias y arranca el frontend:
 
    ```powershell
@@ -58,9 +62,9 @@ El modo `live` no debe caer silenciosamente a datos simulados cuando la API fall
    pnpm dev
    ```
 
-5. Abre `http://localhost:3000` en un navegador dentro del RDP y revisa tambien la pestaña Network de las herramientas de desarrollo.
+5. Abre `http://localhost:3000` en un navegador dentro del RDP y revisa tambien la pestana Network de las herramientas de desarrollo.
 
-Si la API corre en otro equipo, sustituye la URL por el host real solo despues de validar conectividad y firewall desde el RDP. La direccion configurada debe apuntar realmente a la maquina que hospeda el servicio.
+Si la API corre en otro equipo, sustituye `TRACKING_API_PROXY_TARGET` por el host real solo despues de validar conectividad y firewall desde la maquina que ejecuta Next.js.
 
 ## Endpoints usados en esta etapa
 
@@ -89,21 +93,21 @@ Esta entrega es deliberadamente **GET-only**. No se llaman ni se exponen control
 
 Que `/api/tracking/capabilities` anuncie una operacion no significa que el usuario este autorizado para ejecutarla. Antes de incorporar cualquier comando se deben acordar autenticacion, permisos, confirmacion del operador, idempotencia, auditoria y comportamiento ante timeout.
 
-## CORS, HTTP y seguridad
+## Proxy, HTTP y seguridad
 
-Los headers observados actualmente incluyen `Access-Control-Allow-Origin: *`, por lo que los `GET` simples deberian poder probarse directamente desde el navegador. Aun asi, una respuesta exitosa en Postman o `curl` no comprueba CORS; la validacion final debe hacerse desde el frontend abierto en un navegador.
+Una respuesta exitosa en Postman, navegacion directa o `curl` no garantiza que Chrome permita un `fetch` entre puertos o redes diferentes. Por eso el HMI utiliza el proxy de mismo origen `/tracking-api`.
 
-Si despues se agregan credenciales o un header `Authorization`, backend tendra que ajustar CORS. Un origen comodin no debe combinarse con credenciales. Para produccion conviene permitir solo los origenes conocidos.
+El proxy solo implementa `GET` y mantiene una lista explicita de rutas. Solicitudes hacia otros paths reciben 404 y Next.js no publica manejadores POST en esa ruta.
 
-Una pagina servida por HTTPS puede ser bloqueada al intentar consultar una API HTTP por contenido mixto. En las pruebas dentro del RDP ambos servicios pueden usar HTTP. En produccion, la API debe publicarse por HTTPS o quedar detras de un proxy de mismo origen.
+El salto entre el navegador y Next.js debe usar el protocolo aprobado para el HMI. Next.js puede comunicarse internamente por HTTP con el servicio dentro de la red controlada, sujeto a la arquitectura de produccion que se acuerde.
 
 ## Verificacion minima
 
 Antes de considerar validada la conexion live, comprueba que:
 
-- las cuatro solicitudes `GET` responden correctamente en el navegador;
+- las cuatro solicitudes `GET` responden a traves de `/tracking-api`;
 - `/api/tracking/state` se consulta sin solicitudes solapadas;
 - al detener la API se muestra un estado stale/offline y no aparecen datos mock;
 - al levantar nuevamente la API el polling se recupera;
 - cambiar `.env.local` requiere reiniciar el servidor de desarrollo;
-- ningun secreto aparece en `.env.local`, el bundle del navegador o el repositorio.
+- ningun secreto aparece en el bundle del navegador o el repositorio.

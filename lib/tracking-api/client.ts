@@ -65,11 +65,18 @@ function normalizeBaseUrl(baseUrl: string): string {
   const normalized = baseUrl.trim().replace(/\/+$/, "")
   if (!normalized) throw new Error("Tracking API baseUrl is required")
 
+  if (normalized.startsWith("/") && !normalized.startsWith("//")) {
+    if (normalized.includes("?") || normalized.includes("#")) {
+      throw new Error("A relative Tracking API baseUrl cannot include a query or fragment")
+    }
+    return normalized
+  }
+
   let url: URL
   try {
     url = new URL(normalized)
   } catch {
-    throw new Error("Tracking API baseUrl must be a valid URL")
+    throw new Error("Tracking API baseUrl must be an HTTP(S) URL or a root-relative path")
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
