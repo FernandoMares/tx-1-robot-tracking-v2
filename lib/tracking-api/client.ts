@@ -106,7 +106,10 @@ export class TrackingApiClient {
   constructor(options: TrackingApiClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl)
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TRACKING_API_TIMEOUT_MS
-    this.fetchImpl = options.fetchImpl ?? fetch
+    // Some browsers require the native fetch function to keep its global
+    // receiver. Calling an unbound fetch as an instance property can fail
+    // before a request is sent (for example with "Illegal invocation").
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis)
     this.headers = options.headers ?? {}
 
     if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) {

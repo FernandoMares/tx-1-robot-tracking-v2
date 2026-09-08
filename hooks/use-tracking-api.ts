@@ -42,7 +42,9 @@ function describeError(error: unknown): string {
     if (error.kind === "invalid-json") return "The tracking service returned an invalid JSON response."
     if (error.kind === "invalid-payload") return "The tracking service returned an incompatible response shape."
     if (error.kind === "aborted") return "The tracking API request was cancelled."
-    return "The tracking service could not be reached."
+    const cause = error.cause
+    const detail = cause instanceof Error && cause.message ? ` (${cause.message})` : ""
+    return `The tracking service could not be reached.${detail}`
   }
 
   return error instanceof Error ? error.message : "Unexpected tracking API error."
