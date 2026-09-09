@@ -17,10 +17,12 @@ import type {
   TrackingSyncStatus,
 } from "@/lib/tracking-api/runtime"
 import { formatClock } from "@/lib/status"
+import type { TrackingLayoutValidation } from "@/lib/tracking-zone-layout"
 import { cn } from "@/lib/utils"
 
 interface TrackingConnectionBannerProps {
   tracking: TrackingRuntimeState
+  layoutValidation?: TrackingLayoutValidation | null
   onRetry: () => void
 }
 
@@ -116,7 +118,11 @@ function compactError(message: string): string {
   return `${safeMessage.slice(0, 117)}...`
 }
 
-export function TrackingConnectionBanner({ tracking, onRetry }: TrackingConnectionBannerProps) {
+export function TrackingConnectionBanner({
+  tracking,
+  layoutValidation = null,
+  onRetry,
+}: TrackingConnectionBannerProps) {
   const presentation = STATUS_PRESENTATION[tracking.syncStatus]
   const StatusIcon = presentation.icon
   const scenario =
@@ -202,6 +208,15 @@ export function TrackingConnectionBanner({ tracking, onRetry }: TrackingConnecti
           {errorMessage && tracking.syncStatus !== "live" && tracking.syncStatus !== "mock" && (
             <p className="mt-1 text-[0.6875rem] text-muted-foreground" role="alert">
               Error: {errorMessage}
+            </p>
+          )}
+
+          {layoutValidation && !layoutValidation.valid && (
+            <p className="mt-1 text-[0.6875rem] font-medium text-warning-fg" role="alert">
+              Layout mapping requires review: {layoutValidation.enabledApiZonesWithoutLayout.length} API zone(s)
+              without a visual slot and {layoutValidation.layoutZonesMissingFromEnabledApi.length} expected zone(s)
+              missing from the API; {layoutValidation.duplicateApiZoneNames.length} duplicate name(s) and{" "}
+              {layoutValidation.displayOrderMismatches.length} display-order mismatch(es).
             </p>
           )}
         </div>

@@ -8,20 +8,14 @@ import { DEFAULT_FILTERS, FiltersPanel, type PlantFilters } from "@/components/f
 import { KpiCards } from "@/components/kpi-cards"
 import { BayOneSchematic } from "@/components/plant/bay-one-schematic"
 import { BayTwoSchematic } from "@/components/plant/bay-two-schematic"
+import { BundlerSchematic } from "@/components/plant/bundler-schematic"
 import { PlantMap } from "@/components/plant/plant-map"
 import { StackersSchematic } from "@/components/plant/stackers-schematic"
-import { ZoneView } from "@/components/plant/zone-view"
 import { SideRail } from "@/components/side-rail"
-import { TableDetailPanel } from "@/components/table-detail-panel"
 import { TrackingBundlesPanel } from "@/components/tracking-bundles-panel"
 import { TrackingConnectionBanner } from "@/components/tracking-connection-banner"
 import { usePlantState } from "@/hooks/use-plant-state"
-import type { PlantTable, PlantView } from "@/lib/types"
-
-const BUNDLER_VIEW = {
-  title: "Bundler",
-  description: "Bundler table and its current fill",
-} as const
+import type { PlantView } from "@/lib/types"
 
 export function Dashboard() {
   const {
@@ -32,13 +26,13 @@ export function Dashboard() {
     animationRunning,
     setAnimationRunning,
     tracking,
+    bundlesByZone,
+    trackingLayoutValidation,
     retryTracking,
   } = usePlantState()
 
   const [view, setView] = useState<PlantView>("overview")
   const [filters, setFilters] = useState<PlantFilters>(DEFAULT_FILTERS)
-  const [selected, setSelected] = useState<PlantTable | null>(null)
-  const [detailOpen, setDetailOpen] = useState(false)
 
   const filtersActive = filters.table !== "all" || filters.status !== "all"
 
@@ -59,11 +53,6 @@ export function Dashboard() {
     [filtersActive, filteredTables],
   )
 
-  const handleSelectTable = (table: PlantTable) => {
-    setSelected(table)
-    setDetailOpen(true)
-  }
-
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <AppHeader
@@ -71,7 +60,7 @@ export function Dashboard() {
         onViewChange={setView}
         animationRunning={animationRunning}
         onToggleAnimation={() => setAnimationRunning((previous) => !previous)}
-        showAnimationControl={view !== "bundler"}
+        showAnimationControl
         alertCount={alerts.length}
         operatorInitials={tracking.mode === "mock" ? "RT" : null}
       />
@@ -80,7 +69,11 @@ export function Dashboard() {
         <SideRail />
 
         <main className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4 sm:px-5">
-          <TrackingConnectionBanner tracking={tracking} onRetry={retryTracking} />
+          <TrackingConnectionBanner
+            tracking={tracking}
+            layoutValidation={trackingLayoutValidation}
+            onRetry={retryTracking}
+          />
           <KpiCards kpis={kpis} tracking={tracking} />
 
           <div className="grid items-start gap-4 xl:grid-cols-[16rem_minmax(0,1fr)]">
@@ -102,6 +95,7 @@ export function Dashboard() {
                 animationRunning={animationRunning}
                 tracking={tracking}
                 matchedIds={matchedIds}
+                bundlesByZone={bundlesByZone}
               />
             )}
 
@@ -111,6 +105,7 @@ export function Dashboard() {
                 animationRunning={animationRunning}
                 matchedIds={matchedIds}
                 tracking={tracking}
+                bundlesByZone={bundlesByZone}
               />
             )}
 
@@ -120,6 +115,7 @@ export function Dashboard() {
                 animationRunning={animationRunning}
                 matchedIds={matchedIds}
                 tracking={tracking}
+                bundlesByZone={bundlesByZone}
               />
             )}
 
@@ -129,29 +125,22 @@ export function Dashboard() {
                 animationRunning={animationRunning}
                 matchedIds={matchedIds}
                 tracking={tracking}
+                bundlesByZone={bundlesByZone}
               />
             )}
 
             {view === "bundler" && (
-              <ZoneView
-                title={BUNDLER_VIEW.title}
-                description={BUNDLER_VIEW.description}
-                tables={filteredTables.filter((table) => table.zone === "bundler")}
+              <BundlerSchematic
                 updatedAt={updatedAt}
-                selectedId={selected?.id ?? null}
-                onSelectTable={handleSelectTable}
-                showDemoData={tracking.mode === "mock"}
-                liveSyncStatus={tracking.syncStatus}
-                liveBundleCount={
-                  tracking.trackingState?.Bundles.filter((bundle) => bundle.SourceArea === "BUND").length ?? null
-                }
+                animationRunning={animationRunning}
+                matchedIds={matchedIds}
+                tracking={tracking}
+                bundlesByZone={bundlesByZone}
               />
             )}
           </div>
         </main>
       </div>
-
-      <TableDetailPanel table={selected} open={detailOpen} onOpenChange={setDetailOpen} />
     </div>
   )
 }

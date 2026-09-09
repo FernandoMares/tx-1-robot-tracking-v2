@@ -3,6 +3,8 @@
 import { Boxes } from "lucide-react"
 
 import type { TrackingRuntimeState } from "@/lib/tracking-api"
+import { isTrackingZoneName } from "@/lib/tracking-zone-layout"
+import { cn } from "@/lib/utils"
 
 interface TrackingBundlesPanelProps {
   tracking: TrackingRuntimeState
@@ -38,13 +40,20 @@ export function TrackingBundlesPanel({ tracking }: TrackingBundlesPanelProps) {
         <p className="text-sm text-muted-foreground">No bundles are currently tracked.</p>
       ) : (
         <ul className="flex max-h-[24rem] flex-col gap-2 overflow-y-auto pr-1">
-          {bundles.map((bundle) => (
-            <li key={bundle.TrackingId} className="rounded-lg border border-border px-3 py-2.5">
+          {bundles.map((bundle, index) => (
+            <li key={`${bundle.TrackingId}-${index}`} className="rounded-lg border border-border px-3 py-2.5">
               <div className="flex items-start justify-between gap-2">
                 <span className="min-w-0 truncate text-xs font-semibold text-foreground" title={bundle.TrackingId}>
                   {displayIdentity(bundle)}
                 </span>
-                <span className="shrink-0 text-[0.6875rem] font-medium text-muted-foreground">
+                <span
+                  className={cn(
+                    "shrink-0 text-[0.6875rem] font-medium",
+                    bundle.CurrentZone && isTrackingZoneName(bundle.CurrentZone)
+                      ? "text-muted-foreground"
+                      : "text-warning-fg",
+                  )}
+                >
                   {bundle.CurrentZone ?? "Unknown zone"}
                 </span>
               </div>
@@ -59,7 +68,7 @@ export function TrackingBundlesPanel({ tracking }: TrackingBundlesPanelProps) {
       )}
 
       <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-        Placement on the schematic will be enabled only after each API zone is mapped to an approved visual slot.
+        Bundles are placed by the exact CurrentZone/ZoneName match. Unknown zones remain visible in this list.
       </p>
     </section>
   )

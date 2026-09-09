@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowDown, ArrowRight, ArrowUp } from "lucide-react"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp } from "lucide-react"
 
 import { TubeRack } from "@/components/plant/tube-rack"
 import type { ZoneTrackedLoad } from "@/lib/zone-layout-data"
@@ -58,13 +58,20 @@ export function DiagramArrow({
   muted,
   size = 48,
 }: {
-  direction?: "right" | "down" | "up"
+  direction?: "right" | "left" | "down" | "up"
   left: number
   top: number
   muted?: boolean
   size?: number
 }) {
-  const Icon = direction === "down" ? ArrowDown : direction === "up" ? ArrowUp : ArrowRight
+  const Icon =
+    direction === "down"
+      ? ArrowDown
+      : direction === "up"
+        ? ArrowUp
+        : direction === "left"
+          ? ArrowLeft
+          : ArrowRight
   return (
     <span
       className={cn("absolute z-10 flex items-center justify-center text-slate-900", muted && "opacity-35")}

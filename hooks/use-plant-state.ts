@@ -4,6 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { useTrackingApi } from "@/hooks/use-tracking-api"
 import { ALL_TABLES, INITIAL_ALERTS } from "@/lib/mock-data"
+import {
+  groupTrackingBundlesByZone,
+  validateTrackingLayout,
+} from "@/lib/tracking-zone-layout"
 import type { PlantKpis, PlantTable } from "@/lib/types"
 
 const TICK_MS = 1200
@@ -71,15 +75,18 @@ export function usePlantState() {
     }
   }, [state.tables, state.completed])
 
-  const bundlesByZone = useMemo(() => {
-    const grouped: Record<string, NonNullable<typeof tracking.trackingState>["Bundles"]> = {}
-    for (const bundle of tracking.trackingState?.Bundles ?? []) {
-      if (!bundle.CurrentZone) continue
-      grouped[bundle.CurrentZone] ??= []
-      grouped[bundle.CurrentZone].push(bundle)
-    }
-    return grouped
-  }, [tracking.trackingState])
+  const bundlePlacement = useMemo(
+    () => groupTrackingBundlesByZone(tracking.trackingState?.Bundles ?? []),
+    [tracking.trackingState],
+  )
+
+  const trackingLayoutValidation = useMemo(
+    () =>
+      tracking.topology?.ScenarioName === "TX1_TAGGER_TRACKING"
+        ? validateTrackingLayout(tracking.topology)
+        : null,
+    [tracking.topology],
+  )
 
   return {
     tables: state.tables,
@@ -90,7 +97,10 @@ export function usePlantState() {
     setAnimationRunning,
     tracking,
     trackingConfig: config,
-    bundlesByZone,
+    bundlesByZone: bundlePlacement.byZone,
+    bundlesWithoutZone: bundlePlacement.withoutZone,
+    bundlesInUnknownZones: bundlePlacement.unknownZone,
+    trackingLayoutValidation,
     retryTracking: retry,
   }
 }

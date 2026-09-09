@@ -6,6 +6,7 @@ import { MainSchematic } from "@/components/plant/main-schematic"
 import { TrackingSyncBadge } from "@/components/tracking-connection-banner"
 import { LEGEND, STATUS_META, formatClock } from "@/lib/status"
 import type { TrackingRuntimeState } from "@/lib/tracking-api"
+import type { BundlesByZone } from "@/lib/tracking-zone-layout"
 import type { PlantTable } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -16,6 +17,7 @@ interface PlantMapProps {
   tracking: TrackingRuntimeState
   /** Ids passing the active filters, or null when no filter is set. */
   matchedIds: Set<string> | null
+  bundlesByZone: BundlesByZone
 }
 
 export function PlantMap({
@@ -24,6 +26,7 @@ export function PlantMap({
   animationRunning,
   tracking,
   matchedIds,
+  bundlesByZone,
 }: PlantMapProps) {
   return (
     <section className="flex min-w-0 max-w-full flex-col rounded-xl border border-border bg-card" aria-label="Plant overview">
@@ -33,7 +36,7 @@ export function PlantMap({
           <p className="text-sm text-muted-foreground">
             {matchedIds
               ? `${matchedIds.size} of ${tables.length} tables match the active filters`
-              : "Official Main production flow"}
+              : "Official Exit Tracking layout · 33 mapped zones"}
           </p>
         </div>
 
@@ -55,8 +58,8 @@ export function PlantMap({
         </p>
         <MainSchematic
           animationRunning={animationRunning}
-          matchedIds={matchedIds}
-          showDemoData={tracking.mode === "mock"}
+          bundlesByZone={bundlesByZone}
+          hasSnapshot={tracking.mode === "mock" || tracking.trackingState !== null}
         />
       </div>
 
@@ -74,7 +77,7 @@ export function PlantMap({
           <Network className="size-3.5" aria-hidden />
           {tracking.mode === "mock"
             ? "Simulated preview data"
-            : "API tracking data; equipment motion is illustrative"}
+            : "Bundle positions come from CurrentZone; route motion is illustrative"}
         </span>
       </footer>
     </section>
