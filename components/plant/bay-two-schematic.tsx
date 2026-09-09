@@ -26,21 +26,21 @@ interface ZonePosition {
 }
 
 const STK_ROUTE_ZONES: readonly ZonePosition[] = [
-  { zoneName: "SGRT1A", left: 1010, top: 104 },
-  { zoneName: "LCH1A", left: 760, top: 104 },
-  { zoneName: "CCH1A", left: 510, top: 104 },
-  { zoneName: "SGRT1B", left: 1010, top: 220 },
-  { zoneName: "LCH1B", left: 760, top: 220 },
-  { zoneName: "CCH1B", left: 510, top: 220 },
+  { zoneName: "SGRT1A", left: 290, top: 104 },
+  { zoneName: "LCH1A", left: 540, top: 104 },
+  { zoneName: "CCH1A", left: 790, top: 104 },
+  { zoneName: "SGRT1B", left: 290, top: 220 },
+  { zoneName: "LCH1B", left: 540, top: 220 },
+  { zoneName: "CCH1B", left: 790, top: 220 },
 ]
 
 const FINAL_ROUTE_ZONES: readonly ZonePosition[] = [
-  { zoneName: "SGRT2A", left: 760, top: 492 },
-  { zoneName: "LCH2A", left: 510, top: 492 },
-  { zoneName: "CCH2A", left: 260, top: 492 },
-  { zoneName: "SGRT2B", left: 760, top: 608 },
-  { zoneName: "LCH2B", left: 510, top: 608 },
-  { zoneName: "CCH2B", left: 260, top: 608 },
+  { zoneName: "SGRT2A", left: 540, top: 492 },
+  { zoneName: "LCH2A", left: 790, top: 492 },
+  { zoneName: "CCH2A", left: 1040, top: 492 },
+  { zoneName: "SGRT2B", left: 540, top: 608 },
+  { zoneName: "LCH2B", left: 790, top: 608 },
+  { zoneName: "CCH2B", left: 1040, top: 608 },
 ]
 
 function Zone({
@@ -63,11 +63,11 @@ function Zone({
   )
 }
 
-function LeftFlowArrows({ top }: { top: number }) {
+function RightFlowArrows({ top }: { top: number }) {
   return (
     <>
-      <DiagramArrow direction="left" left={950} top={top} size={42} />
-      <DiagramArrow direction="left" left={700} top={top} size={42} />
+      <DiagramArrow direction="right" left={488} top={top} size={42} />
+      <DiagramArrow direction="right" left={738} top={top} size={42} />
     </>
   )
 }
@@ -98,78 +98,78 @@ export function BayTwoSchematic({
       canvasHeight={790}
       muted={muted}
     >
-      <div className="absolute top-7 right-10 flex items-center gap-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+      <div className="absolute top-7 left-10 flex items-center gap-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
         <span>Material flow</span>
-        <span aria-hidden>Right to left</span>
+        <span aria-hidden>Left to right</span>
       </div>
 
       <section
         className="absolute rounded-lg border border-slate-200 bg-slate-50/45"
-        style={{ left: 478, top: 60, width: 952, height: 292 }}
+        style={{ left: 50, top: 60, width: 952, height: 292 }}
         aria-label="STK to Bay 2 tracking section"
       >
-        <h3 className="absolute top-4 left-5 text-[11px] font-bold tracking-wide text-slate-500 uppercase">
+        <h3 className="absolute top-4 right-5 text-[11px] font-bold tracking-wide text-slate-500 uppercase">
           STK to Bay 2
         </h3>
-        <span className="absolute top-[67px] left-3 text-[10px] font-bold text-slate-400">A</span>
-        <span className="absolute top-[183px] left-3 text-[10px] font-bold text-slate-400">B</span>
+        <span className="absolute top-[67px] right-3 text-[10px] font-bold text-slate-400">A</span>
+        <span className="absolute top-[183px] right-3 text-[10px] font-bold text-slate-400">B</span>
       </section>
 
-      <Zone zoneName="IMRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={1240} top={158} width={170} />
-      <DiagramArrow direction="left" left={1172} top={117} size={42} />
-      <DiagramArrow direction="left" left={1172} top={233} size={42} />
+      <Zone zoneName="IMRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={70} top={158} width={170} />
+      <DiagramArrow direction="right" left={244} top={117} size={42} />
+      <DiagramArrow direction="right" left={244} top={233} size={42} />
 
       {STK_ROUTE_ZONES.map((zone) => (
         <Zone key={zone.zoneName} {...zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
       ))}
-      <LeftFlowArrows top={118} />
-      <LeftFlowArrows top={234} />
+      <RightFlowArrows top={118} />
+      <RightFlowArrows top={234} />
 
       <div
         className="absolute z-10 flex items-center justify-center rounded-md border border-dashed border-slate-300 bg-white px-4 py-2 text-center text-[10px] leading-4 font-medium text-slate-500"
-        style={{ left: 510, top: 372, width: 430 }}
+        style={{ left: 540, top: 372, width: 430 }}
       >
         STK lane A/B continues from CCH1A/B into the corresponding final A/B route below.
       </div>
-      <DiagramArrow direction="down" left={550} top={416} size={40} />
-      <DiagramArrow direction="down" left={850} top={416} size={40} />
+      <DiagramArrow direction="down" left={890} top={416} size={40} />
+      <DiagramArrow direction="down" left={590} top={416} size={40} />
 
       <section
         className="absolute rounded-lg border border-slate-200 bg-slate-50/45"
-        style={{ left: 228, top: 450, width: 1202, height: 274 }}
+        style={{ left: 50, top: 450, width: 1202, height: 274 }}
         aria-label="Final Bay 2 tracking section"
       >
-        <h3 className="absolute top-4 left-5 text-[11px] font-bold tracking-wide text-slate-500 uppercase">
+        <h3 className="absolute top-4 right-5 text-[11px] font-bold tracking-wide text-slate-500 uppercase">
           Final Bay 2 transfer
         </h3>
-        <span className="absolute top-[59px] left-3 text-[10px] font-bold text-slate-400">A</span>
-        <span className="absolute top-[175px] left-3 text-[10px] font-bold text-slate-400">B</span>
+        <span className="absolute top-[59px] right-3 text-[10px] font-bold text-slate-400">A</span>
+        <span className="absolute top-[175px] right-3 text-[10px] font-bold text-slate-400">B</span>
       </section>
 
-      <Zone zoneName="IMRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={1120} top={550} width={180} />
+      <Zone zoneName="IMRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={180} top={550} width={180} />
       <span
         className="absolute z-10 text-[10px] font-semibold tracking-wide text-slate-400 uppercase"
-        style={{ left: 1135, top: 526 }}
+        style={{ left: 195, top: 526 }}
       >
         Handoff from Bundler
       </span>
-      <DiagramArrow direction="left" left={950} top={506} size={42} />
-      <DiagramArrow direction="left" left={950} top={622} size={42} />
+      <DiagramArrow direction="right" left={488} top={506} size={42} />
+      <DiagramArrow direction="right" left={488} top={622} size={42} />
 
       {FINAL_ROUTE_ZONES.map((zone) => (
         <Zone key={zone.zoneName} {...zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
       ))}
-      <DiagramArrow direction="left" left={700} top={506} size={42} />
-      <DiagramArrow direction="left" left={450} top={506} size={42} />
-      <DiagramArrow direction="left" left={700} top={622} size={42} />
-      <DiagramArrow direction="left" left={450} top={622} size={42} />
+      <DiagramArrow direction="right" left={738} top={506} size={42} />
+      <DiagramArrow direction="right" left={988} top={506} size={42} />
+      <DiagramArrow direction="right" left={738} top={622} size={42} />
+      <DiagramArrow direction="right" left={988} top={622} size={42} />
 
-      <div className="absolute z-20" style={{ left: 44, top: 500 }}>
+      <div className="absolute z-20" style={{ left: 1284, top: 500 }}>
         <RobotCard robot={ROBOT_2_UNKNOWN} className="h-[10.5rem] w-[9.5rem] bg-white/95" />
       </div>
       <p
         className="absolute z-20 max-w-[160px] text-center text-[10px] leading-4 text-slate-500"
-        style={{ left: 40, top: 690 }}
+        style={{ left: 1280, top: 690 }}
       >
         Robot status is not provided by the tracking API.
       </p>

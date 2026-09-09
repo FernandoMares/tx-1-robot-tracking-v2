@@ -84,7 +84,7 @@ function Zone({
 }
 
 /**
- * Bay 1 follows the PDF's right-to-left material flow. SGRT1/2 are shown as
+ * Bay 1 mirrors the PDF's material flow from left to right. SGRT1/2 are shown as
  * incoming handoff context while NCCT1/2 remain the two owned Bay 1 zones.
  */
 export function BayOneSchematic({
@@ -108,72 +108,72 @@ export function BayOneSchematic({
       canvasHeight={540}
       muted={muted}
     >
-      <div className="absolute top-8 right-12 flex items-center gap-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+      <div className="absolute top-8 left-12 flex items-center gap-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
         <span>Material flow</span>
-        <span aria-hidden>Right to left</span>
+        <span aria-hidden>Left to right</span>
       </div>
 
       <div
         className="absolute rounded-lg border border-slate-200 bg-slate-50/45"
-        style={{ left: 444, top: 70, width: 370, height: 410 }}
+        style={{ left: 466, top: 70, width: 370, height: 410 }}
         aria-hidden
       />
       <span
         className="absolute z-10 text-[11px] font-bold tracking-wide text-slate-500 uppercase"
-        style={{ left: 466, top: 86 }}
+        style={{ left: 488, top: 86 }}
       >
         Bay 1 tracked positions
       </span>
 
       <span
         className="absolute z-10 text-[10px] font-semibold tracking-wide text-slate-400 uppercase"
-        style={{ left: 934, top: 86 }}
+        style={{ left: 129, top: 86 }}
       >
         Handoff from Stackers
       </span>
 
-      <Zone zoneName="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={930} top={126} width={225} />
-      <Zone zoneName="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={500} top={112} width={260} />
+      <Zone zoneName="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={125} top={126} width={225} />
+      <Zone zoneName="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={520} top={112} width={260} />
 
-      <Zone zoneName="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={930} top={316} width={225} />
-      <Zone zoneName="NCCT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={500} top={302} width={260} />
+      <Zone zoneName="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={125} top={316} width={225} />
+      <Zone zoneName="NCCT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={520} top={302} width={260} />
 
-      <DiagramArrow direction="left" left={864} top={242} size={48} />
+      <DiagramArrow direction="right" left={368} top={242} size={48} />
       <div
         className="absolute z-10 flex flex-col items-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 text-center"
-        style={{ left: 782, top: 216, width: 82 }}
+        style={{ left: 416, top: 216, width: 82 }}
       >
         <GitBranch className="size-5 text-slate-500" aria-hidden />
         <span className="text-[9px] font-semibold text-slate-500">Route choice</span>
       </div>
-      <DiagramArrow direction="left" left={758} top={242} size={24} />
-      <DiagramArrow direction="left" left={356} top={242} size={56} />
+      <DiagramArrow direction="right" left={498} top={242} size={24} />
+      <DiagramArrow direction="right" left={868} top={242} size={56} />
 
       <div
         className="absolute z-10 rounded-lg border border-dashed border-slate-300 bg-white/70"
-        style={{ left: 34, top: 72, width: 286, height: 408 }}
+        style={{ left: 960, top: 72, width: 286, height: 408 }}
       >
-        <span className="absolute top-4 left-5 text-[11px] font-bold tracking-wide text-slate-500 uppercase">
+        <span className="absolute top-4 right-5 text-[11px] font-bold tracking-wide text-slate-500 uppercase">
           Physical equipment context
         </span>
       </div>
       <EquipmentContext
         title="Bay 1 Manual Station"
         note="Equipment context; not a CurrentZone slot"
-        left={62}
+        left={988}
         top={126}
         width={230}
       />
       <EquipmentContext
         title="Scale Weight Station"
         note="Equipment context; tracking remains at zone level"
-        left={62}
+        left={988}
         top={316}
         width={230}
         tone="scale"
       />
 
-      <p className="absolute bottom-6 left-[466px] max-w-[680px] text-[11px] leading-4 text-slate-500">
+      <p className="absolute bottom-6 left-[134px] max-w-[680px] text-[11px] leading-4 text-slate-500">
         Bundle placement comes from CurrentZone. The backend selects NCCT1 or NCCT2; the HMI does not infer a
         one-to-one pairing with SGRT1/2 or with the equipment cards.
       </p>

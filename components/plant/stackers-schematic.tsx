@@ -39,25 +39,25 @@ const HANDOFF_ZONES = TRACKING_ZONES_BY_SCREEN.stackers.filter(
 
 const SOURCE_POSITIONS: PositionedZone[] = SOURCE_ZONES.map((zoneName, index) => ({
   zoneName,
-  left: 870 + index * 130,
+  left: 450 - index * 130,
   top: 104,
   width: 120,
 }))
 
-// The API order is the process order. Decreasing X turns it into the physical
-// right-to-left flow shown in Tracking Sections Overview.
+// The API order is the process order. Increasing X renders the approved
+// mirrored, left-to-right HMI orientation.
 const COMMON_LINE_POSITIONS: PositionedZone[] = COMMON_LINE_ZONES.map((zoneName, index) => ({
   zoneName,
-  left: 1260 - index * 145,
+  left: 60 + index * 145,
   top: 300,
   width: 120,
   compact: true,
 }))
 
 const HANDOFF_POSITIONS = [
-  { zoneName: HANDOFF_ZONES[0], left: 42, top: 142, width: 128, compact: true },
-  { zoneName: HANDOFF_ZONES[1], left: 42, top: 300, width: 128, compact: true },
-  { zoneName: HANDOFF_ZONES[2], left: 42, top: 458, width: 128, compact: true },
+  { zoneName: HANDOFF_ZONES[0], left: 1270, top: 142, width: 128, compact: true },
+  { zoneName: HANDOFF_ZONES[1], left: 1270, top: 300, width: 128, compact: true },
+  { zoneName: HANDOFF_ZONES[2], left: 1270, top: 458, width: 128, compact: true },
 ] satisfies PositionedZone[]
 
 function ZoneSlot({
@@ -104,7 +104,7 @@ export function StackersSchematic({
       canvasHeight={620}
       muted={muted}
     >
-      <EquipmentHeader label="STACKERS · SOURCE SECTIONS" left={870} top={34} width={510} />
+      <EquipmentHeader label="STACKERS · SOURCE SECTIONS" left={60} top={34} width={510} />
 
       {SOURCE_POSITIONS.map((position) => (
         <ZoneSlot
@@ -116,7 +116,7 @@ export function StackersSchematic({
       ))}
 
       {/* The four source sections converge on the common STK path. */}
-      <div className="absolute top-[205px] left-[930px] h-7 w-[390px] border-t border-slate-400" aria-hidden />
+      <div className="absolute top-[205px] left-[120px] h-7 w-[390px] border-t border-slate-400" aria-hidden />
       {SOURCE_POSITIONS.map((position) => (
         <span
           key={`${position.zoneName}-source-connector`}
@@ -125,15 +125,15 @@ export function StackersSchematic({
           aria-hidden
         />
       ))}
-      <DiagramArrow direction="down" left={1299} top={218} size={42} />
+      <DiagramArrow direction="down" left={99} top={218} size={42} />
 
       {COMMON_LINE_POSITIONS.map((position, index) => (
         <div key={position.zoneName}>
           <ZoneSlot position={position} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           {index > 0 && (
             <DiagramArrow
-              direction="left"
-              left={position.left + 120}
+              direction="right"
+              left={position.left - 25}
               top={322}
               size={25}
             />
@@ -142,18 +142,18 @@ export function StackersSchematic({
       ))}
 
       {/* SGRT2 fans out to the two Bay 1 sections and the Bay 2 handoff. */}
-      <div className="absolute top-[181px] left-[216px] h-[344px] border-l border-slate-400" aria-hidden />
-      <div className="absolute top-[340px] left-[216px] w-[174px] border-t border-slate-400" aria-hidden />
-      <DiagramArrow direction="left" left={170} top={321} size={46} />
-      <DiagramArrow direction="up" left={193} top={222} size={46} />
-      <DiagramArrow direction="left" left={170} top={163} size={46} />
-      <DiagramArrow direction="down" left={193} top={385} size={46} />
-      <DiagramArrow direction="left" left={170} top={479} size={46} />
+      <div className="absolute top-[181px] left-[1224px] h-[344px] border-l border-slate-400" aria-hidden />
+      <div className="absolute top-[340px] left-[1050px] w-[174px] border-t border-slate-400" aria-hidden />
+      <DiagramArrow direction="right" left={1224} top={321} size={46} />
+      <DiagramArrow direction="up" left={1201} top={222} size={46} />
+      <DiagramArrow direction="right" left={1224} top={163} size={46} />
+      <DiagramArrow direction="down" left={1201} top={385} size={46} />
+      <DiagramArrow direction="right" left={1224} top={479} size={46} />
 
-      <span className="absolute top-[112px] left-[42px] text-[10px] font-bold tracking-wide text-slate-500 uppercase">
+      <span className="absolute top-[112px] left-[1270px] text-[10px] font-bold tracking-wide text-slate-500 uppercase">
         Bay 1 exits
       </span>
-      <span className="absolute top-[428px] left-[42px] text-[10px] font-bold tracking-wide text-slate-500 uppercase">
+      <span className="absolute top-[428px] left-[1270px] text-[10px] font-bold tracking-wide text-slate-500 uppercase">
         Bay 2 handoff
       </span>
       {HANDOFF_POSITIONS.map((position) => (
@@ -166,9 +166,9 @@ export function StackersSchematic({
       ))}
 
       {/* LMDs are equipment context only; they are not API tracking zones. */}
-      <EquipmentHeader label="STACKER BANDERS" left={955} top={446} width={330} />
-      <div className="absolute top-[506px] left-[955px] grid w-[330px] grid-cols-3 gap-3" aria-label="Stacker bander equipment">
-        {["LMD 1", "LMD 2", "LMD 3"].map((label) => (
+      <EquipmentHeader label="STACKER BANDERS" left={155} top={446} width={330} />
+      <div className="absolute top-[506px] left-[155px] grid w-[330px] grid-cols-3 gap-3" aria-label="Stacker bander equipment">
+        {["LMD 3", "LMD 2", "LMD 1"].map((label) => (
           <span
             key={label}
             className="flex h-7 items-center justify-center rounded-sm bg-slate-600 text-[10px] font-bold text-white"
@@ -177,7 +177,7 @@ export function StackersSchematic({
           </span>
         ))}
       </div>
-      <p className="absolute top-[548px] left-[955px] w-[330px] text-center text-[10px] text-slate-500">
+      <p className="absolute top-[548px] left-[155px] w-[330px] text-center text-[10px] text-slate-500">
         Equipment context · bundle position comes from the named zones above
       </p>
     </SchematicScreen>

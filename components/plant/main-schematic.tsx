@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { ArrowDown, ArrowLeft, ArrowUp, Bot, Scale, Tags } from "lucide-react"
+import { ArrowDown, ArrowRight, ArrowUp, Bot, Scale, Tags } from "lucide-react"
 
 import { TrackingZoneSlot } from "@/components/plant/tracking-zone-slot"
 import type { BundlesByZone, TrackingZoneName } from "@/lib/tracking-zone-layout"
@@ -13,10 +13,10 @@ interface MainSchematicProps {
   hasSnapshot: boolean
 }
 
-const STACKER_SOURCES = ["ERT2D", "ERT2C", "ERT1B", "ERT1A"] as const
-const BAY_2_LANE_A = ["CCH2A", "LCH2A", "SGRT2A", "CCH1A", "LCH1A", "SGRT1A"] as const
-const BAY_2_LANE_B = ["CCH2B", "LCH2B", "SGRT2B", "CCH1B", "LCH1B", "SGRT1B"] as const
-const BUNDLER_SOURCES = ["RTOUTD", "RTOUTC", "RTOUTB", "RTOUTA"] as const
+const STACKER_SOURCES = ["ERT1A", "ERT1B", "ERT2C", "ERT2D"] as const
+const BAY_2_LANE_A = ["SGRT1A", "LCH1A", "CCH1A", "SGRT2A", "LCH2A", "CCH2A"] as const
+const BAY_2_LANE_B = ["SGRT1B", "LCH1B", "CCH1B", "SGRT2B", "LCH2B", "CCH2B"] as const
+const BUNDLER_SOURCES = ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD"] as const
 
 function Area({
   label,
@@ -31,8 +31,8 @@ function Area({
 }) {
   return (
     <section className={cn("absolute rounded-lg border border-slate-300 bg-slate-50/80 p-4", className)}>
-      <header className="mb-3 flex items-start justify-between gap-4 border-b border-slate-200 pb-2">
-        <div>
+      <header className="mb-3 flex flex-row-reverse items-start justify-between gap-4 border-b border-slate-200 pb-2">
+        <div className="text-right">
           <h3 className="text-xs font-bold tracking-[0.08em] text-slate-800 uppercase">{label}</h3>
           <p className="mt-0.5 text-[10px] text-slate-500">{description}</p>
         </div>
@@ -69,7 +69,7 @@ function Zone({
 
 function InlineArrow({ running }: { running: boolean }) {
   return (
-    <ArrowLeft
+    <ArrowRight
       className={cn("size-4 shrink-0 self-center text-slate-700", running && "animate-soft-pulse")}
       strokeWidth={3}
       aria-hidden
@@ -117,7 +117,7 @@ function EquipmentNote({
   note: string
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-white/80 px-3 py-2">
+    <div className="flex flex-row-reverse items-center gap-2 rounded-md border border-dashed border-slate-300 bg-white/80 px-3 py-2 text-right">
       <Icon className="size-4 shrink-0 text-slate-500" aria-hidden />
       <div>
         <p className="text-[10px] font-bold text-slate-700 uppercase">{label}</p>
@@ -145,21 +145,19 @@ export function MainSchematic({
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-zone via-cell-fill to-zone" aria-hidden />
 
-      <div className="absolute top-5 left-6 flex items-center gap-2 text-[10px] font-semibold tracking-wide text-slate-500 uppercase">
-        <ArrowLeft className={cn("size-4", animationRunning && "animate-soft-pulse")} aria-hidden />
+      <div className="absolute top-5 right-6 flex flex-row-reverse items-center gap-2 text-[10px] font-semibold tracking-wide text-slate-500 uppercase">
+        <ArrowRight className={cn("size-4", animationRunning && "animate-soft-pulse")} aria-hidden />
         Principal material flow
       </div>
 
       <Area
         label="Bay 1"
         description="Manual destination branch from the STK line"
-        className="top-12 left-8 h-[15rem] w-[34rem]"
+        className="top-12 right-8 h-[15rem] w-[34rem]"
       >
         <div className="flex h-[9.5rem] items-center justify-between gap-4">
-          <EquipmentNote icon={Scale} label="Scale / manual station" note="Equipment context; not an API zone" />
-          <ArrowLeft className={cn("size-7 shrink-0 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
           <div className="flex gap-2">
-            {(["NCCT2", "NCCT1"] as const).map((zone) => (
+            {(["NCCT1", "NCCT2"] as const).map((zone) => (
               <Zone
                 key={zone}
                 name={zone}
@@ -169,16 +167,17 @@ export function MainSchematic({
               />
             ))}
           </div>
+          <ArrowRight className={cn("size-7 shrink-0 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
+          <EquipmentNote icon={Scale} label="Scale / manual station" note="Equipment context; not an API zone" />
         </div>
       </Area>
 
       <Area
         label="Stackers"
         description="Stacker exits and shared transfer route"
-        className="top-12 right-8 h-[22rem] w-[64rem]"
+        className="top-12 left-8 h-[22rem] w-[64rem]"
       >
-        <div className="flex items-end justify-end gap-3">
-          <span className="mb-6 text-[9px] font-semibold tracking-wide text-slate-500 uppercase">Four source sections</span>
+        <div className="flex items-end justify-start gap-3">
           <div className="flex gap-2">
             {STACKER_SOURCES.map((zone) => (
               <Zone
@@ -190,45 +189,46 @@ export function MainSchematic({
               />
             ))}
           </div>
+          <span className="mb-6 text-[9px] font-semibold tracking-wide text-slate-500 uppercase">Four source sections</span>
         </div>
 
-        <div className="relative mt-4 flex items-center justify-end gap-2">
-          <div className="grid w-[7.25rem] gap-2">
-            {(["SGRT2", "SGRT1"] as const).map((zone) => (
-              <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-            ))}
-          </div>
-          <InlineArrow running={animationRunning} />
+        <div className="relative mt-4 flex items-center justify-start gap-2">
+          <ArrowDown
+            className={cn("mb-14 mr-1 size-7 shrink-0 text-slate-700", animationRunning && "animate-soft-pulse")}
+            aria-label="Stacker sources merge into STRT1"
+          />
           <ZoneSequence
-            zones={["LFRT3", "LFRT2", "LFRT1", "STRT2", "STRT1"]}
+            zones={["STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"]}
             bundlesByZone={bundlesByZone}
             hasSnapshot={hasSnapshot}
             running={animationRunning}
           />
-          <ArrowDown
-            className={cn("mb-14 ml-1 size-7 shrink-0 text-slate-700", animationRunning && "animate-soft-pulse")}
-            aria-label="Stacker sources merge into STRT1"
-          />
+          <InlineArrow running={animationRunning} />
+          <div className="grid w-[7.25rem] gap-2">
+            {(["SGRT1", "SGRT2"] as const).map((zone) => (
+              <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+            ))}
+          </div>
         </div>
       </Area>
 
-      <div className="absolute top-[17.5rem] left-[35.75rem] flex w-[4.5rem] flex-col items-center gap-1 text-center text-[9px] font-semibold text-slate-500">
+      <div className="absolute top-[17.5rem] right-[35.75rem] flex w-[4.5rem] flex-col items-center gap-1 text-center text-[9px] font-semibold text-slate-500">
         STK branch
         <ArrowUp className={cn("size-7 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
       </div>
 
-      <div className="absolute top-[24.5rem] left-[44rem] flex items-center gap-2 text-[9px] font-semibold text-slate-500">
-        <ArrowDown className={cn("size-7 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
+      <div className="absolute top-[24.5rem] right-[44rem] flex items-center gap-2 text-[9px] font-semibold text-slate-500">
         STK to Bay 2
+        <ArrowDown className={cn("size-7 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
       </div>
 
       <Area
         label="Bay 2"
         description="Two parallel A/B lanes; BUND joins the second tracking section"
-        className="bottom-8 left-8 h-[35rem] w-[70rem]"
+        className="right-8 bottom-8 h-[35rem] w-[70rem]"
       >
-        <div className="absolute top-[5.25rem] right-4 flex items-center gap-2">
-          <ArrowLeft className={cn("size-6 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
+        <div className="absolute top-[5.25rem] left-4 flex flex-row-reverse items-center gap-2">
+          <ArrowRight className={cn("size-6 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
           <Zone
             name="IMRT1"
             bundlesByZone={bundlesByZone}
@@ -237,14 +237,14 @@ export function MainSchematic({
           />
         </div>
 
-        <div className="absolute top-[9rem] left-4 flex items-center gap-3">
+        <div className="absolute top-[9rem] right-4 flex flex-row-reverse items-center gap-3">
           <div className="flex h-[10.75rem] w-[8rem] flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-center">
             <Bot className="size-8 text-slate-500" aria-hidden />
             <strong className="mt-2 text-[10px] tracking-wide text-slate-700 uppercase">Robot 2</strong>
             <span className="mt-1 text-[9px] text-slate-500">Status unavailable</span>
           </div>
-          <ArrowLeft className={cn("size-7 shrink-0 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
-          <div className="space-y-4">
+          <ArrowRight className={cn("size-7 shrink-0 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
+          <div className="space-y-4 text-right">
             <div>
               <p className="mb-1 text-[9px] font-bold tracking-wide text-slate-500 uppercase">Lane A · STK route</p>
               <ZoneSequence
@@ -268,22 +268,22 @@ export function MainSchematic({
           </div>
         </div>
 
-        <div className="absolute bottom-5 left-[12rem] right-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+        <div className="absolute right-[12rem] bottom-5 left-4 flex flex-row-reverse items-center gap-4 [&>div]:flex-1">
           <EquipmentNote icon={Tags} label="Bay 2 robot tagging" note="Physical equipment · destination B2R" />
-          <ArrowLeft className={cn("size-6 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
+          <ArrowRight className={cn("size-6 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
           <EquipmentNote icon={Scale} label="Bay 2 scale / manual" note="Physical equipment · destinations B2M/B2P" />
         </div>
 
-        <div className="absolute right-[22rem] bottom-[5.75rem] flex items-center gap-2 text-[9px] font-semibold text-slate-500">
-          BUND joins at SGRT2A/B
+        <div className="absolute bottom-[5.75rem] left-[22rem] flex items-center gap-2 text-[9px] font-semibold text-slate-500">
           <ArrowUp className={cn("size-6 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
+          BUND joins at SGRT2A/B
         </div>
       </Area>
 
       <Area
         label="Bundler"
         description="Four bundler outputs feeding Bay 2"
-        className="right-8 bottom-8 h-[29rem] w-[30rem]"
+        className="bottom-8 left-8 h-[29rem] w-[30rem]"
       >
         <EquipmentNote icon={Tags} label="BUND banders · LMD 1–4" note="Machine context; not tracking zones" />
 
@@ -302,7 +302,7 @@ export function MainSchematic({
 
         <div className="mt-8 flex items-center justify-center">
           <ZoneSequence
-            zones={["IMRT2", "RTTY2", "RTTY1"]}
+            zones={["RTTY1", "RTTY2", "IMRT2"]}
             bundlesByZone={bundlesByZone}
             hasSnapshot={hasSnapshot}
             running={animationRunning}
@@ -311,13 +311,13 @@ export function MainSchematic({
         </div>
 
         <p className="mt-7 text-center text-[9px] font-medium text-slate-500">
-          IMRT2 continues left into the second Bay 2 section.
+          IMRT2 continues right into the second Bay 2 section.
         </p>
       </Area>
 
-      <div className="absolute right-[30rem] bottom-[8.5rem] flex items-center gap-2 text-[9px] font-semibold text-slate-500">
-        <ArrowLeft className={cn("size-7 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
+      <div className="absolute bottom-[8.5rem] left-[30rem] flex items-center gap-2 text-[9px] font-semibold text-slate-500">
         BUND to Bay 2
+        <ArrowRight className={cn("size-7 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
       </div>
     </div>
   )

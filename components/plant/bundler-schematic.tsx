@@ -35,14 +35,14 @@ const COMMON_LINE_ZONES = TRACKING_ZONES_BY_GROUP["bundler-line"]
 
 const SOURCE_POSITIONS: PositionedZone[] = SOURCE_ZONES.map((zoneName, index) => ({
   zoneName,
-  left: 750 + index * 132,
+  left: 448 - index * 132,
   top: 132,
   width: 122,
 }))
 
 const COMMON_LINE_POSITIONS: PositionedZone[] = COMMON_LINE_ZONES.map((zoneName, index) => ({
   zoneName,
-  left: 570 - index * 220,
+  left: 612 + index * 220,
   top: 315,
   width: 138,
   compact: true,
@@ -90,11 +90,11 @@ export function BundlerSchematic({
       canvasHeight={480}
       muted={muted}
     >
-      <EquipmentHeader label="BUND BUNDLERS" left={750} top={32} width={518} />
+      <EquipmentHeader label="BUND BUNDLERS" left={52} top={32} width={518} />
 
       {/* LMD labels describe equipment only; RTOUT* are the tracking zones. */}
-      <div className="absolute top-[92px] left-[750px] grid w-[518px] grid-cols-4 gap-2" aria-label="Bundler equipment">
-        {["LMD 4", "LMD 3", "LMD 2", "LMD 1"].map((label) => (
+      <div className="absolute top-[92px] left-[52px] grid w-[518px] grid-cols-4 gap-2" aria-label="Bundler equipment">
+        {["LMD 1", "LMD 2", "LMD 3", "LMD 4"].map((label) => (
           <span
             key={label}
             className="flex h-6 items-center justify-center rounded-sm bg-slate-600 text-[10px] font-bold text-white"
@@ -114,7 +114,7 @@ export function BundlerSchematic({
       ))}
 
       {/* Four independent outputs converge before entering RTTY1. */}
-      <div className="absolute top-[254px] left-[811px] w-[396px] border-t border-slate-400" aria-hidden />
+      <div className="absolute top-[254px] left-[113px] w-[396px] border-t border-slate-400" aria-hidden />
       {SOURCE_POSITIONS.map((position) => (
         <span
           key={`${position.zoneName}-source-connector`}
@@ -123,17 +123,17 @@ export function BundlerSchematic({
           aria-hidden
         />
       ))}
-      <div className="absolute top-[254px] left-[678px] w-[133px] border-t border-slate-400" aria-hidden />
-      <DiagramArrow direction="left" left={677} top={233} size={44} />
-      <div className="absolute top-[254px] left-[640px] h-[61px] border-l border-slate-400" aria-hidden />
+      <div className="absolute top-[254px] left-[509px] w-[133px] border-t border-slate-400" aria-hidden />
+      <DiagramArrow direction="right" left={599} top={233} size={44} />
+      <div className="absolute top-[254px] left-[680px] h-[61px] border-l border-slate-400" aria-hidden />
 
       {COMMON_LINE_POSITIONS.map((position, index) => (
         <div key={position.zoneName}>
           <ZoneSlot position={position} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           {index > 0 && (
             <DiagramArrow
-              direction="left"
-              left={position.left + position.width + 35}
+              direction="right"
+              left={position.left - 77}
               top={326}
               size={42}
             />
@@ -141,10 +141,10 @@ export function BundlerSchematic({
         </div>
       ))}
 
-      <span className="absolute top-[286px] left-[130px] text-[10px] font-bold tracking-wide text-slate-500 uppercase">
+      <span className="absolute top-[286px] left-[1052px] text-[10px] font-bold tracking-wide text-slate-500 uppercase">
         Bay 2 handoff
       </span>
-      <p className="absolute top-[412px] left-[750px] w-[518px] text-right text-[10px] text-slate-500">
+      <p className="absolute top-[412px] left-[52px] w-[518px] text-left text-[10px] text-slate-500">
         Equipment is contextual; live placement is determined only by CurrentZone
       </p>
     </SchematicScreen>
