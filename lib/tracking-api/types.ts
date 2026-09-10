@@ -170,6 +170,42 @@ export interface QmosStatusDto extends ExtensibleDto {
   connected: boolean
 }
 
+/** Mill-order candidate returned by QMOS for operator selection. */
+export interface QmosMillOrderDto extends ExtensibleDto {
+  FrpId: number
+  MillOrder: string
+  HeatNo: string
+  WorkOrder: number
+  Grade: string
+  Size: string
+  Weight: number
+  Length: string
+  ProductWidth: number | null
+  ProductThickness: number | null
+}
+
+/** This endpoint mixes a lower-case collection property with PascalCase Count. */
+export interface QmosMillOrdersDto extends ExtensibleDto {
+  value: QmosMillOrderDto[]
+  Count: number
+}
+
+/** Allowlisted payload accepted by the public manual-correction command. */
+export interface TrackingCorrectionRequestDto {
+  TrackingId: string
+  OperatorId: string
+  Reason: string
+  MillOrder1: string
+}
+
+/** Asynchronous command acknowledgement returned by tracking. */
+export interface TrackingCommandAcceptedDto extends ExtensibleDto {
+  accepted: boolean
+  eventId: number
+  eventType: string
+  trackingId: string
+}
+
 export interface TrackingEventDto extends ExtensibleDto {
   EventId: number
   ScenarioName?: string | null

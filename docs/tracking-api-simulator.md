@@ -1,6 +1,6 @@
 # Simulador local de Tracking API
 
-El simulador permite probar el frontend en modo `live` sin conectarse al servidor de planta. Implementa los endpoints GET que consume el HMI y usa unicamente datos ficticios.
+El simulador permite probar el frontend en modo `live` sin conectarse al servidor de planta. Implementa las lecturas que consume el HMI y la correccion manual de Mill Order usando unicamente datos ficticios.
 
 ## Iniciar el simulador
 
@@ -40,6 +40,8 @@ Abre `http://localhost:3000`. Despues de cambiar cualquier variable `NEXT_PUBLIC
 - Avanza por `SIM_ENTRY`, `SIM_TRANSFER`, `SIM_STACKER` y `SIM_BAY`.
 - Termina como `TAGGED_COMPLETE`, desaparece durante un paso y comienza un ciclo nuevo.
 - Un identificador inexistente en `/api/tracking/bundles/{trackingId}` devuelve HTTP 404.
+- El catalogo QMOS contiene tres Mill Orders ficticias y respeta el parametro `max`.
+- Una correccion aceptada queda visible en `MillOrder1` desde la siguiente lectura del bundle.
 - Detener el simulador con `Ctrl+C` permite probar la desconexion y el estado stale del frontend.
 
 El simulador responde a:
@@ -53,6 +55,19 @@ GET /api/tracking/bundles/{trackingId}
 GET /api/tracking/opc
 GET /api/tracking/events/recent
 GET /api/qmos/status
+GET /api/qmos/mill-orders?max=20
+POST /api/tracking/correct
+```
+
+El POST requiere estos cuatro datos funcionales; cualquier propiedad adicional se descarta:
+
+```json
+{
+  "TrackingId": "SIM-TRACK-HOLD",
+  "OperatorId": "qa-user",
+  "Reason": "Local UI verification",
+  "MillOrder1": "SIM-MO-003"
+}
 ```
 
 ## Configuracion opcional

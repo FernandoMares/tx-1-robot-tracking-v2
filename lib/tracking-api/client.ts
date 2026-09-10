@@ -1,9 +1,12 @@
 import type {
   ApiErrorResponseDto,
   OpcStatusDto,
+  QmosMillOrdersDto,
   QmosStatusDto,
   TrackedBundleDto,
   TrackingCapabilitiesDto,
+  TrackingCommandAcceptedDto,
+  TrackingCorrectionRequestDto,
   TrackingEventsResponseDto,
   TrackingMapDto,
   TrackingStateDto,
@@ -11,9 +14,12 @@ import type {
 } from "./types"
 import {
   isOpcStatusDto,
+  isQmosMillOrdersDto,
   isQmosStatusDto,
   isTrackedBundleDto,
   isTrackingCapabilitiesDto,
+  isTrackingCommandAcceptedDto,
+  isTrackingCorrectionRequestDto,
   isTrackingEventsResponseDto,
   isTrackingMapDto,
   isTrackingStateDto,
@@ -60,6 +66,7 @@ export interface TrackingApiClientOptions {
 }
 
 export const DEFAULT_TRACKING_API_TIMEOUT_MS = 10_000
+export const MAX_QMOS_MILL_ORDERS = 100
 
 function normalizeBaseUrl(baseUrl: string): string {
   const normalized = baseUrl.trim().replace(/\/+$/, "")
@@ -117,10 +124,12 @@ export class TrackingApiClient {
     }
   }
 
-  private async get<T>(
+  private async request<T>(
+    method: "GET" | "POST",
     path: string,
     validate: (value: unknown) => value is T,
     externalSignal?: AbortSignal,
+    requestBody?: unknown,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`
     const controller = new AbortController()
@@ -144,10 +153,14 @@ export class TrackingApiClient {
     }
     const requestHeaders = new Headers(this.headers)
     if (!requestHeaders.has("Accept")) requestHeaders.set("Accept", "application/json")
+    if (method === "POST") {
+      requestHeaders.set("Content-Type", "application/json")
+    }
 
     try {
       const response = await this.fetchImpl(url, {
-        method: "GET",
+        method,
+        body: method === "POST" ? JSON.stringify(requestBody) : undefined,
         cache: "no-store",
         credentials: "omit",
         headers: requestHeaders,
@@ -209,6 +222,23 @@ export class TrackingApiClient {
     }
   }
 
+  private get<T>(
+    path: string,
+    validate: (value: unknown) => value is T,
+    externalSignal?: AbortSignal,
+  ): Promise<T> {
+    return this.request("GET", path, validate, externalSignal)
+  }
+
+  private post<T>(
+    path: string,
+    body: unknown,
+    validate: (value: unknown) => value is T,
+    externalSignal?: AbortSignal,
+  ): Promise<T> {
+    return this.request("POST", path, validate, externalSignal, body)
+  }
+
   getStatus(signal?: AbortSignal): Promise<TrackingStatusDto> {
     return this.get("/api/tracking/status", isTrackingStatusDto, signal)
   }
@@ -241,6 +271,37 @@ export class TrackingApiClient {
 
   getQmosStatus(signal?: AbortSignal): Promise<QmosStatusDto> {
     return this.get("/api/qmos/status", isQmosStatusDto, signal)
+  }
+
+  getQmosMillOrders(max = 20, signal?: AbortSignal): Promise<QmosMillOrdersDto> {
+    if (!Number.isSafeInteger(max) || max <= 0 || max > MAX_QMOS_MILL_ORDERS) {
+      throw new Error(`max must be an integer between 1 and ${MAX_QMOS_MILL_ORDERS}`)
+    }
+
+    return this.get(`/api/qmos/mill-orders?max=${max}`, isQmosMillOrdersDto, signal)
+  }
+
+  correctBundle(
+    request: TrackingCorrectionRequestDto,
+    signal?: AbortSignal,
+  ): Promise<TrackingCommandAcceptedDto> {
+    if (!isTrackingCorrectionRequestDto(request)) {
+      throw new Error("A tracking correction requires four non-empty string fields")
+    }
+
+    const sanitizedRequest: TrackingCorrectionRequestDto = {
+      TrackingId: request.TrackingId.trim(),
+      OperatorId: request.OperatorId.trim(),
+      Reason: request.Reason.trim(),
+      MillOrder1: request.MillOrder1.trim(),
+    }
+
+    return this.post(
+      "/api/tracking/correct",
+      sanitizedRequest,
+      isTrackingCommandAcceptedDto,
+      signal,
+    )
   }
 }
 

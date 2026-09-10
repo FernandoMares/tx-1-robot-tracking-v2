@@ -19,6 +19,48 @@ const SCENARIO = "LOCAL_HMI_SIMULATOR"
 const API_VERSION = "sim-1.0.0"
 const STARTED_AT = Date.now()
 const CYCLE_STEPS = 7
+const MAX_REQUEST_BODY_BYTES = 64 * 1024
+const bundleCorrections = new Map()
+let nextCorrectionEventId = 100_000
+
+const qmosMillOrders = [
+  {
+    FrpId: 51001,
+    MillOrder: "SIM-MO-001",
+    HeatNo: "SIM-HEAT-01",
+    WorkOrder: 71001,
+    Grade: "A36",
+    Size: "2 x 2",
+    Weight: 1250,
+    Length: "40 FT",
+    ProductWidth: null,
+    ProductThickness: null,
+  },
+  {
+    FrpId: 51002,
+    MillOrder: "SIM-MO-002",
+    HeatNo: "SIM-HEAT-02",
+    WorkOrder: 71002,
+    Grade: "A572-50",
+    Size: "3 x 3",
+    Weight: 1475.5,
+    Length: "48 FT",
+    ProductWidth: 3,
+    ProductThickness: 0.25,
+  },
+  {
+    FrpId: 51003,
+    MillOrder: "SIM-MO-003",
+    HeatNo: "SIM-HEAT-03",
+    WorkOrder: 71003,
+    Grade: "A992",
+    Size: "4 x 4",
+    Weight: 1820,
+    Length: "60 FT",
+    ProductWidth: 4,
+    ProductThickness: 0.375,
+  },
+]
 
 function zone(ZoneId, ZoneName, ZoneType, DisplayOrder, Capacity, Description) {
   return { ZoneId, ZoneName, ZoneType, DisplayOrder, Capacity, Description, IsEnabled: true }
@@ -143,7 +185,16 @@ function staticBundle() {
 
 function bundles(now = Date.now()) {
   const moving = movingBundle(currentStep(now))
-  return [staticBundle(), ...(moving ? [moving] : [])]
+  return [staticBundle(), ...(moving ? [moving] : [])].map((bundle) => {
+    const correction = bundleCorrections.get(bundle.TrackingId)
+    if (!correction) return bundle
+
+    return {
+      ...bundle,
+      MillOrder1: correction.MillOrder1,
+      LastUpdateUtc: dotNetDate(correction.updatedAt),
+    }
+  })
 }
 
 function trackingState(now = Date.now()) {
@@ -248,8 +299,9 @@ function capabilities() {
       "/api/tracking/opc",
       "/api/tracking/events/recent",
       "/api/qmos/status",
+      "/api/qmos/mill-orders",
     ],
-    commands: [],
+    commands: ["/api/tracking/correct"],
     engineeringOpc: [],
     qmosCommands: [],
     engineeringSimulation: [],
@@ -294,7 +346,7 @@ function sendJson(response, statusCode, payload) {
   const body = JSON.stringify(payload)
   response.writeHead(statusCode, {
     "Access-Control-Allow-Headers": "Accept, Content-Type",
-    "Access-Control-Allow-Methods": "GET,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Private-Network": "true",
     "Cache-Control": "no-store",
@@ -308,7 +360,7 @@ function sendJson(response, statusCode, payload) {
 function sendOptions(response) {
   response.writeHead(204, {
     "Access-Control-Allow-Headers": "Accept, Content-Type",
-    "Access-Control-Allow-Methods": "GET,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Private-Network": "true",
     "Content-Length": "0",
@@ -317,15 +369,90 @@ function sendOptions(response) {
   response.end()
 }
 
-const server = createServer((request, response) => {
+async function readJsonBody(request) {
+  const chunks = []
+  let byteLength = 0
+
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    byteLength += buffer.length
+    if (byteLength > MAX_REQUEST_BODY_BYTES) throw new Error("Request body is too large")
+    chunks.push(buffer)
+  }
+
+  const text = Buffer.concat(chunks).toString("utf8")
+  return JSON.parse(text)
+}
+
+function sanitizeCorrection(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null
+
+  const fields = ["TrackingId", "OperatorId", "Reason", "MillOrder1"]
+  const sanitized = {}
+  for (const field of fields) {
+    if (typeof value[field] !== "string" || value[field].trim().length === 0) return null
+    sanitized[field] = value[field].trim()
+  }
+
+  return sanitized
+}
+
+const server = createServer(async (request, response) => {
   const method = request.method ?? "GET"
   const url = new URL(request.url ?? "/", "http://" + (request.headers.host ?? HOST + ":" + PORT))
   if (LOG_REQUESTS) console.log(new Date().toISOString() + " " + method + " " + url.pathname)
 
   if (method === "OPTIONS") return sendOptions(response)
-  if (method !== "GET") return sendJson(response, 405, { error: "Method not allowed" })
 
   const now = Date.now()
+  if (method === "POST") {
+    if (url.pathname !== "/api/tracking/correct") {
+      return sendJson(response, 404, { error: "Endpoint not found", path: url.pathname })
+    }
+
+    const contentType = request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase()
+    if (contentType !== "application/json") {
+      return sendJson(response, 415, { error: "Content-Type must be application/json" })
+    }
+
+    let body
+    try {
+      body = await readJsonBody(request)
+    } catch {
+      return sendJson(response, 400, { error: "A valid JSON request body is required" })
+    }
+
+    const correction = sanitizeCorrection(body)
+    if (!correction) {
+      return sendJson(response, 400, {
+        error: "TrackingId, OperatorId, Reason, and MillOrder1 must be non-empty strings",
+      })
+    }
+
+    if (!bundles(now).some((bundle) => bundle.TrackingId === correction.TrackingId)) {
+      return sendJson(response, 404, {
+        error: "Bundle not found",
+        trackingId: correction.TrackingId,
+      })
+    }
+
+    const eventId = nextCorrectionEventId
+    nextCorrectionEventId += 1
+    bundleCorrections.set(correction.TrackingId, {
+      MillOrder1: correction.MillOrder1,
+      updatedAt: now,
+    })
+
+    return sendJson(response, 202, {
+      accepted: true,
+      eventId,
+      eventType: "MANUAL_CORRECTION",
+      trackingId: correction.TrackingId,
+    })
+  }
+
+  if (method !== "GET") return sendJson(response, 405, { error: "Method not allowed" })
+
   const endpoints = {
     "/api/tracking/status": () => ({
       running: true,
@@ -340,6 +467,11 @@ const server = createServer((request, response) => {
     "/api/tracking/opc": () => opcStatus(now),
     "/api/tracking/events/recent": () => recentEvents(now),
     "/api/qmos/status": () => ({ enabled: true, connected: QMOS_CONNECTED }),
+    "/api/qmos/mill-orders": () => {
+      const max = positiveInteger(url.searchParams.get("max"), 20, 1)
+      const value = qmosMillOrders.slice(0, max)
+      return { value, Count: value.length }
+    },
   }
 
   const endpoint = endpoints[url.pathname]

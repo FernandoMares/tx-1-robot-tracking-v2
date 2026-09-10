@@ -1,8 +1,12 @@
 import type {
   OpcStatusDto,
+  QmosMillOrderDto,
+  QmosMillOrdersDto,
   QmosStatusDto,
   TrackedBundleDto,
   TrackingCapabilitiesDto,
+  TrackingCommandAcceptedDto,
+  TrackingCorrectionRequestDto,
   TrackingEventsResponseDto,
   TrackingMapDto,
   TrackingStateDto,
@@ -33,6 +37,22 @@ function isNullableBoolean(value: unknown): value is boolean | null {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string")
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value)
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0
 }
 
 function fieldsMatch(
@@ -255,6 +275,52 @@ export function isOpcStatusDto(value: unknown): value is OpcStatusDto {
 
 export function isQmosStatusDto(value: unknown): value is QmosStatusDto {
   return isObject(value) && typeof value.enabled === "boolean" && typeof value.connected === "boolean"
+}
+
+export function isQmosMillOrderDto(value: unknown): value is QmosMillOrderDto {
+  return (
+    isObject(value) &&
+    isPositiveInteger(value.FrpId) &&
+    typeof value.MillOrder === "string" &&
+    typeof value.HeatNo === "string" &&
+    isNonNegativeInteger(value.WorkOrder) &&
+    typeof value.Grade === "string" &&
+    typeof value.Size === "string" &&
+    isFiniteNumber(value.Weight) &&
+    typeof value.Length === "string" &&
+    isNullableNumber(value.ProductWidth) &&
+    isNullableNumber(value.ProductThickness)
+  )
+}
+
+export function isQmosMillOrdersDto(value: unknown): value is QmosMillOrdersDto {
+  if (!isObject(value) || !Array.isArray(value.value) || !isNonNegativeInteger(value.Count)) return false
+
+  return value.value.every(isQmosMillOrderDto)
+}
+
+export function isTrackingCorrectionRequestDto(
+  value: unknown,
+): value is TrackingCorrectionRequestDto {
+  return (
+    isObject(value) &&
+    isNonEmptyString(value.TrackingId) &&
+    isNonEmptyString(value.OperatorId) &&
+    isNonEmptyString(value.Reason) &&
+    isNonEmptyString(value.MillOrder1)
+  )
+}
+
+export function isTrackingCommandAcceptedDto(
+  value: unknown,
+): value is TrackingCommandAcceptedDto {
+  return (
+    isObject(value) &&
+    typeof value.accepted === "boolean" &&
+    isPositiveInteger(value.eventId) &&
+    isNonEmptyString(value.eventType) &&
+    isNonEmptyString(value.trackingId)
+  )
 }
 
 function isTrackingEvent(value: unknown): boolean {

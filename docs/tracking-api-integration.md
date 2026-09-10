@@ -1,18 +1,18 @@
-# Integracion de solo lectura con Tracking API
+# Integracion con Tracking API
 
 Para probar el flujo completo sin acceso al servidor, consulta [Simulador local de Tracking API](./tracking-api-simulator.md).
 
-Esta primera integracion permite conectar el frontend con la API de tracking sin habilitar operaciones que modifiquen el estado del proceso. El modo predeterminado sigue siendo `mock`, de modo que clonar y ejecutar el proyecto no genera trafico hacia el entorno de pruebas.
+La integracion conecta el frontend con las lecturas de tracking y permite una unica mutacion: asociar la Mill Order seleccionada a un bundle mediante una correccion manual. El modo predeterminado sigue siendo `mock`, de modo que clonar y ejecutar el proyecto no genera trafico hacia el entorno de pruebas.
 
 ## Arquitectura elegida
 
-El navegador consulta una ruta del mismo frontend. Next.js reenvia exclusivamente los endpoints GET aprobados hacia el servicio:
+El navegador consulta una ruta del mismo frontend. Next.js reenvia exclusivamente las operaciones aprobadas hacia el servicio:
 
 ```text
-Navegador -> /tracking-api -> proxy GET de Next.js -> MaterialTrackingService :8085
+Navegador -> /tracking-api -> proxy con allowlist de Next.js -> MaterialTrackingService :8085
 ```
 
-Esto evita que el navegador necesite acceso directo al puerto 8085 y elimina bloqueos de CORS, contenido mixto o permisos de red local durante las pruebas. El proxy usa una lista permitida y no expone los endpoints POST del backend.
+Esto evita que el navegador necesite acceso directo al puerto 8085 y elimina bloqueos de CORS, contenido mixto o permisos de red local durante las pruebas. El proxy usa una lista permitida; de todos los endpoints POST del backend, solo publica `/api/tracking/correct` y filtra su cuerpo.
 
 El acceso por RDP no crea por si mismo un tunel de red. El proceso de Next.js debe ejecutarse en una maquina que pueda alcanzar al servicio configurado en `TRACKING_API_PROXY_TARGET`.
 
@@ -68,7 +68,7 @@ Si la API corre en otro equipo, sustituye `TRACKING_API_PROXY_TARGET` por el hos
 
 ## Endpoints usados en esta etapa
 
-La capa inicial utiliza exclusivamente estas operaciones `GET`:
+Las operaciones principales son:
 
 | Endpoint | Uso | Frecuencia esperada |
 | --- | --- | --- |
@@ -76,28 +76,31 @@ La capa inicial utiliza exclusivamente estas operaciones `GET`:
 | `/api/tracking/capabilities` | Capacidades publicadas por la compilacion activa. | Al iniciar. |
 | `/api/tracking/map` | Catalogo de zonas, rutas, destinos y reglas. | Al iniciar. |
 | `/api/tracking/state` | Estado actual de los bundles. | Polling, inicialmente cada segundo. |
+| `/api/qmos/mill-orders?max=20` | Candidatos de Mill Order para seleccion del operador. | Al abrir el selector. |
+| `POST /api/tracking/correct` | Encola la asociacion de `MillOrder1` al bundle. | Solo tras confirmacion del operador. |
 
 La version devuelta en `apiVersion` se conserva como dato diagnostico. De acuerdo con el equipo de backend, sus cambios actuales corresponden a distintas compilaciones y no a cambios del contrato, por lo que no se debe codificar una comparacion rigida contra un unico valor como `0.12`.
 
-Otros endpoints de lectura ya observados, como bundle individual, eventos, OPC y estado de QMOS, quedan para incrementos posteriores. No son necesarios para conectar la primera vista al estado central.
+El cliente tambien tipa las lecturas de bundle individual, eventos, OPC y estado de QMOS para diagnostico y actualizacion puntual.
 
 ## Operaciones fuera de alcance
 
-Esta entrega es deliberadamente **GET-only**. No se llaman ni se exponen controles para:
+El unico comando publicado es `POST /api/tracking/correct`, limitado a `TrackingId`, `OperatorId`, `Reason` y `MillOrder1`. El proxy elimina cualquier otra propiedad y exige `Content-Type: application/json`. Siguen fuera de alcance:
 
-- `POST /api/tracking/correct`
 - `POST /api/tracking/reset`
 - `POST /api/tracking/opc/write`
 - `POST /api/tracking/event`
 - cualquier operacion `POST` bajo `/api/qmos/*`, incluidas creacion, actualizacion de peso e impresion
 
-Que `/api/tracking/capabilities` anuncie una operacion no significa que el usuario este autorizado para ejecutarla. Antes de incorporar cualquier comando se deben acordar autenticacion, permisos, confirmacion del operador, idempotencia, auditoria y comportamiento ante timeout.
+Que `/api/tracking/capabilities` anuncie una operacion no significa que el usuario este autorizado para ejecutarla. La identidad enviada en `OperatorId` es dato proporcionado por el cliente hasta que se vincule a una identidad autenticada en el servidor. El despliegue debe acordar autenticacion, permisos, confirmacion del operador, idempotencia, auditoria y comportamiento ante timeout.
+
+La respuesta `accepted: true` confirma que el evento fue encolado, no que el cambio ya aparezca en el bundle. El frontend debe volver a consultar el bundle hasta observar `MillOrder1`, y verificar estado o eventos antes de reintentar tras un timeout para evitar comandos duplicados.
 
 ## Proxy, HTTP y seguridad
 
 Una respuesta exitosa en Postman, navegacion directa o `curl` no garantiza que Chrome permita un `fetch` entre puertos o redes diferentes. Por eso el HMI utiliza el proxy de mismo origen `/tracking-api`.
 
-El proxy solo implementa `GET` y mantiene una lista explicita de rutas. Solicitudes hacia otros paths reciben 404 y Next.js no publica manejadores POST en esa ruta.
+El proxy mantiene listas explicitas por metodo. Solicitudes GET fuera de las lecturas aprobadas y solicitudes POST distintas de `/api/tracking/correct` reciben 404.
 
 El salto entre el navegador y Next.js debe usar el protocolo aprobado para el HMI. Next.js puede comunicarse internamente por HTTP con el servicio dentro de la red controlada, sujeto a la arquitectura de produccion que se acuerde.
 
@@ -106,6 +109,8 @@ El salto entre el navegador y Next.js debe usar el protocolo aprobado para el HM
 Antes de considerar validada la conexion live, comprueba que:
 
 - las cuatro solicitudes `GET` responden a traves de `/tracking-api`;
+- la consulta de Mill Orders respeta el limite solicitado;
+- una correccion aceptada aparece en el bundle al completar el procesamiento asincrono;
 - `/api/tracking/state` se consulta sin solicitudes solapadas;
 - al detener la API se muestra un estado stale/offline y no aparecen datos mock;
 - al levantar nuevamente la API el polling se recupera;

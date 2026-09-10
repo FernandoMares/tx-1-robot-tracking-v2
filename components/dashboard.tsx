@@ -1,11 +1,12 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { AlertsPanel } from "@/components/alerts-panel"
 import { AppHeader } from "@/components/app-header"
 import { DEFAULT_FILTERS, FiltersPanel, type PlantFilters } from "@/components/filters-panel"
 import { KpiCards } from "@/components/kpi-cards"
+import { MillOrderSelectionPanel } from "@/components/mill-order-selection-panel"
 import { BayOneSchematic } from "@/components/plant/bay-one-schematic"
 import { BayTwoSchematic } from "@/components/plant/bay-two-schematic"
 import { BundlerSchematic } from "@/components/plant/bundler-schematic"
@@ -26,6 +27,7 @@ export function Dashboard() {
     animationRunning,
     setAnimationRunning,
     tracking,
+    trackingConfig,
     bundlesByZone,
     trackingLayoutValidation,
     retryTracking,
@@ -33,6 +35,18 @@ export function Dashboard() {
 
   const [view, setView] = useState<PlantView>("overview")
   const [filters, setFilters] = useState<PlantFilters>(DEFAULT_FILTERS)
+  const [selectedTrackingId, setSelectedTrackingId] = useState<string | null>(null)
+  const [orderSelectionBusy, setOrderSelectionBusy] = useState(false)
+
+  useEffect(() => {
+    if (
+      selectedTrackingId &&
+      tracking.trackingState &&
+      !tracking.trackingState.Bundles.some((bundle) => bundle.TrackingId === selectedTrackingId)
+    ) {
+      setSelectedTrackingId(null)
+    }
+  }, [selectedTrackingId, tracking.trackingState])
 
   const filtersActive = filters.table !== "all" || filters.status !== "all"
 
@@ -84,7 +98,20 @@ export function Dashboard() {
                   <FiltersPanel filters={filters} onChange={setFilters} />
                 </>
               ) : (
-                <TrackingBundlesPanel tracking={tracking} />
+                <>
+                  <TrackingBundlesPanel
+                    tracking={tracking}
+                    selectedTrackingId={selectedTrackingId}
+                    onSelectBundle={setSelectedTrackingId}
+                    selectionLocked={orderSelectionBusy}
+                  />
+                  <MillOrderSelectionPanel
+                    tracking={tracking}
+                    config={trackingConfig}
+                    selectedTrackingId={selectedTrackingId}
+                    onBusyChange={setOrderSelectionBusy}
+                  />
+                </>
               )}
             </div>
 
