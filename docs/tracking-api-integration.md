@@ -79,6 +79,8 @@ Las operaciones principales son:
 | `/api/qmos/mill-orders?max=20` | Candidatos de Mill Order para seleccion del operador. | Al abrir el selector. |
 | `POST /api/tracking/correct` | Encola la asociacion de `MillOrder1` al bundle. | Solo tras confirmacion del operador. |
 
+El servicio `0.12` se observo devolviendo `/api/qmos/mill-orders` como un arreglo JSON directo. Algunas respuestas/herramientas anteriores lo mostraron envuelto como `{ "value": [...], "Count": n }`. El cliente acepta ambos formatos y los normaliza internamente para no acoplar la pantalla a esa diferencia de serializacion.
+
 La version devuelta en `apiVersion` se conserva como dato diagnostico. De acuerdo con el equipo de backend, sus cambios actuales corresponden a distintas compilaciones y no a cambios del contrato, por lo que no se debe codificar una comparacion rigida contra un unico valor como `0.12`.
 
 El cliente tambien tipa las lecturas de bundle individual, eventos, OPC y estado de QMOS para diagnostico y actualizacion puntual.

@@ -55,12 +55,22 @@ const INITIAL_SUBMISSION: SubmissionState = {
 
 function describeApiError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.body && typeof error.body === "object" && "error" in error.body) {
-      const detail = error.body.error
-      if (typeof detail === "string" && detail.trim()) return detail
+    if (error.kind === "http") {
+      if (error.body && typeof error.body === "object" && "error" in error.body) {
+        const detail = error.body.error
+        if (typeof detail === "string" && detail.trim()) return detail
+      }
+      return `The tracking service returned HTTP ${error.status ?? "error"}.`
     }
     if (error.kind === "timeout") return "The tracking service did not answer in time."
-    if (error.status) return `The tracking service returned HTTP ${error.status}.`
+    if (error.kind === "invalid-json") {
+      return "The tracking service returned a successful response that was not valid JSON."
+    }
+    if (error.kind === "invalid-payload") {
+      return "The tracking service returned an unexpected response format."
+    }
+    if (error.kind === "aborted") return "The tracking request was cancelled."
+    if (error.kind === "network") return "The tracking service could not be reached."
   }
 
   return error instanceof Error ? error.message : "Unexpected tracking API error."

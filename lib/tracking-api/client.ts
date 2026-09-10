@@ -2,6 +2,7 @@ import type {
   ApiErrorResponseDto,
   OpcStatusDto,
   QmosMillOrdersDto,
+  QmosMillOrdersResponseDto,
   QmosStatusDto,
   TrackedBundleDto,
   TrackingCapabilitiesDto,
@@ -14,7 +15,7 @@ import type {
 } from "./types"
 import {
   isOpcStatusDto,
-  isQmosMillOrdersDto,
+  isQmosMillOrdersResponseDto,
   isQmosStatusDto,
   isTrackedBundleDto,
   isTrackingCapabilitiesDto,
@@ -273,12 +274,20 @@ export class TrackingApiClient {
     return this.get("/api/qmos/status", isQmosStatusDto, signal)
   }
 
-  getQmosMillOrders(max = 20, signal?: AbortSignal): Promise<QmosMillOrdersDto> {
+  async getQmosMillOrders(max = 20, signal?: AbortSignal): Promise<QmosMillOrdersDto> {
     if (!Number.isSafeInteger(max) || max <= 0 || max > MAX_QMOS_MILL_ORDERS) {
       throw new Error(`max must be an integer between 1 and ${MAX_QMOS_MILL_ORDERS}`)
     }
 
-    return this.get(`/api/qmos/mill-orders?max=${max}`, isQmosMillOrdersDto, signal)
+    const response: QmosMillOrdersResponseDto = await this.get(
+      `/api/qmos/mill-orders?max=${max}`,
+      isQmosMillOrdersResponseDto,
+      signal,
+    )
+
+    return Array.isArray(response)
+      ? { value: response, Count: response.length }
+      : response
   }
 
   correctBundle(

@@ -184,11 +184,14 @@ export interface QmosMillOrderDto extends ExtensibleDto {
   ProductThickness: number | null
 }
 
-/** This endpoint mixes a lower-case collection property with PascalCase Count. */
+/** Wrapped collection shape observed in some service builds/tooling. */
 export interface QmosMillOrdersDto extends ExtensibleDto {
   value: QmosMillOrderDto[]
   Count: number
 }
+
+/** The live service has also been observed returning the collection as a bare array. */
+export type QmosMillOrdersResponseDto = QmosMillOrderDto[] | QmosMillOrdersDto
 
 /** Allowlisted payload accepted by the public manual-correction command. */
 export interface TrackingCorrectionRequestDto {

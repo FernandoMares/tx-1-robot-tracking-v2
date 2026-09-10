@@ -2,6 +2,7 @@ import type {
   OpcStatusDto,
   QmosMillOrderDto,
   QmosMillOrdersDto,
+  QmosMillOrdersResponseDto,
   QmosStatusDto,
   TrackedBundleDto,
   TrackingCapabilitiesDto,
@@ -297,6 +298,14 @@ export function isQmosMillOrdersDto(value: unknown): value is QmosMillOrdersDto 
   if (!isObject(value) || !Array.isArray(value.value) || !isNonNegativeInteger(value.Count)) return false
 
   return value.value.every(isQmosMillOrderDto)
+}
+
+export function isQmosMillOrdersResponseDto(
+  value: unknown,
+): value is QmosMillOrdersResponseDto {
+  return Array.isArray(value)
+    ? value.every(isQmosMillOrderDto)
+    : isQmosMillOrdersDto(value)
 }
 
 export function isTrackingCorrectionRequestDto(

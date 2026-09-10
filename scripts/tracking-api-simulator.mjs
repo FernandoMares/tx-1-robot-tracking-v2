@@ -469,8 +469,7 @@ const server = createServer(async (request, response) => {
     "/api/qmos/status": () => ({ enabled: true, connected: QMOS_CONNECTED }),
     "/api/qmos/mill-orders": () => {
       const max = positiveInteger(url.searchParams.get("max"), 20, 1)
-      const value = qmosMillOrders.slice(0, max)
-      return { value, Count: value.length }
+      return qmosMillOrders.slice(0, max)
     },
   }
 
