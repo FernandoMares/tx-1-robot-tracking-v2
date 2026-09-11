@@ -9,6 +9,50 @@ $releaseRoot = [IO.Path]::GetFullPath((Join-Path $distRoot "tx1-tracking-windows
 $archivePath = [IO.Path]::GetFullPath((Join-Path $distRoot "tx1-tracking-windows.zip"))
 $distPrefix = $distRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 
+function Copy-DirectoryTree {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Source,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Destination,
+
+    [string[]]$ExcludeDirectories = @()
+  )
+
+  New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+
+  $arguments = @(
+    $Source,
+    $Destination,
+    "/E",
+    "/COPY:DAT",
+    "/DCOPY:DAT",
+    "/R:2",
+    "/W:1",
+    "/XJ",
+    "/NFL",
+    "/NDL",
+    "/NJH",
+    "/NJS",
+    "/NP"
+  )
+
+  if ($ExcludeDirectories.Count -gt 0) {
+    $arguments += "/XD"
+    $arguments += $ExcludeDirectories
+  }
+
+  & robocopy.exe @arguments | Out-Null
+  $robocopyExitCode = $LASTEXITCODE
+
+  # Robocopy exit codes 0-7 indicate success, including copied files or
+  # non-fatal differences. Codes 8 and above indicate a copy failure.
+  if ($robocopyExitCode -ge 8) {
+    throw "Robocopy failed from '$Source' to '$Destination' with exit code $robocopyExitCode."
+  }
+}
+
 if (
   -not $releaseRoot.StartsWith($distPrefix, [StringComparison]::OrdinalIgnoreCase) -or
   -not $archivePath.StartsWith($distPrefix, [StringComparison]::OrdinalIgnoreCase)
@@ -65,8 +109,16 @@ if (Test-Path -LiteralPath $archivePath) {
 }
 
 New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
-Get-ChildItem -LiteralPath $standaloneSource -Force |
-  Copy-Item -Destination $releaseRoot -Recurse -Force
+
+# PowerShell 5.1 Copy-Item can fail when pnpm's virtual-store paths exceed the
+# traditional Windows MAX_PATH limit. Robocopy handles those paths reliably.
+# The virtual store is flattened separately below, so do not copy it into the
+# release and do not preserve pnpm junctions that point back to the repository.
+$standalonePnpmStore = Join-Path $standaloneSource "node_modules\.pnpm"
+Copy-DirectoryTree `
+  -Source $standaloneSource `
+  -Destination $releaseRoot `
+  -ExcludeDirectories @($standalonePnpmStore)
 
 # Next.js standalone output produced from pnpm on Windows can retain junctions
 # whose targets live in the build workspace. Copy-Item materializes the direct
@@ -74,10 +126,9 @@ Get-ChildItem -LiteralPath $standaloneSource -Force |
 # store. Flatten those traced runtime packages into the release node_modules so
 # the extracted ZIP never depends on the original repository path.
 $releaseNodeModules = Join-Path $releaseRoot "node_modules"
-$releasePnpmStore = Join-Path $releaseNodeModules ".pnpm"
 
-if (Test-Path -LiteralPath $releasePnpmStore) {
-  foreach ($virtualPackage in Get-ChildItem -LiteralPath $releasePnpmStore -Directory -Force) {
+if (Test-Path -LiteralPath $standalonePnpmStore) {
+  foreach ($virtualPackage in Get-ChildItem -LiteralPath $standalonePnpmStore -Directory -Force) {
     $virtualModules = Join-Path $virtualPackage.FullName "node_modules"
     if (-not (Test-Path -LiteralPath $virtualModules)) {
       continue
@@ -95,25 +146,25 @@ if (Test-Path -LiteralPath $releasePnpmStore) {
         foreach ($scopedPackage in Get-ChildItem -LiteralPath $packageEntry.FullName -Directory -Force) {
           $destination = Join-Path $releaseScope $scopedPackage.Name
           if (-not (Test-Path -LiteralPath $destination)) {
-            Copy-Item -LiteralPath $scopedPackage.FullName -Destination $destination -Recurse -Force
+            Copy-DirectoryTree -Source $scopedPackage.FullName -Destination $destination
           }
         }
       }
       else {
         $destination = Join-Path $releaseNodeModules $packageEntry.Name
         if (-not (Test-Path -LiteralPath $destination)) {
-          Copy-Item -LiteralPath $packageEntry.FullName -Destination $destination -Recurse -Force
+          Copy-DirectoryTree -Source $packageEntry.FullName -Destination $destination
         }
       }
     }
   }
 }
 
-Copy-Item -LiteralPath $publicSource -Destination $releaseRoot -Recurse -Force
+Copy-DirectoryTree -Source $publicSource -Destination (Join-Path $releaseRoot "public")
 
 $releaseNextRoot = Join-Path $releaseRoot ".next"
 New-Item -ItemType Directory -Path $releaseNextRoot -Force | Out-Null
-Copy-Item -LiteralPath $staticSource -Destination $releaseNextRoot -Recurse -Force
+Copy-DirectoryTree -Source $staticSource -Destination (Join-Path $releaseNextRoot "static")
 
 Copy-Item -LiteralPath (Join-Path $windowsFilesSource "start.cmd") -Destination $releaseRoot -Force
 Copy-Item -LiteralPath (Join-Path $windowsFilesSource "README.txt") -Destination $releaseRoot -Force
