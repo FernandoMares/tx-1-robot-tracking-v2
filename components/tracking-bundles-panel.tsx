@@ -4,26 +4,17 @@ import { Boxes } from "lucide-react"
 
 import type { TrackingRuntimeState } from "@/lib/tracking-api"
 import { isTrackingZoneName } from "@/lib/tracking-zone-layout"
-import { cn } from "@/lib/utils"
 
 interface TrackingBundlesPanelProps {
   tracking: TrackingRuntimeState
-  selectedTrackingId: string | null
-  onSelectBundle: (trackingId: string) => void
-  selectionLocked?: boolean
 }
 
 function displayIdentity(bundle: NonNullable<TrackingRuntimeState["trackingState"]>["Bundles"][number]) {
   return bundle.BundleId ?? (bundle.L2Id != null ? String(bundle.L2Id) : bundle.TrackingId)
 }
 
-/** Live bundle readout and explicit target selection for operator commands. */
-export function TrackingBundlesPanel({
-  tracking,
-  selectedTrackingId,
-  onSelectBundle,
-  selectionLocked = false,
-}: TrackingBundlesPanelProps) {
+/** Live bundle readout from the current Tracking state. */
+export function TrackingBundlesPanel({ tracking }: TrackingBundlesPanelProps) {
   const bundles = tracking.trackingState?.Bundles
 
   return (
@@ -47,23 +38,9 @@ export function TrackingBundlesPanel({
       ) : (
         <ul className="flex max-h-[24rem] flex-col gap-2 overflow-y-auto pr-1">
           {bundles.map((bundle, index) => {
-            const selected = selectedTrackingId === bundle.TrackingId
-
             return (
               <li key={`${bundle.TrackingId}-${index}`}>
-                <button
-                  type="button"
-                  className={cn(
-                    "w-full rounded-lg border px-3 py-2.5 text-left transition-colors outline-none",
-                    "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-wait",
-                    selected
-                      ? "border-primary/60 bg-primary/5"
-                      : "border-border hover:border-primary/30 hover:bg-muted/50",
-                  )}
-                  onClick={() => onSelectBundle(bundle.TrackingId)}
-                  aria-pressed={selected}
-                  disabled={selectionLocked}
-                >
+                <div className="w-full rounded-lg border border-border px-3 py-2.5 text-left">
                   <div className="flex items-start justify-between gap-2">
                     <span
                       className="min-w-0 truncate text-xs font-semibold text-foreground"
@@ -72,12 +49,11 @@ export function TrackingBundlesPanel({
                       {displayIdentity(bundle)}
                     </span>
                     <span
-                      className={cn(
-                        "shrink-0 text-[0.6875rem] font-medium",
+                      className={`shrink-0 text-[0.6875rem] font-medium ${
                         bundle.CurrentZone && isTrackingZoneName(bundle.CurrentZone)
                           ? "text-muted-foreground"
-                          : "text-warning-fg",
-                      )}
+                          : "text-warning-fg"
+                      }`}
                     >
                       {bundle.CurrentZone ?? "Unknown zone"}
                     </span>
@@ -92,7 +68,7 @@ export function TrackingBundlesPanel({
                       MO {bundle.MillOrder1}
                     </p>
                   )}
-                </button>
+                </div>
               </li>
             )
           })}
@@ -100,7 +76,7 @@ export function TrackingBundlesPanel({
       )}
 
       <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-        Select a bundle to view or assign its production order. Unknown zones remain visible in this list.
+        Bundle-specific Mill Orders are shown for reference. Unknown zones remain visible in this list.
       </p>
     </section>
   )

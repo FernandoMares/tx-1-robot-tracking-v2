@@ -16,12 +16,17 @@ const QMOS_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_QMOS_CONNEC
 const OPC_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_OPC_CONNECTED, true)
 const LOG_REQUESTS = booleanSetting(process.env.TRACKING_SIMULATOR_LOG_REQUESTS, false)
 const SCENARIO = "LOCAL_HMI_SIMULATOR"
-const API_VERSION = "sim-1.0.0"
+const API_VERSION = "sim-1.1.0"
 const STARTED_AT = Date.now()
 const CYCLE_STEPS = 7
 const MAX_REQUEST_BODY_BYTES = 64 * 1024
 const bundleCorrections = new Map()
 let nextCorrectionEventId = 100_000
+let globalMillOrder = {
+  millOrder: "SIM-MO-001",
+  enabled: true,
+  updatedUtc: new Date(STARTED_AT).toISOString(),
+}
 
 const qmosMillOrders = [
   {
@@ -295,13 +300,14 @@ function capabilities() {
       "/api/tracking/capabilities",
       "/api/tracking/map",
       "/api/tracking/state",
+      "/api/tracking/mill-order",
       "/api/tracking/bundles/{trackingId}",
       "/api/tracking/opc",
       "/api/tracking/events/recent",
       "/api/qmos/status",
       "/api/qmos/mill-orders",
     ],
-    commands: ["/api/tracking/correct"],
+    commands: ["/api/tracking/correct", "PUT /api/tracking/mill-order"],
     engineeringOpc: [],
     qmosCommands: [],
     engineeringSimulation: [],
@@ -346,7 +352,7 @@ function sendJson(response, statusCode, payload) {
   const body = JSON.stringify(payload)
   response.writeHead(statusCode, {
     "Access-Control-Allow-Headers": "Accept, Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Private-Network": "true",
     "Cache-Control": "no-store",
@@ -360,7 +366,7 @@ function sendJson(response, statusCode, payload) {
 function sendOptions(response) {
   response.writeHead(204, {
     "Access-Control-Allow-Headers": "Accept, Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Private-Network": "true",
     "Content-Length": "0",
@@ -405,6 +411,48 @@ const server = createServer(async (request, response) => {
   if (method === "OPTIONS") return sendOptions(response)
 
   const now = Date.now()
+  if (method === "PUT") {
+    if (url.pathname !== "/api/tracking/mill-order") {
+      return sendJson(response, 404, { error: "Endpoint not found", path: url.pathname })
+    }
+
+    const contentType = request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase()
+    if (contentType !== "application/json") {
+      return sendJson(response, 415, { error: "Content-Type must be application/json" })
+    }
+
+    let body
+    try {
+      body = await readJsonBody(request)
+    } catch {
+      return sendJson(response, 400, { error: "A valid JSON request body is required" })
+    }
+
+    const millOrder =
+      typeof body === "object" &&
+      body !== null &&
+      !Array.isArray(body) &&
+      typeof body.millOrder === "string"
+        ? body.millOrder.trim()
+        : ""
+
+    if (!millOrder || millOrder.length > 32) {
+      return sendJson(response, 400, { error: "MillOrder is required." })
+    }
+
+    globalMillOrder = {
+      millOrder,
+      enabled: true,
+      updatedUtc: new Date(now).toISOString(),
+    }
+
+    return sendJson(response, 200, {
+      updated: true,
+      ...globalMillOrder,
+      appliesTo: "subsequent QMOS CREATE operations that do not already carry a bundle-specific Mill Order",
+    })
+  }
+
   if (method === "POST") {
     if (url.pathname !== "/api/tracking/correct") {
       return sendJson(response, 404, { error: "Endpoint not found", path: url.pathname })
@@ -464,6 +512,7 @@ const server = createServer(async (request, response) => {
     "/api/tracking/capabilities": capabilities,
     "/api/tracking/map": trackingMap,
     "/api/tracking/state": () => trackingState(now),
+    "/api/tracking/mill-order": () => globalMillOrder,
     "/api/tracking/opc": () => opcStatus(now),
     "/api/tracking/events/recent": () => recentEvents(now),
     "/api/qmos/status": () => ({ enabled: true, connected: QMOS_CONNECTED }),

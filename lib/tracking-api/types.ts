@@ -193,6 +193,27 @@ export interface QmosMillOrdersDto extends ExtensibleDto {
 /** The live service has also been observed returning the collection as a bare array. */
 export type QmosMillOrdersResponseDto = QmosMillOrderDto[] | QmosMillOrdersDto
 
+/** Global Mill Order selected by the HMI for subsequent QMOS CREATE operations. */
+export interface GlobalMillOrderDto extends ExtensibleDto {
+  millOrder: string | null
+  enabled: boolean
+  updatedUtc: ApiDateValue
+}
+
+/** Allowlisted payload used to change the active global Mill Order. */
+export interface GlobalMillOrderUpdateRequestDto {
+  millOrder: string
+}
+
+/** Synchronous acknowledgement returned after the global selection is persisted. */
+export interface GlobalMillOrderUpdateResponseDto extends ExtensibleDto {
+  updated: boolean
+  millOrder: string
+  enabled: boolean
+  updatedUtc: string
+  appliesTo: string
+}
+
 /** Allowlisted payload accepted by the public manual-correction command. */
 export interface TrackingCorrectionRequestDto {
   TrackingId: string

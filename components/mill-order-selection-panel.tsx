@@ -1,12 +1,6 @@
 "use client"
 
-import {
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react"
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react"
 import {
   CheckCircle2,
   ClipboardList,
@@ -16,42 +10,26 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   ApiError,
   createTrackingApiClient,
+  parseApiDate,
+  type GlobalMillOrderDto,
   type QmosMillOrderDto,
   type TrackingApiConfig,
   type TrackingRuntimeState,
 } from "@/lib/tracking-api"
 
-interface MillOrderSelectionPanelProps {
+interface GlobalMillOrderPanelProps {
   tracking: TrackingRuntimeState
   config: TrackingApiConfig
-  selectedTrackingId: string | null
-  onBusyChange: (busy: boolean) => void
 }
 
 type LoadStatus = "idle" | "loading" | "ready" | "error"
-type SubmitStatus = "idle" | "submitting" | "verifying" | "success" | "error"
+type UpdateStatus = "idle" | "updating" | "success" | "error"
 
-interface SubmissionState {
-  status: SubmitStatus
-  message: string | null
-  trackingId: string | null
-  millOrder: string | null
-  eventId: number | null
-  startedAt: number | null
-}
-
-const INITIAL_SUBMISSION: SubmissionState = {
-  status: "idle",
-  message: null,
-  trackingId: null,
-  millOrder: null,
-  eventId: null,
-  startedAt: null,
-}
+const GLOBAL_MILL_ORDER_ENDPOINT = "/api/tracking/mill-order"
+const QMOS_MILL_ORDERS_ENDPOINT = "/api/qmos/mill-orders"
 
 function describeApiError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -80,19 +58,30 @@ function orderLabel(order: QmosMillOrderDto): string {
   return `${order.MillOrder} · ${order.Size} · ${order.Length}`
 }
 
-export function MillOrderSelectionPanel({
-  tracking,
-  config,
-  selectedTrackingId,
-  onBusyChange,
-}: MillOrderSelectionPanelProps) {
+function hasCapability(entries: string[] | undefined, method: "GET" | "PUT", path: string): boolean {
+  if (!entries) return false
+  const methodAndPath = `${method} ${path}`.toUpperCase()
+
+  return entries.some((entry) => {
+    const normalized = entry.trim()
+    return normalized === path || normalized.toUpperCase() === methodAndPath
+  })
+}
+
+function formatUpdatedUtc(value: GlobalMillOrderDto["updatedUtc"] | undefined): string | null {
+  const date = parseApiDate(value)
+  return date ? date.toLocaleString() : null
+}
+
+export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelProps) {
   const [orders, setOrders] = useState<QmosMillOrderDto[]>([])
+  const [activeOrder, setActiveOrder] = useState<GlobalMillOrderDto | null>(null)
+  const [selectedMillOrder, setSelectedMillOrder] = useState("")
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle")
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>("idle")
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null)
   const [refreshRevision, setRefreshRevision] = useState(0)
-  const [selectedMillOrder, setSelectedMillOrder] = useState("")
-  const [operatorId, setOperatorId] = useState("")
-  const [submission, setSubmission] = useState<SubmissionState>(INITIAL_SUBMISSION)
 
   const client = useMemo(
     () =>
@@ -102,34 +91,31 @@ export function MillOrderSelectionPanel({
     [config.baseUrl, config.timeoutMs],
   )
 
-  const selectedBundle = useMemo(
-    () =>
-      tracking.trackingState?.Bundles.find(
-        (bundle) => bundle.TrackingId === selectedTrackingId,
-      ) ?? null,
-    [selectedTrackingId, tracking.trackingState],
+  const canReadOrders = hasCapability(
+    tracking.capabilities?.reads,
+    "GET",
+    QMOS_MILL_ORDERS_ENDPOINT,
+  )
+  const canReadActiveOrder = hasCapability(
+    tracking.capabilities?.reads,
+    "GET",
+    GLOBAL_MILL_ORDER_ENDPOINT,
+  )
+  const canUpdateActiveOrder = hasCapability(
+    tracking.capabilities?.commands,
+    "PUT",
+    GLOBAL_MILL_ORDER_ENDPOINT,
   )
 
-  const submittedBundle = useMemo(
-    () =>
-      tracking.trackingState?.Bundles.find(
-        (bundle) => bundle.TrackingId === submission.trackingId,
-      ) ?? null,
-    [submission.trackingId, tracking.trackingState],
-  )
-
-  const canReadOrders =
-    tracking.capabilities?.reads.includes("/api/qmos/mill-orders") ?? false
-  const canCorrectBundle =
-    tracking.capabilities?.commands.includes("/api/tracking/correct") ?? false
-
-  const loadOrders = useCallback(() => {
+  const refresh = useCallback(() => {
     setRefreshRevision((revision) => revision + 1)
   }, [])
 
   useEffect(() => {
-    if (!client || tracking.mode !== "live" || !canReadOrders) {
+    if (!client || tracking.mode !== "live" || !canReadOrders || !canReadActiveOrder) {
       setOrders([])
+      setActiveOrder(null)
+      setSelectedMillOrder("")
       setLoadStatus("idle")
       setLoadError(null)
       return
@@ -139,155 +125,94 @@ export function MillOrderSelectionPanel({
     setLoadStatus("loading")
     setLoadError(null)
 
-    void client
-      .getQmosMillOrders(20, controller.signal)
-      .then((response) => {
-        setOrders(response.value)
+    void Promise.all([
+      client.getQmosMillOrders(50, controller.signal),
+      client.getGlobalMillOrder(controller.signal),
+    ])
+      .then(([availableOrders, currentOrder]) => {
+        setOrders(availableOrders.value)
+        setActiveOrder(currentOrder)
+        setSelectedMillOrder(currentOrder.enabled ? (currentOrder.millOrder ?? "") : "")
         setLoadStatus("ready")
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
         setOrders([])
+        setActiveOrder(null)
+        setSelectedMillOrder("")
         setLoadStatus("error")
         setLoadError(describeApiError(error))
       })
 
     return () => controller.abort()
-  }, [canReadOrders, client, refreshRevision, tracking.mode])
+  }, [canReadActiveOrder, canReadOrders, client, refreshRevision, tracking.mode])
 
-  useEffect(() => {
-    setSelectedMillOrder(selectedBundle?.MillOrder1 ?? "")
-    setSubmission(INITIAL_SUBMISSION)
-  }, [selectedBundle?.TrackingId])
-
-  useEffect(() => {
-    setSelectedMillOrder(selectedBundle?.MillOrder1 ?? "")
-  }, [selectedBundle?.MillOrder1])
-
-  const submitting = submission.status === "submitting" || submission.status === "verifying"
-
-  useEffect(() => {
-    onBusyChange(submitting)
-  }, [onBusyChange, submitting])
-
-  useEffect(() => {
-    if (!submission.eventId || !submission.trackingId || !submission.millOrder) return
-
-    if (submittedBundle?.MillOrder1 === submission.millOrder) {
-      setSubmission((previous) => ({
-        ...previous,
-        status: "success",
-        message: `Mill Order ${submission.millOrder} was assigned and verified.`,
-      }))
-    }
-  }, [submission.eventId, submission.millOrder, submission.trackingId, submittedBundle?.MillOrder1])
-
-  useEffect(() => {
-    if (submission.status !== "verifying" || !submission.startedAt) return
-
-    const elapsed = Date.now() - submission.startedAt
-    const remaining = Math.max(0, 20_000 - elapsed)
-    const timer = window.setTimeout(() => {
-      setSubmission((previous) =>
-        previous.status === "verifying"
-          ? {
-              ...previous,
-              status: "error",
-              message:
-                "The command was accepted, but the updated order was not observed within 20 seconds. Verify the live state before retrying.",
-            }
-          : previous,
-      )
-    }, remaining)
-
-    return () => window.clearTimeout(timer)
-  }, [submission.startedAt, submission.status])
-
+  const activeMillOrder = activeOrder?.enabled ? activeOrder.millOrder : null
+  const activeUpdatedAt = formatUpdatedUtc(activeOrder?.updatedUtc)
+  const activeOrderMissingFromCatalog = Boolean(
+    activeMillOrder && !orders.some((order) => order.MillOrder === activeMillOrder),
+  )
   const selectedOrder = orders.find((order) => order.MillOrder === selectedMillOrder) ?? null
-  const readyToSubmit = Boolean(
+  const updating = updateStatus === "updating"
+  const readyToUpdate = Boolean(
     client &&
-      selectedBundle &&
-      selectedOrder &&
-      operatorId.trim() &&
-      canCorrectBundle &&
+      selectedMillOrder &&
+      selectedMillOrder !== activeMillOrder &&
+      canUpdateActiveOrder &&
       loadStatus === "ready" &&
       tracking.syncStatus === "live" &&
-      !submitting &&
-      selectedBundle.MillOrder1 !== selectedMillOrder,
+      !updating,
   )
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!client || !selectedBundle || !readyToSubmit) return
+    if (!client || !readyToUpdate) return
 
-    const targetTrackingId = selectedBundle.TrackingId
-    const targetMillOrder = selectedMillOrder
+    const confirmed = window.confirm(
+      `Set Mill Order ${selectedMillOrder} as the active order for the tracking system? ` +
+        "It will apply to subsequent QMOS CREATE operations.",
+    )
+    if (!confirmed) return
 
-    const replacingExistingOrder =
-      selectedBundle.MillOrder1 && selectedBundle.MillOrder1 !== targetMillOrder
-
-    if (
-      replacingExistingOrder &&
-      !window.confirm(
-        `Replace Mill Order ${selectedBundle.MillOrder1} with ${targetMillOrder} on bundle ${targetTrackingId}?`,
-      )
-    ) {
-      return
-    }
-
-    setSubmission({
-      status: "submitting",
-      message: "Sending the order selection to Tracking...",
-      trackingId: targetTrackingId,
-      millOrder: targetMillOrder,
-      eventId: null,
-      startedAt: Date.now(),
-    })
+    setUpdateStatus("updating")
+    setUpdateMessage("Saving the global Mill Order in Tracking...")
 
     try {
-      const response = await client.correctBundle({
-        TrackingId: targetTrackingId,
-        OperatorId: operatorId.trim(),
-        Reason: "HMI production order selection",
-        MillOrder1: targetMillOrder,
-      })
+      const response = await client.updateGlobalMillOrder({ millOrder: selectedMillOrder })
+      const verified = await client.getGlobalMillOrder()
 
-      setSubmission({
-        status: "verifying",
-        message: `Command accepted as event ${response.eventId}; waiting for live-state confirmation...`,
-        trackingId: targetTrackingId,
-        millOrder: targetMillOrder,
-        eventId: response.eventId,
-        startedAt: Date.now(),
-      })
+      if (!response.updated || !verified.enabled || verified.millOrder !== selectedMillOrder) {
+        throw new Error("Tracking answered, but the selected global Mill Order could not be verified.")
+      }
+
+      setActiveOrder(verified)
+      setUpdateStatus("success")
+      setUpdateMessage(`Mill Order ${selectedMillOrder} is now active for subsequent bundles.`)
     } catch (error) {
-      setSubmission((previous) => ({
-        ...previous,
-        status: "error",
-        message: describeApiError(error),
-      }))
+      setUpdateStatus("error")
+      setUpdateMessage(describeApiError(error))
     }
   }
 
   return (
     <section
       className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4"
-      aria-label="Production order selection"
+      aria-label="Global production order"
     >
       <div className="flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <ClipboardList className="size-4 text-muted-foreground" aria-hidden />
-          Production order
+          Active Mill Order
         </h2>
-        {canReadOrders && (
+        {canReadOrders && canReadActiveOrder && (
           <Button
             type="button"
             variant="ghost"
             size="icon-xs"
-            onClick={loadOrders}
-            disabled={loadStatus === "loading"}
-            aria-label="Refresh QMOS Mill Orders"
-            title="Refresh orders"
+            onClick={refresh}
+            disabled={loadStatus === "loading" || updating}
+            aria-label="Refresh active Mill Order and QMOS catalog"
+            title="Refresh order data"
           >
             <RefreshCw
               className={loadStatus === "loading" ? "animate-spin motion-reduce:animate-none" : ""}
@@ -297,66 +222,71 @@ export function MillOrderSelectionPanel({
         )}
       </div>
 
-      {!selectedBundle ? (
-        <p className="text-sm text-muted-foreground">
-          Select a tracked bundle above to view or assign its Mill Order.
+      {!canReadActiveOrder && tracking.capabilities ? (
+        <p className="flex items-start gap-1.5 text-xs text-warning-fg" role="status">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          This Tracking build does not advertise the global Mill Order API.
+        </p>
+      ) : !canReadOrders && tracking.capabilities ? (
+        <p className="flex items-start gap-1.5 text-xs text-warning-fg" role="status">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          This Tracking build does not advertise the QMOS Mill Order catalog.
+        </p>
+      ) : loadStatus === "error" ? (
+        <p className="flex items-start gap-1.5 text-xs text-error-fg" role="alert">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          {loadError}
+        </p>
+      ) : loadStatus !== "ready" ? (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+          Reading the active production order...
         </p>
       ) : (
         <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-          <div className="rounded-lg bg-muted/60 px-3 py-2">
-            <p className="truncate text-xs font-semibold text-foreground" title={selectedBundle.TrackingId}>
-              {selectedBundle.BundleId ?? selectedBundle.TrackingId}
+          <div
+            className={
+              activeMillOrder
+                ? "rounded-lg border border-active/30 bg-active/5 px-3 py-2"
+                : "rounded-lg border border-warning/30 bg-warning/5 px-3 py-2"
+            }
+          >
+            <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+              Currently active
             </p>
-            <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
-              {selectedBundle.CurrentZone ?? "Unknown zone"}
-              {selectedBundle.MillOrder1
-                ? ` · Current MO ${selectedBundle.MillOrder1}`
-                : " · No order assigned"}
+            <p className="mt-0.5 text-sm font-semibold text-foreground">
+              {activeMillOrder ?? "No global selection"}
             </p>
+            {activeUpdatedAt && (
+              <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
+                Updated {activeUpdatedAt}
+              </p>
+            )}
           </div>
 
-          {!canReadOrders ? (
-            <p className="text-xs text-warning-fg">
-              This API build does not advertise the QMOS Mill Order catalog.
-            </p>
-          ) : loadStatus === "error" ? (
-            <p className="flex items-start gap-1.5 text-xs text-error-fg" role="alert">
-              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              {loadError}
-            </p>
-          ) : (
-            <label className="flex flex-col gap-1.5 text-xs font-medium text-foreground">
-              Mill Order
-              <select
-                className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
-                value={selectedMillOrder}
-                onChange={(event) => {
-                  setSelectedMillOrder(event.target.value)
-                  setSubmission(INITIAL_SUBMISSION)
-                }}
-                disabled={loadStatus !== "ready" || submitting}
-              >
-                <option value="">
-                  {loadStatus === "loading"
-                    ? "Loading QMOS orders..."
-                    : loadStatus === "ready" && orders.length === 0
-                      ? "No QMOS orders available"
-                      : "Select an order"}
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-foreground">
+            Select global Mill Order
+            <select
+              className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+              value={selectedMillOrder}
+              onChange={(event) => {
+                setSelectedMillOrder(event.target.value)
+                setUpdateStatus("idle")
+                setUpdateMessage(null)
+              }}
+              disabled={updating}
+            >
+              <option value="">Select an order</option>
+              {activeOrderMissingFromCatalog && activeMillOrder && (
+                <option value={activeMillOrder}>{activeMillOrder} · Current active order</option>
+              )}
+              {orders.map((order) => (
+                <option key={order.FrpId} value={order.MillOrder}>
+                  {orderLabel(order)}
                 </option>
-                {orders.map((order) => (
-                  <option key={order.FrpId} value={order.MillOrder}>
-                    {orderLabel(order)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          {!canCorrectBundle && (
-            <p className="text-xs text-warning-fg">
-              This API build does not advertise manual bundle corrections.
-            </p>
-          )}
+              ))}
+            </select>
+          </label>
 
           {selectedOrder && (
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-[0.6875rem]">
@@ -373,48 +303,43 @@ export function MillOrderSelectionPanel({
             </dl>
           )}
 
-          <label className="flex flex-col gap-1.5 text-xs font-medium text-foreground">
-            Operator ID
-            <Input
-              value={operatorId}
-              onChange={(event) => setOperatorId(event.target.value)}
-              placeholder="Operator name or ID"
-              autoComplete="username"
-              disabled={submitting}
-              maxLength={128}
-            />
-          </label>
+          {!canUpdateActiveOrder && (
+            <p className="flex items-start gap-1.5 text-xs text-warning-fg" role="status">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              This Tracking build does not advertise permission to change the global order.
+            </p>
+          )}
 
-          <Button type="submit" className="w-full" disabled={!readyToSubmit}>
-            {submitting && <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden />}
-            {submission.status === "verifying" ? "Verifying selection" : "Assign order"}
+          <Button type="submit" className="w-full" disabled={!readyToUpdate}>
+            {updating && <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden />}
+            {updating ? "Saving active order" : "Set active order"}
           </Button>
 
-          {submission.message && (
+          {updateMessage && (
             <p
               className={
-                submission.status === "success"
+                updateStatus === "success"
                   ? "flex items-start gap-1.5 text-xs text-active-fg"
-                  : submission.status === "error"
+                  : updateStatus === "error"
                     ? "flex items-start gap-1.5 text-xs text-error-fg"
                     : "text-xs text-muted-foreground"
               }
-              role={submission.status === "error" ? "alert" : "status"}
+              role={updateStatus === "error" ? "alert" : "status"}
             >
-              {submission.status === "success" && (
+              {updateStatus === "success" && (
                 <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               )}
-              {submission.status === "error" && (
+              {updateStatus === "error" && (
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               )}
-              {submission.message}
+              {updateMessage}
             </p>
           )}
         </form>
       )}
 
       <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-        Selections are submitted as audited manual corrections and verified against the live tracking state.
+        Applies to subsequent QMOS CREATE operations. Existing bundles are not changed.
       </p>
     </section>
   )

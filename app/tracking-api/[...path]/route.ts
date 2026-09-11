@@ -1,11 +1,18 @@
-import type { TrackingCorrectionRequestDto } from "@/lib/tracking-api/types"
-import { isTrackingCorrectionRequestDto } from "@/lib/tracking-api/validation"
+import type {
+  GlobalMillOrderUpdateRequestDto,
+  TrackingCorrectionRequestDto,
+} from "@/lib/tracking-api/types"
+import {
+  isGlobalMillOrderUpdateRequestDto,
+  isTrackingCorrectionRequestDto,
+} from "@/lib/tracking-api/validation"
 
 const STATIC_READ_ENDPOINTS = new Set([
   "/api/tracking/status",
   "/api/tracking/capabilities",
   "/api/tracking/map",
   "/api/tracking/state",
+  "/api/tracking/mill-order",
   "/api/tracking/opc",
   "/api/tracking/events/recent",
   "/api/qmos/status",
@@ -13,6 +20,7 @@ const STATIC_READ_ENDPOINTS = new Set([
 ])
 
 const TRACKING_CORRECTION_ENDPOINT = "/api/tracking/correct"
+const GLOBAL_MILL_ORDER_ENDPOINT = "/api/tracking/mill-order"
 const QMOS_MILL_ORDERS_ENDPOINT = "/api/qmos/mill-orders"
 const DEFAULT_QMOS_MILL_ORDERS = 20
 const MAX_QMOS_MILL_ORDERS = 100
@@ -174,6 +182,71 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   try {
     const upstream = await fetch(upstreamUrl, {
       method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(sanitizedBody),
+      signal: request.signal,
+    })
+    const responseBody = await upstream.arrayBuffer()
+
+    return new Response(responseBody, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
+      },
+    })
+  } catch {
+    return jsonError(502, "The tracking service could not be reached by the frontend server.")
+  }
+}
+
+export async function PUT(request: Request, context: RouteContext): Promise<Response> {
+  const { path } = await context.params
+  const decodedPath = "/" + path.join("/")
+
+  if (decodedPath !== GLOBAL_MILL_ORDER_ENDPOINT) {
+    return jsonError(404, "Tracking API endpoint not found.")
+  }
+
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase()
+  if (contentType !== "application/json") {
+    return jsonError(415, "Content-Type must be application/json.")
+  }
+
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return jsonError(400, "A valid JSON request body is required.")
+  }
+
+  if (!isGlobalMillOrderUpdateRequestDto(body)) {
+    return jsonError(400, "millOrder must be a non-empty string of at most 32 characters.")
+  }
+
+  const sanitizedBody: GlobalMillOrderUpdateRequestDto = {
+    millOrder: body.millOrder.trim(),
+  }
+
+  let proxyTarget: URL
+  try {
+    proxyTarget = getProxyTarget()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Tracking API proxy is not configured."
+    return jsonError(503, message)
+  }
+
+  const encodedPath = path.map((segment) => encodeURIComponent(segment)).join("/")
+  const upstreamUrl = new URL(encodedPath, proxyTarget)
+
+  try {
+    const upstream = await fetch(upstreamUrl, {
+      method: "PUT",
       cache: "no-store",
       headers: {
         Accept: "application/json",

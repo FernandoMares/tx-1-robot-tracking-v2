@@ -1,4 +1,7 @@
 import type {
+  GlobalMillOrderDto,
+  GlobalMillOrderUpdateRequestDto,
+  GlobalMillOrderUpdateResponseDto,
   OpcStatusDto,
   QmosMillOrderDto,
   QmosMillOrdersDto,
@@ -306,6 +309,38 @@ export function isQmosMillOrdersResponseDto(
   return Array.isArray(value)
     ? value.every(isQmosMillOrderDto)
     : isQmosMillOrdersDto(value)
+}
+
+export function isGlobalMillOrderDto(value: unknown): value is GlobalMillOrderDto {
+  return (
+    isObject(value) &&
+    isNullableString(value.millOrder) &&
+    typeof value.enabled === "boolean" &&
+    isNullableString(value.updatedUtc)
+  )
+}
+
+export function isGlobalMillOrderUpdateRequestDto(
+  value: unknown,
+): value is GlobalMillOrderUpdateRequestDto {
+  return (
+    isObject(value) &&
+    isNonEmptyString(value.millOrder) &&
+    value.millOrder.trim().length <= 32
+  )
+}
+
+export function isGlobalMillOrderUpdateResponseDto(
+  value: unknown,
+): value is GlobalMillOrderUpdateResponseDto {
+  return (
+    isObject(value) &&
+    typeof value.updated === "boolean" &&
+    isNonEmptyString(value.millOrder) &&
+    typeof value.enabled === "boolean" &&
+    isNonEmptyString(value.updatedUtc) &&
+    typeof value.appliesTo === "string"
+  )
 }
 
 export function isTrackingCorrectionRequestDto(

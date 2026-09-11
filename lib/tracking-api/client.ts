@@ -1,5 +1,8 @@
 import type {
   ApiErrorResponseDto,
+  GlobalMillOrderDto,
+  GlobalMillOrderUpdateRequestDto,
+  GlobalMillOrderUpdateResponseDto,
   OpcStatusDto,
   QmosMillOrdersDto,
   QmosMillOrdersResponseDto,
@@ -14,6 +17,9 @@ import type {
   TrackingStatusDto,
 } from "./types"
 import {
+  isGlobalMillOrderDto,
+  isGlobalMillOrderUpdateRequestDto,
+  isGlobalMillOrderUpdateResponseDto,
   isOpcStatusDto,
   isQmosMillOrdersResponseDto,
   isQmosStatusDto,
@@ -126,7 +132,7 @@ export class TrackingApiClient {
   }
 
   private async request<T>(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT",
     path: string,
     validate: (value: unknown) => value is T,
     externalSignal?: AbortSignal,
@@ -154,14 +160,14 @@ export class TrackingApiClient {
     }
     const requestHeaders = new Headers(this.headers)
     if (!requestHeaders.has("Accept")) requestHeaders.set("Accept", "application/json")
-    if (method === "POST") {
+    if (method === "POST" || method === "PUT") {
       requestHeaders.set("Content-Type", "application/json")
     }
 
     try {
       const response = await this.fetchImpl(url, {
         method,
-        body: method === "POST" ? JSON.stringify(requestBody) : undefined,
+        body: method === "POST" || method === "PUT" ? JSON.stringify(requestBody) : undefined,
         cache: "no-store",
         credentials: "omit",
         headers: requestHeaders,
@@ -240,6 +246,15 @@ export class TrackingApiClient {
     return this.request("POST", path, validate, externalSignal, body)
   }
 
+  private put<T>(
+    path: string,
+    body: unknown,
+    validate: (value: unknown) => value is T,
+    externalSignal?: AbortSignal,
+  ): Promise<T> {
+    return this.request("PUT", path, validate, externalSignal, body)
+  }
+
   getStatus(signal?: AbortSignal): Promise<TrackingStatusDto> {
     return this.get("/api/tracking/status", isTrackingStatusDto, signal)
   }
@@ -288,6 +303,26 @@ export class TrackingApiClient {
     return Array.isArray(response)
       ? { value: response, Count: response.length }
       : response
+  }
+
+  getGlobalMillOrder(signal?: AbortSignal): Promise<GlobalMillOrderDto> {
+    return this.get("/api/tracking/mill-order", isGlobalMillOrderDto, signal)
+  }
+
+  updateGlobalMillOrder(
+    request: GlobalMillOrderUpdateRequestDto,
+    signal?: AbortSignal,
+  ): Promise<GlobalMillOrderUpdateResponseDto> {
+    if (!isGlobalMillOrderUpdateRequestDto(request)) {
+      throw new Error("A global Mill Order is required and must not exceed 32 characters")
+    }
+
+    return this.put(
+      "/api/tracking/mill-order",
+      { millOrder: request.millOrder.trim() },
+      isGlobalMillOrderUpdateResponseDto,
+      signal,
+    )
   }
 
   correctBundle(
