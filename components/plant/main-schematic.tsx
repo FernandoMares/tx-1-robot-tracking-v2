@@ -1,9 +1,11 @@
 "use client"
 
-import type { ReactNode } from "react"
-import { ArrowDown, ArrowRight, ArrowUp, Bot, Scale, Tags } from "lucide-react"
+import type { CSSProperties, ReactNode } from "react"
+import { ArrowDown, ArrowRight, Scale } from "lucide-react"
 
+import { RobotCard } from "@/components/plant/robot-card"
 import { TrackingZoneSlot } from "@/components/plant/tracking-zone-slot"
+import { ROBOT_2_UNKNOWN } from "@/lib/mock-data"
 import type { BundlesByZone, TrackingZoneName } from "@/lib/tracking-zone-layout"
 import { cn } from "@/lib/utils"
 
@@ -14,36 +16,16 @@ interface MainSchematicProps {
 }
 
 const STACKER_SOURCES = ["ERT1A", "ERT1B", "ERT2C", "ERT2D"] as const
-const BAY_2_LANE_A = ["SGRT1A", "LCH1A", "CCH1A", "SGRT2A", "LCH2A", "CCH2A"] as const
-const BAY_2_LANE_B = ["SGRT1B", "LCH1B", "CCH1B", "SGRT2B", "LCH2B", "CCH2B"] as const
-const BUNDLER_SOURCES = ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD"] as const
-
-function Area({
-  label,
-  description,
-  className,
-  children,
-}: {
-  label: string
-  description: string
-  className: string
-  children: ReactNode
-}) {
-  return (
-    <section className={cn("absolute rounded-lg border border-slate-300 bg-slate-50/80 p-4", className)}>
-      <header className="mb-3 flex flex-row-reverse items-start justify-between gap-4 border-b border-slate-200 pb-2">
-        <div className="text-right">
-          <h3 className="text-xs font-bold tracking-[0.08em] text-slate-800 uppercase">{label}</h3>
-          <p className="mt-0.5 text-[10px] text-slate-500">{description}</p>
-        </div>
-        <span className="rounded bg-slate-700 px-2 py-1 text-[9px] font-bold tracking-wide text-white uppercase">
-          Exit tracking
-        </span>
-      </header>
-      {children}
-    </section>
-  )
-}
+const STACKER_TRANSFERS = ["STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"] as const
+const BUNDLER_OUTPUTS = ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD"] as const
+const UPPER_TRACKING_COLUMNS = [
+  ["SGRT1A", "LCH1A", "CCH1A"],
+  ["SGRT1B", "LCH1B", "CCH1B"],
+] as const
+const LOWER_TRACKING_COLUMNS = [
+  ["SGRT2A", "LCH2A", "CCH2A"],
+  ["SGRT2B", "LCH2B", "CCH2B"],
+] as const
 
 function Zone({
   name,
@@ -62,74 +44,171 @@ function Zone({
       bundles={bundlesByZone[name]}
       compact
       hasSnapshot={hasSnapshot}
-      className={cn("w-[6.75rem] shrink-0", className)}
+      className={cn("w-[4.5rem] shrink-0", className)}
     />
   )
 }
 
-function InlineArrow({ running }: { running: boolean }) {
+function ScaleContext() {
   return (
-    <ArrowRight
-      className={cn("size-4 shrink-0 self-center text-slate-700", running && "animate-soft-pulse")}
+    <aside
+      className="flex h-[4.25rem] w-16 shrink-0 flex-col items-center justify-center rounded-sm border border-dashed border-slate-400 bg-slate-50 px-1 text-center shadow-sm"
+      aria-label="Scale Weight Station, physical equipment context, not an API tracking zone"
+      title="Physical equipment context; not an API tracking zone"
+    >
+      <Scale className="mb-1 size-4 text-slate-600" aria-hidden />
+      <strong className="text-[7px] leading-[9px] tracking-wide text-slate-700 uppercase">
+        Scale weight station
+      </strong>
+    </aside>
+  )
+}
+
+function FlowArrow({
+  running,
+  direction = "right",
+  className,
+  style,
+}: {
+  running: boolean
+  direction?: "right" | "down"
+  className?: string
+  style?: CSSProperties
+}) {
+  const Icon = direction === "down" ? ArrowDown : ArrowRight
+
+  return (
+    <Icon
+      className={cn(
+        "size-4 shrink-0 self-center text-slate-600",
+        running && "animate-soft-pulse",
+        className,
+      )}
+      style={style}
       strokeWidth={3}
       aria-hidden
     />
   )
 }
 
-function ZoneSequence({
+function HorizontalSequence({
   zones,
   bundlesByZone,
   hasSnapshot,
   running,
-  slotClassName,
 }: {
   zones: readonly TrackingZoneName[]
   bundlesByZone: BundlesByZone
   hasSnapshot: boolean
   running: boolean
-  slotClassName?: string
 }) {
   return (
     <div className="flex items-stretch gap-1.5">
       {zones.map((zone, index) => (
         <div key={zone} className="contents">
-          <Zone
-            name={zone}
-            bundlesByZone={bundlesByZone}
-            hasSnapshot={hasSnapshot}
-            className={slotClassName}
-          />
-          {index < zones.length - 1 && <InlineArrow running={running} />}
+          <Zone name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          {index < zones.length - 1 && <FlowArrow running={running} />}
         </div>
       ))}
     </div>
   )
 }
 
-function EquipmentNote({
-  icon: Icon,
-  label,
-  note,
+function VerticalSequence({
+  zones,
+  bundlesByZone,
+  hasSnapshot,
+  running,
 }: {
-  icon: typeof Bot
-  label: string
-  note: string
+  zones: readonly TrackingZoneName[]
+  bundlesByZone: BundlesByZone
+  hasSnapshot: boolean
+  running: boolean
 }) {
   return (
-    <div className="flex flex-row-reverse items-center gap-2 rounded-md border border-dashed border-slate-300 bg-white/80 px-3 py-2 text-right">
-      <Icon className="size-4 shrink-0 text-slate-500" aria-hidden />
-      <div>
-        <p className="text-[10px] font-bold text-slate-700 uppercase">{label}</p>
-        <p className="text-[9px] text-slate-500">{note}</p>
-      </div>
+    <div className="flex flex-col items-center gap-1">
+      {zones.map((zone, index) => (
+        <div key={zone} className="contents">
+          <Zone name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          {index < zones.length - 1 && <FlowArrow running={running} direction="down" className="size-3.5" />}
+        </div>
+      ))}
     </div>
   )
 }
 
+function VerticalSection({
+  label,
+  columns,
+  bundlesByZone,
+  hasSnapshot,
+  running,
+  className,
+  style,
+}: {
+  label: string
+  columns: readonly (readonly TrackingZoneName[])[]
+  bundlesByZone: BundlesByZone
+  hasSnapshot: boolean
+  running: boolean
+  className?: string
+  style?: CSSProperties
+}) {
+  return (
+    <section className={cn("absolute", className)} style={style} aria-label={label}>
+      <p className="mb-2 text-center text-[9px] font-bold tracking-[0.08em] text-slate-500 uppercase">
+        {label}
+      </p>
+      <div className="flex gap-2">
+        {columns.map((zones) => (
+          <VerticalSequence
+            key={zones[0]}
+            zones={zones}
+            bundlesByZone={bundlesByZone}
+            hasSnapshot={hasSnapshot}
+            running={running}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function MachineOutline({
+  label,
+  detail,
+  className,
+  style,
+  children,
+}: {
+  label: string
+  detail: string
+  className?: string
+  style?: CSSProperties
+  children: ReactNode
+}) {
+  return (
+    <section
+      className={cn(
+        "absolute rounded-lg border border-emerald-300 bg-emerald-50/25 shadow-sm",
+        className,
+      )}
+      style={style}
+    >
+      {children}
+      <div className="absolute inset-x-4 bottom-10 text-center">
+        <p className="text-sm font-semibold text-slate-700">{label}</p>
+        <p className="mt-1 text-[10px] text-slate-500">{detail}</p>
+      </div>
+    </section>
+  )
+}
+
 /**
- * Physical overview from Exit Tracking Layout. API zones are discrete slots;
- * arrows describe the approved route but never infer movement between polls.
+ * Mirrored physical overview from Tracking Sections Overview. The mirror keeps
+ * the approved left-to-right HMI flow while preserving the source document's
+ * row/column relationships. API zones remain discrete slots and no position is
+ * inferred from the visual order.
  */
 export function MainSchematic({
   animationRunning,
@@ -139,185 +218,154 @@ export function MainSchematic({
   return (
     <div
       className="relative shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
-      style={{ width: 1680, height: 1050 }}
+      style={{ width: 1480, height: 760 }}
       role="group"
-      aria-label="Exit Tracking physical overview with 33 API tracking zones"
+      aria-label="Mirrored Exit Tracking physical overview with 33 API tracking zones"
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-zone via-cell-fill to-zone" aria-hidden />
 
-      <div className="absolute top-5 right-6 flex flex-row-reverse items-center gap-2 text-[10px] font-semibold tracking-wide text-slate-500 uppercase">
-        <ArrowRight className={cn("size-4", animationRunning && "animate-soft-pulse")} aria-hidden />
+      <div className="absolute top-5 right-6 flex items-center gap-2 text-[10px] font-semibold tracking-wide text-slate-500 uppercase">
         Principal material flow
+        <FlowArrow running={animationRunning} />
       </div>
 
-      <Area
-        label="Bay 1"
-        description="Manual destination branch from the STK line"
-        className="top-12 right-8 h-[15rem] w-[34rem]"
+      <p className="absolute top-5 left-7 text-xs font-bold tracking-[0.12em] text-slate-700 uppercase">
+        Tracking sections overview
+      </p>
+
+      <MachineOutline
+        label="STK Stackers"
+        detail="Four source sections feeding the shared transfer route"
+        style={{ left: 28, top: 120, width: 340, height: 228 }}
       >
-        <div className="flex h-[9.5rem] items-center justify-between gap-4">
-          <div className="flex gap-2">
-            {(["NCCT1", "NCCT2"] as const).map((zone) => (
-              <Zone
-                key={zone}
-                name={zone}
-                bundlesByZone={bundlesByZone}
-                hasSnapshot={hasSnapshot}
-                className="w-[7.5rem]"
-              />
-            ))}
-          </div>
-          <ArrowRight className={cn("size-7 shrink-0 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
-          <EquipmentNote icon={Scale} label="Scale / manual station" note="Equipment context; not an API zone" />
-        </div>
-      </Area>
-
-      <Area
-        label="Stackers"
-        description="Stacker exits and shared transfer route"
-        className="top-12 left-8 h-[22rem] w-[64rem]"
-      >
-        <div className="flex items-end justify-start gap-3">
-          <div className="flex gap-2">
-            {STACKER_SOURCES.map((zone) => (
-              <Zone
-                key={zone}
-                name={zone}
-                bundlesByZone={bundlesByZone}
-                hasSnapshot={hasSnapshot}
-                className="w-[7.75rem]"
-              />
-            ))}
-          </div>
-          <span className="mb-6 text-[9px] font-semibold tracking-wide text-slate-500 uppercase">Four source sections</span>
-        </div>
-
-        <div className="relative mt-4 flex items-center justify-start gap-2">
-          <ArrowDown
-            className={cn("mb-14 mr-1 size-7 shrink-0 text-slate-700", animationRunning && "animate-soft-pulse")}
-            aria-label="Stacker sources merge into STRT1"
-          />
-          <ZoneSequence
-            zones={["STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"]}
-            bundlesByZone={bundlesByZone}
-            hasSnapshot={hasSnapshot}
-            running={animationRunning}
-          />
-          <InlineArrow running={animationRunning} />
-          <div className="grid w-[7.25rem] gap-2">
-            {(["SGRT1", "SGRT2"] as const).map((zone) => (
-              <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-            ))}
-          </div>
-        </div>
-      </Area>
-
-      <div className="absolute top-[17.5rem] right-[35.75rem] flex w-[4.5rem] flex-col items-center gap-1 text-center text-[9px] font-semibold text-slate-500">
-        STK branch
-        <ArrowUp className={cn("size-7 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
-      </div>
-
-      <div className="absolute top-[24.5rem] right-[44rem] flex items-center gap-2 text-[9px] font-semibold text-slate-500">
-        STK to Bay 2
-        <ArrowDown className={cn("size-7 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
-      </div>
-
-      <Area
-        label="Bay 2"
-        description="Two parallel A/B lanes; BUND joins the second tracking section"
-        className="right-8 bottom-8 h-[35rem] w-[70rem]"
-      >
-        <div className="absolute top-[5.25rem] left-4 flex flex-row-reverse items-center gap-2">
-          <ArrowRight className={cn("size-6 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
-          <Zone
-            name="IMRT1"
-            bundlesByZone={bundlesByZone}
-            hasSnapshot={hasSnapshot}
-            className="w-[7.5rem]"
-          />
-        </div>
-
-        <div className="absolute top-[9rem] right-4 flex flex-row-reverse items-center gap-3">
-          <div className="flex h-[10.75rem] w-[8rem] flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-center">
-            <Bot className="size-8 text-slate-500" aria-hidden />
-            <strong className="mt-2 text-[10px] tracking-wide text-slate-700 uppercase">Robot 2</strong>
-            <span className="mt-1 text-[9px] text-slate-500">Status unavailable</span>
-          </div>
-          <ArrowRight className={cn("size-7 shrink-0 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
-          <div className="space-y-4 text-right">
-            <div>
-              <p className="mb-1 text-[9px] font-bold tracking-wide text-slate-500 uppercase">Lane A · STK route</p>
-              <ZoneSequence
-                zones={BAY_2_LANE_A}
-                bundlesByZone={bundlesByZone}
-                hasSnapshot={hasSnapshot}
-                running={animationRunning}
-                slotClassName="w-[6.25rem]"
-              />
-            </div>
-            <div>
-              <p className="mb-1 text-[9px] font-bold tracking-wide text-slate-500 uppercase">Lane B · STK route</p>
-              <ZoneSequence
-                zones={BAY_2_LANE_B}
-                bundlesByZone={bundlesByZone}
-                hasSnapshot={hasSnapshot}
-                running={animationRunning}
-                slotClassName="w-[6.25rem]"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="absolute right-[12rem] bottom-5 left-4 flex flex-row-reverse items-center gap-4 [&>div]:flex-1">
-          <EquipmentNote icon={Tags} label="Bay 2 robot tagging" note="Physical equipment · destination B2R" />
-          <ArrowRight className={cn("size-6 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
-          <EquipmentNote icon={Scale} label="Bay 2 scale / manual" note="Physical equipment · destinations B2M/B2P" />
-        </div>
-
-        <div className="absolute bottom-[5.75rem] left-[22rem] flex items-center gap-2 text-[9px] font-semibold text-slate-500">
-          <ArrowUp className={cn("size-6 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
-          BUND joins at SGRT2A/B
-        </div>
-      </Area>
-
-      <Area
-        label="Bundler"
-        description="Four bundler outputs feeding Bay 2"
-        className="bottom-8 left-8 h-[29rem] w-[30rem]"
-      >
-        <EquipmentNote icon={Tags} label="BUND banders · LMD 1–4" note="Machine context; not tracking zones" />
-
-        <p className="mt-5 mb-1 text-[9px] font-bold tracking-wide text-slate-500 uppercase">Bundler output sections</p>
-        <div className="flex gap-2">
-          {BUNDLER_SOURCES.map((zone) => (
-            <Zone
-              key={zone}
-              name={zone}
-              bundlesByZone={bundlesByZone}
-              hasSnapshot={hasSnapshot}
-              className="w-[6.5rem]"
-            />
+        <div className="absolute top-3 left-3 flex gap-2">
+          {STACKER_SOURCES.map((zone) => (
+            <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           ))}
         </div>
+      </MachineOutline>
 
-        <div className="mt-8 flex items-center justify-center">
-          <ZoneSequence
-            zones={["RTTY1", "RTTY2", "IMRT2"]}
-            bundlesByZone={bundlesByZone}
-            hasSnapshot={hasSnapshot}
-            running={animationRunning}
-            slotClassName="w-[7.25rem]"
-          />
-        </div>
+      <div className="absolute" style={{ left: 376, top: 132 }}>
+        <FlowArrow running={animationRunning} className="size-6" />
+      </div>
 
-        <p className="mt-7 text-center text-[9px] font-medium text-slate-500">
-          IMRT2 continues right into the second Bay 2 section.
+      <div className="absolute" style={{ left: 400, top: 132 }}>
+        <HorizontalSequence
+          zones={STACKER_TRANSFERS}
+          bundlesByZone={bundlesByZone}
+          hasSnapshot={hasSnapshot}
+          running={animationRunning}
+        />
+      </div>
+
+      <div className="absolute" style={{ left: 880, top: 132 }}>
+        <FlowArrow running={animationRunning} className="size-6" />
+      </div>
+
+      <section
+        className="absolute"
+        style={{ left: 912, top: 44 }}
+        aria-label="NCCT zones above SGRT zones with the Scale Weight Station between SGRT1 and SGRT2"
+      >
+        <p className="mb-2 text-center text-[9px] font-bold tracking-[0.08em] text-slate-500 uppercase">
+          NCCT above SGRT · physical scale context
         </p>
-      </Area>
+        <div className="grid gap-x-2 gap-y-5" style={{ gridTemplateColumns: "72px 64px 72px" }}>
+          <Zone name="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          <span aria-hidden />
+          <Zone name="NCCT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          <Zone name="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          <ScaleContext />
+          <Zone name="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+        </div>
+        <FlowArrow
+          running={animationRunning}
+          direction="down"
+          className="absolute size-3.5"
+          style={{ left: 29, top: 86 }}
+        />
+        <FlowArrow
+          running={animationRunning}
+          direction="down"
+          className="absolute size-3.5"
+          style={{ left: 181, top: 86 }}
+        />
+      </section>
 
-      <div className="absolute bottom-[8.5rem] left-[30rem] flex items-center gap-2 text-[9px] font-semibold text-slate-500">
-        BUND to Bay 2
-        <ArrowRight className={cn("size-7 text-slate-700", animationRunning && "animate-soft-pulse")} aria-hidden />
+      <div className="absolute" style={{ left: 1144, top: 132 }}>
+        <FlowArrow running={animationRunning} className="size-6" />
+      </div>
+
+      <div className="absolute" style={{ left: 1168, top: 132 }}>
+        <Zone name="IMRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+      </div>
+
+      <div className="absolute" style={{ left: 1244, top: 132 }}>
+        <FlowArrow running={animationRunning} className="size-6" />
+      </div>
+
+      <VerticalSection
+        label="First tracking section"
+        columns={UPPER_TRACKING_COLUMNS}
+        bundlesByZone={bundlesByZone}
+        hasSnapshot={hasSnapshot}
+        running={animationRunning}
+        style={{ left: 1280, top: 92 }}
+      />
+
+      <MachineOutline
+        label="BUND Bundler"
+        detail="Four bundler outputs feeding the second tracking section"
+        style={{ left: 384, top: 456, width: 340, height: 228 }}
+      >
+        <div className="absolute top-3 left-3 flex gap-2">
+          {BUNDLER_OUTPUTS.map((zone) => (
+            <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          ))}
+        </div>
+      </MachineOutline>
+
+      <div className="absolute" style={{ left: 728, top: 468 }}>
+        <FlowArrow running={animationRunning} className="size-6" />
+      </div>
+
+      <div className="absolute" style={{ left: 752, top: 468 }}>
+        <HorizontalSequence
+          zones={["RTTY1", "RTTY2", "IMRT2"]}
+          bundlesByZone={bundlesByZone}
+          hasSnapshot={hasSnapshot}
+          running={animationRunning}
+        />
+      </div>
+
+      <div className="absolute" style={{ left: 1032, top: 468 }}>
+        <FlowArrow running={animationRunning} className="size-6" />
+      </div>
+
+      <VerticalSection
+        label="Second tracking section"
+        columns={LOWER_TRACKING_COLUMNS}
+        bundlesByZone={bundlesByZone}
+        hasSnapshot={hasSnapshot}
+        running={animationRunning}
+        style={{ left: 1072, top: 428 }}
+      />
+
+      <div className="absolute" style={{ left: 1228, top: 644 }}>
+        <FlowArrow running={animationRunning} className="size-6" />
+      </div>
+
+      <aside
+        className="absolute"
+        style={{ left: 1256, top: 568 }}
+        aria-label="Robot 2 physical equipment context"
+      >
+        <RobotCard robot={ROBOT_2_UNKNOWN} className="h-40 w-[6.75rem] bg-white/95 p-2" />
+      </aside>
+
+      <div className="absolute bottom-5 left-7 max-w-[35rem] rounded-md border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2 text-[10px] text-slate-500">
+        Layout mirrors the approved Tracking Sections Overview for left-to-right reading. Zone occupancy comes only
+        from the tracking API.
       </div>
     </div>
   )
