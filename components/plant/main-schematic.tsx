@@ -23,8 +23,8 @@ const UPPER_TRACKING_COLUMNS = [
   ["CCH1B", "LCH1B", "SGRT1B"],
 ] as const
 const LOWER_TRACKING_COLUMNS = [
-  ["SGRT2A", "LCH2A", "CCH2A"],
-  ["SGRT2B", "LCH2B", "CCH2B"],
+  ["CCH2A", "LCH2A", "SGRT2A"],
+  ["CCH2B", "LCH2B", "SGRT2B"],
 ] as const
 
 function Zone({
@@ -360,7 +360,17 @@ export function MainSchematic({
         />
       </div>
 
-      <div className="absolute" style={{ left: 1032, top: 116 }}>
+      <div
+        className="absolute border-t-2 border-r-2 border-slate-400"
+        style={{ left: 1024, top: 151, width: 24, height: 165 }}
+        aria-hidden
+      />
+
+      <div className="absolute" style={{ left: 1041, top: 230 }}>
+        <FlowArrow running={animationRunning} direction="down" className="size-3.5" />
+      </div>
+
+      <div className="absolute" style={{ left: 1048, top: 304 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
@@ -370,16 +380,17 @@ export function MainSchematic({
         bundlesByZone={bundlesByZone}
         hasSnapshot={hasSnapshot}
         running={animationRunning}
+        direction="up"
         style={{ left: 1072, top: 76 }}
       />
 
-      <div className="absolute" style={{ left: 1228, top: 292 }}>
+      <div className="absolute" style={{ left: 1228, top: 121 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
       <aside
         className="absolute"
-        style={{ left: 1256, top: 216 }}
+        style={{ left: 1256, top: 52 }}
         aria-label="Robot 2 physical equipment context"
       >
         <RobotCard robot={ROBOT_2_UNKNOWN} className="h-40 w-[6.75rem] bg-white/95 p-2" />
