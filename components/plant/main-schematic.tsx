@@ -1,7 +1,7 @@
 "use client"
 
 import type { CSSProperties, ReactNode } from "react"
-import { ArrowDown, ArrowRight, Scale } from "lucide-react"
+import { ArrowDown, ArrowRight, ArrowUp, Scale } from "lucide-react"
 
 import { RobotCard } from "@/components/plant/robot-card"
 import { TrackingZoneSlot } from "@/components/plant/tracking-zone-slot"
@@ -19,8 +19,8 @@ const STACKER_SOURCES = ["ERT1A", "ERT1B", "ERT2C", "ERT2D"] as const
 const STACKER_TRANSFERS = ["STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"] as const
 const BUNDLER_OUTPUTS = ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD"] as const
 const UPPER_TRACKING_COLUMNS = [
-  ["SGRT1A", "LCH1A", "CCH1A"],
-  ["SGRT1B", "LCH1B", "CCH1B"],
+  ["CCH1A", "LCH1A", "SGRT1A"],
+  ["CCH1B", "LCH1B", "SGRT1B"],
 ] as const
 const LOWER_TRACKING_COLUMNS = [
   ["SGRT2A", "LCH2A", "CCH2A"],
@@ -52,12 +52,13 @@ function Zone({
 function ScaleContext() {
   return (
     <aside
-      className="flex h-[4.25rem] w-16 shrink-0 flex-col items-center justify-center rounded-sm border border-dashed border-slate-400 bg-slate-50 px-1 text-center shadow-sm"
+      className="flex h-[4.25rem] items-center justify-center gap-2 rounded-sm border border-dashed border-slate-400 bg-slate-50 px-2 text-center shadow-sm"
+      style={{ gridColumn: "1 / -1" }}
       aria-label="Scale Weight Station, physical equipment context, not an API tracking zone"
       title="Physical equipment context; not an API tracking zone"
     >
-      <Scale className="mb-1 size-4 text-slate-600" aria-hidden />
-      <strong className="text-[7px] leading-[9px] tracking-wide text-slate-700 uppercase">
+      <Scale className="size-5 shrink-0 text-slate-600" aria-hidden />
+      <strong className="text-[9px] leading-3 tracking-wide text-slate-700 uppercase">
         Scale weight station
       </strong>
     </aside>
@@ -71,11 +72,11 @@ function FlowArrow({
   style,
 }: {
   running: boolean
-  direction?: "right" | "down"
+  direction?: "right" | "down" | "up"
   className?: string
   style?: CSSProperties
 }) {
-  const Icon = direction === "down" ? ArrowDown : ArrowRight
+  const Icon = direction === "up" ? ArrowUp : direction === "down" ? ArrowDown : ArrowRight
 
   return (
     <Icon
@@ -119,18 +120,20 @@ function VerticalSequence({
   bundlesByZone,
   hasSnapshot,
   running,
+  direction,
 }: {
   zones: readonly TrackingZoneName[]
   bundlesByZone: BundlesByZone
   hasSnapshot: boolean
   running: boolean
+  direction: "up" | "down"
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
       {zones.map((zone, index) => (
         <div key={zone} className="contents">
           <Zone name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          {index < zones.length - 1 && <FlowArrow running={running} direction="down" className="size-3.5" />}
+          {index < zones.length - 1 && <FlowArrow running={running} direction={direction} className="size-3.5" />}
         </div>
       ))}
     </div>
@@ -143,6 +146,7 @@ function VerticalSection({
   bundlesByZone,
   hasSnapshot,
   running,
+  direction = "down",
   className,
   style,
 }: {
@@ -151,6 +155,7 @@ function VerticalSection({
   bundlesByZone: BundlesByZone
   hasSnapshot: boolean
   running: boolean
+  direction?: "up" | "down"
   className?: string
   style?: CSSProperties
 }) {
@@ -167,6 +172,7 @@ function VerticalSection({
             bundlesByZone={bundlesByZone}
             hasSnapshot={hasSnapshot}
             running={running}
+            direction={direction}
           />
         ))}
       </div>
@@ -258,49 +264,64 @@ export function MainSchematic({
         />
       </div>
 
-      <div className="absolute" style={{ left: 880, top: 132 }}>
+      <div className="absolute" style={{ left: 880, top: 160 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
       <section
         className="absolute"
         style={{ left: 912, top: 44 }}
-        aria-label="NCCT zones above SGRT zones with the Scale Weight Station between SGRT1 and SGRT2"
+        aria-label="Scale Weight Station above SGRT1 and SGRT2, with NCCT1 and NCCT2 below"
       >
         <p className="mb-2 text-center text-[9px] font-bold tracking-[0.08em] text-slate-500 uppercase">
-          NCCT above SGRT · physical scale context
+          Physical scale · SGRT above NCCT
         </p>
-        <div className="grid gap-x-2 gap-y-5" style={{ gridTemplateColumns: "72px 64px 72px" }}>
-          <Zone name="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          <span aria-hidden />
-          <Zone name="NCCT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          <Zone name="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+        <div className="grid gap-x-2 gap-y-5" style={{ gridTemplateColumns: "72px 72px" }}>
           <ScaleContext />
+          <Zone name="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           <Zone name="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          <Zone name="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          <Zone name="NCCT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
         </div>
         <FlowArrow
           running={animationRunning}
           direction="down"
           className="absolute size-3.5"
-          style={{ left: 29, top: 86 }}
+          style={{ left: 29, top: 180 }}
         />
         <FlowArrow
           running={animationRunning}
           direction="down"
           className="absolute size-3.5"
-          style={{ left: 181, top: 86 }}
+          style={{ left: 109, top: 180 }}
         />
       </section>
 
-      <div className="absolute" style={{ left: 1144, top: 132 }}>
+      <div
+        className="absolute border-t-2 border-slate-400"
+        style={{ left: 1064, top: 185, width: 40 }}
+        aria-hidden
+      />
+
+      <div className="absolute" style={{ left: 1104, top: 173 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
-      <div className="absolute" style={{ left: 1168, top: 132 }}>
+      <div className="absolute" style={{ left: 1136, top: 151 }}>
         <Zone name="IMRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
       </div>
 
-      <div className="absolute" style={{ left: 1244, top: 132 }}>
+      <div
+        className="absolute border-t-2 border-r-2 border-slate-400"
+        style={{ left: 1208, top: 185, width: 44, height: 140 }}
+        aria-hidden
+      />
+
+      <div className="absolute" style={{ left: 1244, top: 248 }}>
+        <FlowArrow running={animationRunning} direction="down" className="size-4" />
+      </div>
+
+      <div className="absolute" style={{ left: 1252, top: 313 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
@@ -310,6 +331,7 @@ export function MainSchematic({
         bundlesByZone={bundlesByZone}
         hasSnapshot={hasSnapshot}
         running={animationRunning}
+        direction="up"
         style={{ left: 1280, top: 92 }}
       />
 
