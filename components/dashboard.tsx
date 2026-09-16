@@ -12,7 +12,6 @@ import { BayTwoSchematic } from "@/components/plant/bay-two-schematic"
 import { BundlerSchematic } from "@/components/plant/bundler-schematic"
 import { PlantMap } from "@/components/plant/plant-map"
 import { StackersSchematic } from "@/components/plant/stackers-schematic"
-import { SideRail } from "@/components/side-rail"
 import { TrackingBundlesPanel } from "@/components/tracking-bundles-panel"
 import { TrackingConnectionBanner } from "@/components/tracking-connection-banner"
 import { usePlantState } from "@/hooks/use-plant-state"
@@ -68,9 +67,7 @@ export function Dashboard() {
       />
 
       <div className="flex flex-1">
-        <SideRail />
-
-        <main className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4 sm:px-5">
+        <main className="flex min-w-0 flex-1 flex-col gap-2 px-2 py-2 sm:px-3">
           <TrackingConnectionBanner
             tracking={tracking}
             layoutValidation={trackingLayoutValidation}
@@ -78,8 +75,20 @@ export function Dashboard() {
           />
           <KpiCards kpis={kpis} tracking={tracking} />
 
-          <div className="grid items-start gap-4 xl:grid-cols-[16rem_minmax(0,1fr)]">
-            <div className="flex flex-col gap-4">
+          <div
+            className={
+              tracking.mode === "mock"
+                ? "grid items-start gap-4 xl:grid-cols-[16rem_minmax(0,1fr)]"
+                : "flex min-w-0 flex-col gap-2"
+            }
+          >
+            <div
+              className={
+                tracking.mode === "mock"
+                  ? "flex flex-col gap-4"
+                  : "grid min-w-0 items-stretch gap-2 lg:grid-cols-[minmax(0,1fr)_auto]"
+              }
+            >
               {tracking.mode === "mock" ? (
                 <>
                   <AlertsPanel alerts={alerts} />

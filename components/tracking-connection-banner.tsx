@@ -141,7 +141,7 @@ export function TrackingConnectionBanner({
   return (
     <section
       className={cn(
-        "flex min-w-0 flex-col gap-2 rounded-lg border px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
+        "flex min-w-0 flex-col gap-2 rounded-lg border px-3 py-1.5 sm:flex-row sm:items-center sm:justify-between",
         presentation.surface,
       )}
       aria-label="Tracking API connection"

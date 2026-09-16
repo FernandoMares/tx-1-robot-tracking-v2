@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
   ApiError,
   createTrackingApiClient,
@@ -82,6 +83,7 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>("idle")
   const [updateMessage, setUpdateMessage] = useState<string | null>(null)
   const [refreshRevision, setRefreshRevision] = useState(0)
+  const [editorOpen, setEditorOpen] = useState(false)
 
   const client = useMemo(
     () =>
@@ -195,32 +197,81 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
   }
 
   return (
-    <section
-      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4"
-      aria-label="Global production order"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <ClipboardList className="size-4 text-muted-foreground" aria-hidden />
-          Active Mill Order
-        </h2>
-        {canReadOrders && canReadActiveOrder && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            onClick={refresh}
-            disabled={loadStatus === "loading" || updating}
-            aria-label="Refresh active Mill Order and QMOS catalog"
-            title="Refresh order data"
-          >
-            <RefreshCw
-              className={loadStatus === "loading" ? "animate-spin motion-reduce:animate-none" : ""}
-              aria-hidden
-            />
+    <>
+      <section
+        className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-2"
+        aria-label="Global production order"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <ClipboardList className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-muted-foreground">Active Mill Order</p>
+            <p
+              className={`tabular truncate text-xl leading-tight font-semibold ${
+                loadStatus === "ready" && !activeMillOrder ? "text-warning-fg" : "text-foreground"
+              }`}
+              title={activeMillOrder ?? undefined}
+              role="status"
+              aria-live="polite"
+            >
+              {loadStatus === "ready"
+                ? activeMillOrder ?? "No global order selected"
+                : loadStatus === "error" || (tracking.capabilities && (!canReadActiveOrder || !canReadOrders))
+                  ? "Order unavailable"
+                  : "Reading order..."}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {canReadOrders && canReadActiveOrder && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={refresh}
+              disabled={loadStatus === "loading" || updating}
+              aria-label="Refresh active Mill Order and QMOS catalog"
+              title="Refresh order data"
+            >
+              <RefreshCw
+                className={loadStatus === "loading" ? "animate-spin motion-reduce:animate-none" : ""}
+                aria-hidden
+              />
+            </Button>
+          )}
+          <Button type="button" variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
+            Change order
           </Button>
-        )}
-      </div>
+        </div>
+      </section>
+
+      <Sheet open={editorOpen} onOpenChange={setEditorOpen}>
+        <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-md">
+          <SheetHeader className="border-b border-border px-5 py-4 pr-12 text-left">
+            <SheetTitle className="text-lg">Select active Mill Order</SheetTitle>
+            <SheetDescription>
+              Applies to subsequent QMOS CREATE operations. Existing bundles are not changed.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <section className="flex flex-col gap-4" aria-label="Global Mill Order controls">
+              {canReadOrders && canReadActiveOrder && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  onClick={refresh}
+                  disabled={loadStatus === "loading" || updating}
+                  aria-label="Refresh active Mill Order and QMOS catalog"
+                >
+                  <RefreshCw
+                    className={loadStatus === "loading" ? "animate-spin motion-reduce:animate-none" : ""}
+                    aria-hidden
+                  />
+                  Refresh orders
+                </Button>
+              )}
 
       {!canReadActiveOrder && tracking.capabilities ? (
         <p className="flex items-start gap-1.5 text-xs text-warning-fg" role="status">
@@ -243,7 +294,7 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
           Reading the active production order...
         </p>
       ) : (
-        <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <div
             className={
               activeMillOrder
@@ -254,7 +305,7 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
             <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
               Currently active
             </p>
-            <p className="mt-0.5 text-sm font-semibold text-foreground">
+            <p className="mt-1 text-xl font-semibold text-foreground">
               {activeMillOrder ?? "No global selection"}
             </p>
             {activeUpdatedAt && (
@@ -264,10 +315,10 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
             )}
           </div>
 
-          <label className="flex flex-col gap-1.5 text-xs font-medium text-foreground">
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
             Select global Mill Order
             <select
-              className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+              className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
               value={selectedMillOrder}
               onChange={(event) => {
                 setSelectedMillOrder(event.target.value)
@@ -289,7 +340,7 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
           </label>
 
           {selectedOrder && (
-            <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-[0.6875rem]">
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg border border-border px-3 py-3 text-sm">
               <dt className="text-muted-foreground">Heat</dt>
               <dd className="truncate text-right font-medium text-foreground">{selectedOrder.HeatNo}</dd>
               <dt className="text-muted-foreground">Work order</dt>
@@ -338,9 +389,10 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
         </form>
       )}
 
-      <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-        Applies to subsequent QMOS CREATE operations. Existing bundles are not changed.
-      </p>
-    </section>
+            </section>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }

@@ -15,6 +15,9 @@ interface MainSchematicProps {
   hasSnapshot: boolean
 }
 
+export const MAIN_SCHEMATIC_WIDTH = 1480
+export const MAIN_SCHEMATIC_HEIGHT = 760
+
 const STACKER_SOURCES = ["ERT1A", "ERT1B", "ERT2C", "ERT2D"] as const
 const STACKER_TRANSFERS = ["STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"] as const
 const BUNDLER_OUTPUTS = ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD"] as const
@@ -44,7 +47,8 @@ function Zone({
       bundles={bundlesByZone[name]}
       compact
       hasSnapshot={hasSnapshot}
-      className={cn("w-[4.5rem] shrink-0", className)}
+      className={cn("shrink-0", className)}
+      style={{ width: 76 }}
     />
   )
 }
@@ -104,7 +108,7 @@ function HorizontalSequence({
   running: boolean
 }) {
   return (
-    <div className="flex items-stretch gap-1.5">
+    <div className="flex items-stretch gap-1">
       {zones.map((zone, index) => (
         <div key={zone} className="contents">
           <Zone name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
@@ -224,7 +228,7 @@ export function MainSchematic({
   return (
     <div
       className="relative shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
-      style={{ width: 1480, height: 760 }}
+      style={{ width: MAIN_SCHEMATIC_WIDTH, height: MAIN_SCHEMATIC_HEIGHT }}
       role="group"
       aria-label="Mirrored Exit Tracking physical overview with 33 API tracking zones"
     >
@@ -244,7 +248,7 @@ export function MainSchematic({
         detail="Four source sections feeding the shared transfer route"
         style={{ left: 28, top: 472, width: 340, height: 228 }}
       >
-        <div className="absolute top-3 left-3 flex gap-2">
+        <div className="absolute top-3 left-3 flex gap-1">
           {STACKER_SOURCES.map((zone) => (
             <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           ))}
@@ -276,7 +280,7 @@ export function MainSchematic({
         <p className="mb-2 text-center text-[9px] font-bold tracking-[0.08em] text-slate-500 uppercase">
           Physical scale · SGRT above NCCT
         </p>
-        <div className="grid gap-x-2 gap-y-5" style={{ gridTemplateColumns: "72px 72px" }}>
+        <div className="grid gap-x-2 gap-y-5" style={{ gridTemplateColumns: "76px 76px" }}>
           <ScaleContext />
           <Zone name="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           <Zone name="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
@@ -287,19 +291,19 @@ export function MainSchematic({
           running={animationRunning}
           direction="down"
           className="absolute size-3.5"
-          style={{ left: 29, top: 180 }}
+          style={{ left: 31, top: 180 }}
         />
         <FlowArrow
           running={animationRunning}
           direction="down"
           className="absolute size-3.5"
-          style={{ left: 109, top: 180 }}
+          style={{ left: 115, top: 180 }}
         />
       </section>
 
       <div
         className="absolute border-t-2 border-slate-400"
-        style={{ left: 1064, top: 537, width: 40 }}
+        style={{ left: 1072, top: 537, width: 32 }}
         aria-hidden
       />
 
@@ -340,7 +344,7 @@ export function MainSchematic({
         detail="Four bundler outputs feeding the second tracking section"
         style={{ left: 384, top: 104, width: 340, height: 228 }}
       >
-        <div className="absolute top-3 left-3 flex gap-2">
+        <div className="absolute top-3 left-3 flex gap-1">
           {BUNDLER_OUTPUTS.map((zone) => (
             <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           ))}
@@ -362,7 +366,7 @@ export function MainSchematic({
 
       <div
         className="absolute border-t-2 border-r-2 border-slate-400"
-        style={{ left: 1024, top: 151, width: 24, height: 165 }}
+        style={{ left: 1028, top: 151, width: 20, height: 165 }}
         aria-hidden
       />
 
@@ -384,7 +388,7 @@ export function MainSchematic({
         style={{ left: 1072, top: 76 }}
       />
 
-      <div className="absolute" style={{ left: 1228, top: 121 }}>
+      <div className="absolute" style={{ left: 1232, top: 121 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 

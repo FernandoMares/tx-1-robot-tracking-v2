@@ -65,6 +65,31 @@ export function KpiCards({ kpis, tracking }: KpiCardsProps) {
 
   const tiles = tracking.mode === "live" ? liveTiles : mockTiles
 
+  if (tracking.mode === "live") {
+    return (
+      <dl
+        className="flex min-w-0 overflow-x-auto rounded-lg border border-border bg-card"
+        aria-label="Current tracking metrics"
+      >
+        {tiles.map((tile) => (
+          <div
+            key={tile.label}
+            className="flex min-w-[12.5rem] flex-1 items-center justify-between gap-2 border-r border-border px-3 py-1.5 last:border-r-0"
+            title={tile.footnote}
+          >
+            <dt className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+              {tile.label}
+            </dt>
+            <dd className="tabular shrink-0 text-lg leading-none font-semibold text-foreground">
+              {tile.value}
+            </dd>
+            <span className="sr-only">{tile.footnote}</span>
+          </div>
+        ))}
+      </dl>
+    )
+  }
+
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {tiles.map((tile) => (
