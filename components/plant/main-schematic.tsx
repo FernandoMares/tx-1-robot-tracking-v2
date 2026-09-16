@@ -242,7 +242,7 @@ export function MainSchematic({
       <MachineOutline
         label="STK Stackers"
         detail="Four source sections feeding the shared transfer route"
-        style={{ left: 28, top: 120, width: 340, height: 228 }}
+        style={{ left: 28, top: 472, width: 340, height: 228 }}
       >
         <div className="absolute top-3 left-3 flex gap-2">
           {STACKER_SOURCES.map((zone) => (
@@ -251,11 +251,11 @@ export function MainSchematic({
         </div>
       </MachineOutline>
 
-      <div className="absolute" style={{ left: 376, top: 132 }}>
+      <div className="absolute" style={{ left: 376, top: 484 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
-      <div className="absolute" style={{ left: 400, top: 132 }}>
+      <div className="absolute" style={{ left: 400, top: 484 }}>
         <HorizontalSequence
           zones={STACKER_TRANSFERS}
           bundlesByZone={bundlesByZone}
@@ -264,13 +264,13 @@ export function MainSchematic({
         />
       </div>
 
-      <div className="absolute" style={{ left: 880, top: 160 }}>
+      <div className="absolute" style={{ left: 880, top: 512 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
       <section
         className="absolute"
-        style={{ left: 912, top: 44 }}
+        style={{ left: 912, top: 396 }}
         aria-label="Scale Weight Station above SGRT1 and SGRT2, with NCCT1 and NCCT2 below"
       >
         <p className="mb-2 text-center text-[9px] font-bold tracking-[0.08em] text-slate-500 uppercase">
@@ -299,29 +299,29 @@ export function MainSchematic({
 
       <div
         className="absolute border-t-2 border-slate-400"
-        style={{ left: 1064, top: 185, width: 40 }}
+        style={{ left: 1064, top: 537, width: 40 }}
         aria-hidden
       />
 
-      <div className="absolute" style={{ left: 1104, top: 173 }}>
+      <div className="absolute" style={{ left: 1104, top: 525 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
-      <div className="absolute" style={{ left: 1136, top: 151 }}>
+      <div className="absolute" style={{ left: 1136, top: 503 }}>
         <Zone name="IMRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
       </div>
 
       <div
         className="absolute border-t-2 border-r-2 border-slate-400"
-        style={{ left: 1208, top: 185, width: 44, height: 140 }}
+        style={{ left: 1208, top: 537, width: 44, height: 140 }}
         aria-hidden
       />
 
-      <div className="absolute" style={{ left: 1244, top: 248 }}>
+      <div className="absolute" style={{ left: 1244, top: 600 }}>
         <FlowArrow running={animationRunning} direction="down" className="size-4" />
       </div>
 
-      <div className="absolute" style={{ left: 1252, top: 313 }}>
+      <div className="absolute" style={{ left: 1252, top: 665 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
@@ -332,13 +332,13 @@ export function MainSchematic({
         hasSnapshot={hasSnapshot}
         running={animationRunning}
         direction="up"
-        style={{ left: 1280, top: 92 }}
+        style={{ left: 1280, top: 444 }}
       />
 
       <MachineOutline
         label="BUND Bundler"
         detail="Four bundler outputs feeding the second tracking section"
-        style={{ left: 384, top: 456, width: 340, height: 228 }}
+        style={{ left: 384, top: 104, width: 340, height: 228 }}
       >
         <div className="absolute top-3 left-3 flex gap-2">
           {BUNDLER_OUTPUTS.map((zone) => (
@@ -347,11 +347,11 @@ export function MainSchematic({
         </div>
       </MachineOutline>
 
-      <div className="absolute" style={{ left: 728, top: 468 }}>
+      <div className="absolute" style={{ left: 728, top: 116 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
-      <div className="absolute" style={{ left: 752, top: 468 }}>
+      <div className="absolute" style={{ left: 752, top: 116 }}>
         <HorizontalSequence
           zones={["RTTY1", "RTTY2", "IMRT2"]}
           bundlesByZone={bundlesByZone}
@@ -360,7 +360,7 @@ export function MainSchematic({
         />
       </div>
 
-      <div className="absolute" style={{ left: 1032, top: 468 }}>
+      <div className="absolute" style={{ left: 1032, top: 116 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
@@ -370,22 +370,25 @@ export function MainSchematic({
         bundlesByZone={bundlesByZone}
         hasSnapshot={hasSnapshot}
         running={animationRunning}
-        style={{ left: 1072, top: 428 }}
+        style={{ left: 1072, top: 76 }}
       />
 
-      <div className="absolute" style={{ left: 1228, top: 644 }}>
+      <div className="absolute" style={{ left: 1228, top: 292 }}>
         <FlowArrow running={animationRunning} className="size-6" />
       </div>
 
       <aside
         className="absolute"
-        style={{ left: 1256, top: 568 }}
+        style={{ left: 1256, top: 216 }}
         aria-label="Robot 2 physical equipment context"
       >
         <RobotCard robot={ROBOT_2_UNKNOWN} className="h-40 w-[6.75rem] bg-white/95 p-2" />
       </aside>
 
-      <div className="absolute bottom-5 left-7 max-w-[35rem] rounded-md border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2 text-[10px] text-slate-500">
+      <div
+        className="absolute bottom-5 max-w-[35rem] rounded-md border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2 text-[10px] text-slate-500"
+        style={{ left: 520 }}
+      >
         Layout mirrors the approved Tracking Sections Overview for left-to-right reading. Zone occupancy comes only
         from the tracking API.
       </div>
