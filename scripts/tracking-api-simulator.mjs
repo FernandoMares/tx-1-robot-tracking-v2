@@ -18,7 +18,7 @@ const LOG_REQUESTS = booleanSetting(process.env.TRACKING_SIMULATOR_LOG_REQUESTS,
 const SCENARIO = "LOCAL_HMI_SIMULATOR"
 const API_VERSION = "sim-1.1.0"
 const STARTED_AT = Date.now()
-const CYCLE_STEPS = 7
+const CYCLE_STEPS = 9
 const MAX_REQUEST_BODY_BYTES = 64 * 1024
 const bundleCorrections = new Map()
 let nextCorrectionEventId = 100_000
@@ -72,14 +72,17 @@ function zone(ZoneId, ZoneName, ZoneType, DisplayOrder, Capacity, Description) {
 }
 
 const zones = [
-  zone(101, "SIM_ENTRY", "SOURCE", 10, 1, "Sanitized simulator entry zone."),
-  zone(102, "SIM_TRANSFER", "PROCESS", 20, 1, "Sanitized simulator transfer zone."),
-  zone(103, "SIM_STACKER", "PROCESS", 30, 1, "Sanitized simulator stacker zone."),
-  zone(104, "SIM_BAY", "DESTINATION", 40, 1, "Sanitized simulator destination bay."),
-  zone(105, "SIM_HOLD", "PROCESS", 50, 2, "Sanitized simulator holding zone."),
+  zone(101, "SGRT1A", "SOURCE", 10, 1, "Simulated first-section entry."),
+  zone(102, "LCH1A", "PROCESS", 20, 1, "Simulated first-section transfer."),
+  zone(103, "CCH1A", "PROCESS", 30, 1, "Simulated first-section exit."),
+  zone(104, "SGRT2A", "PROCESS", 40, 1, "Simulated second-section entry."),
+  zone(105, "LCH2A", "PROCESS", 50, 1, "Simulated second-section transfer."),
+  zone(106, "CCH2A", "DESTINATION", 60, 1, "Simulated second-section exit."),
+  zone(107, "SGRT1B", "PROCESS", 70, 2, "Simulated stationary comparison zone."),
+  zone(108, "SGRT2B", "PROCESS", 80, 2, "Simulated warning-state comparison zone."),
 ]
 
-const movingRoute = zones.slice(0, 4)
+const movingRoute = zones.slice(0, 6)
 const routes = movingRoute.slice(0, -1).map((source, index) => {
   const destination = movingRoute[index + 1]
   return {
@@ -108,6 +111,10 @@ function cycleNumber(step) {
 
 function trackingId(step) {
   return "SIM-TRACK-" + String(cycleNumber(step)).padStart(6, "0")
+}
+
+function bundleId(step) {
+  return String(101_624_000 + cycleNumber(step)).padStart(9, "0")
 }
 
 function stepTimestamp(step) {
@@ -158,39 +165,53 @@ function movingBundle(step) {
 
   const zoneIndex = Math.min(Math.max(phase - 1, 0), movingRoute.length - 1)
   const waiting = phase === 0 || !QMOS_CONNECTED
-  const complete = phase === 5
+  const complete = phase === CYCLE_STEPS - 2
   const cycleStart = step - phase
 
   return makeBundle({
     trackingId: trackingId(step),
-    bundleId: "SIM-BUNDLE-" + String(cycleNumber(step)).padStart(4, "0"),
+    bundleId: bundleId(step),
     currentZone: movingRoute[zoneIndex].ZoneName,
     routeName: complete ? null : "SIM_ROUTE_TO_BAY",
     status: waiting ? "WAITING_QMOS_ID" : complete ? "TAGGED_COMPLETE" : "TRACKING",
     correlationStatus: waiting ? "UNMATCHED" : "MATCHED",
     createdUtc: stepTimestamp(cycleStart),
     lastUpdateUtc: stepTimestamp(step),
-    l2Id: 10000 + cycleNumber(step),
+    l2Id: Number(bundleId(step)),
   })
 }
 
 function staticBundle() {
   return makeBundle({
     trackingId: "SIM-TRACK-HOLD",
-    bundleId: "SIM-BUNDLE-HOLD",
-    currentZone: "SIM_HOLD",
+    bundleId: "101623999",
+    currentZone: "SGRT1B",
     routeName: null,
     status: "TRACKING",
     correlationStatus: "MATCHED",
     createdUtc: STARTED_AT,
     lastUpdateUtc: STARTED_AT,
-    l2Id: 20001,
+    l2Id: 101623999,
+  })
+}
+
+function warningBundle() {
+  return makeBundle({
+    trackingId: "SIM-TRACK-WARNING",
+    bundleId: "101624998",
+    currentZone: "SGRT2B",
+    routeName: null,
+    status: "WAITING_QMOS_ID",
+    correlationStatus: "UNMATCHED",
+    createdUtc: STARTED_AT,
+    lastUpdateUtc: STARTED_AT,
+    l2Id: 101624998,
   })
 }
 
 function bundles(now = Date.now()) {
   const moving = movingBundle(currentStep(now))
-  return [staticBundle(), ...(moving ? [moving] : [])].map((bundle) => {
+  return [staticBundle(), warningBundle(), ...(moving ? [moving] : [])].map((bundle) => {
     const correction = bundleCorrections.get(bundle.TrackingId)
     if (!correction) return bundle
 
@@ -215,30 +236,33 @@ function eventForStep(step) {
   const phase = step % CYCLE_STEPS
   const zoneIndex = Math.min(Math.max(phase - 1, 0), movingRoute.length - 1)
   const zoneName = phase === CYCLE_STEPS - 1 ? null : movingRoute[zoneIndex].ZoneName
-  const eventTypes = [
-    "BUNDLE_CREATED",
-    QMOS_CONNECTED ? "QMOS_CORRELATED" : "QMOS_WAITING",
-    "ZONE_CHANGED",
-    "ZONE_CHANGED",
-    "ZONE_CHANGED",
-    "TAGGED_COMPLETE",
-    "BUNDLE_REMOVED",
-  ]
+  const eventType =
+    phase === 0
+      ? "BUNDLE_CREATED"
+      : phase === 1
+        ? QMOS_CONNECTED
+          ? "QMOS_CORRELATED"
+          : "QMOS_WAITING"
+        : phase <= movingRoute.length
+          ? "ZONE_CHANGED"
+          : phase === CYCLE_STEPS - 2
+            ? "TAGGED_COMPLETE"
+            : "BUNDLE_REMOVED"
 
   return {
     EventId: step + 1,
     ScenarioName: SCENARIO,
-    EventType: eventTypes[phase],
+    EventType: eventType,
     TrackingId: trackingId(step),
     BundleId:
       phase === 0 || !QMOS_CONNECTED
         ? null
-        : "SIM-BUNDLE-" + String(cycleNumber(step)).padStart(4, "0"),
+        : bundleId(step),
     SourceArea: "SIM",
     FromZone:
-      phase >= 2 && phase <= 4
+      phase >= 2 && phase <= movingRoute.length
         ? movingRoute[zoneIndex - 1].ZoneName
-        : phase >= 5
+        : phase === CYCLE_STEPS - 2
           ? movingRoute[movingRoute.length - 1].ZoneName
           : null,
     ToZone: zoneName,

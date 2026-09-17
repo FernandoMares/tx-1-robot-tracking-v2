@@ -17,6 +17,7 @@ interface MainSchematicProps {
 
 export const MAIN_SCHEMATIC_WIDTH = 1480
 export const MAIN_SCHEMATIC_HEIGHT = 760
+const ZONE_WIDTH = 84
 
 const STACKER_SOURCES = ["ERT1A", "ERT1B", "ERT2C", "ERT2D"] as const
 const STACKER_TRANSFERS = ["STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"] as const
@@ -48,7 +49,7 @@ function Zone({
       compact
       hasSnapshot={hasSnapshot}
       className={cn("shrink-0", className)}
-      style={{ width: 76 }}
+      style={{ width: ZONE_WIDTH }}
     />
   )
 }
@@ -108,11 +109,11 @@ function HorizontalSequence({
   running: boolean
 }) {
   return (
-    <div className="flex items-stretch gap-1">
+    <div className="flex items-stretch gap-0.5">
       {zones.map((zone, index) => (
         <div key={zone} className="contents">
           <Zone name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          {index < zones.length - 1 && <FlowArrow running={running} />}
+          {index < zones.length - 1 && <FlowArrow running={running} className="size-2.5" />}
         </div>
       ))}
     </div>
@@ -133,11 +134,13 @@ function VerticalSequence({
   direction: "up" | "down"
 }) {
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex flex-col items-center gap-0.5">
       {zones.map((zone, index) => (
         <div key={zone} className="contents">
           <Zone name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          {index < zones.length - 1 && <FlowArrow running={running} direction={direction} className="size-3.5" />}
+          {index < zones.length - 1 && (
+            <FlowArrow running={running} direction={direction} className="size-2.5" />
+          )}
         </div>
       ))}
     </div>
@@ -246,7 +249,7 @@ export function MainSchematic({
       <MachineOutline
         label="STK Stackers"
         detail="Four source sections feeding the shared transfer route"
-        style={{ left: 28, top: 472, width: 340, height: 228 }}
+        style={{ left: 20, top: 502, width: 376, height: 218 }}
       >
         <div className="absolute top-3 left-3 flex gap-1">
           {STACKER_SOURCES.map((zone) => (
@@ -255,11 +258,11 @@ export function MainSchematic({
         </div>
       </MachineOutline>
 
-      <div className="absolute" style={{ left: 376, top: 484 }}>
-        <FlowArrow running={animationRunning} className="size-6" />
+      <div className="absolute" style={{ left: 400, top: 542 }}>
+        <FlowArrow running={animationRunning} className="size-3" />
       </div>
 
-      <div className="absolute" style={{ left: 400, top: 484 }}>
+      <div className="absolute" style={{ left: 416, top: 514 }}>
         <HorizontalSequence
           zones={STACKER_TRANSFERS}
           bundlesByZone={bundlesByZone}
@@ -268,19 +271,22 @@ export function MainSchematic({
         />
       </div>
 
-      <div className="absolute" style={{ left: 880, top: 512 }}>
-        <FlowArrow running={animationRunning} className="size-6" />
+      <div className="absolute" style={{ left: 892, top: 540 }}>
+        <FlowArrow running={animationRunning} className="size-4" />
       </div>
 
       <section
         className="absolute"
-        style={{ left: 912, top: 396 }}
+        style={{ left: 908, top: 407 }}
         aria-label="Scale Weight Station above SGRT1 and SGRT2, with NCCT1 and NCCT2 below"
       >
         <p className="mb-2 text-center text-[9px] font-bold tracking-[0.08em] text-slate-500 uppercase">
           Physical scale · SGRT above NCCT
         </p>
-        <div className="grid gap-x-2 gap-y-5" style={{ gridTemplateColumns: "76px 76px" }}>
+        <div
+          className="grid gap-x-2 gap-y-5"
+          style={{ gridTemplateColumns: `${ZONE_WIDTH}px ${ZONE_WIDTH}px` }}
+        >
           <ScaleContext />
           <Zone name="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           <Zone name="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
@@ -290,43 +296,27 @@ export function MainSchematic({
         <FlowArrow
           running={animationRunning}
           direction="down"
-          className="absolute size-3.5"
-          style={{ left: 31, top: 180 }}
+          className="absolute size-2.5"
+          style={{ left: 37, top: 184 }}
         />
         <FlowArrow
           running={animationRunning}
           direction="down"
-          className="absolute size-3.5"
-          style={{ left: 115, top: 180 }}
+          className="absolute size-2.5"
+          style={{ left: 129, top: 184 }}
         />
       </section>
 
-      <div
-        className="absolute border-t-2 border-slate-400"
-        style={{ left: 1072, top: 537, width: 32 }}
-        aria-hidden
-      />
-
-      <div className="absolute" style={{ left: 1104, top: 525 }}>
-        <FlowArrow running={animationRunning} className="size-6" />
+      <div className="absolute" style={{ left: 1084, top: 540 }}>
+        <FlowArrow running={animationRunning} className="size-4" />
       </div>
 
-      <div className="absolute" style={{ left: 1136, top: 503 }}>
+      <div className="absolute" style={{ left: 1100, top: 514 }}>
         <Zone name="IMRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
       </div>
 
-      <div
-        className="absolute border-t-2 border-r-2 border-slate-400"
-        style={{ left: 1208, top: 537, width: 44, height: 140 }}
-        aria-hidden
-      />
-
-      <div className="absolute" style={{ left: 1244, top: 600 }}>
-        <FlowArrow running={animationRunning} direction="down" className="size-4" />
-      </div>
-
-      <div className="absolute" style={{ left: 1252, top: 665 }}>
-        <FlowArrow running={animationRunning} className="size-6" />
+      <div className="absolute" style={{ left: 1184, top: 540 }}>
+        <FlowArrow running={animationRunning} className="size-4" />
       </div>
 
       <VerticalSection
@@ -336,13 +326,13 @@ export function MainSchematic({
         hasSnapshot={hasSnapshot}
         running={animationRunning}
         direction="up"
-        style={{ left: 1280, top: 444 }}
+        style={{ left: 1200, top: 331 }}
       />
 
       <MachineOutline
         label="BUND Bundler"
         detail="Four bundler outputs feeding the second tracking section"
-        style={{ left: 384, top: 104, width: 340, height: 228 }}
+        style={{ left: 360, top: 92, width: 376, height: 220 }}
       >
         <div className="absolute top-3 left-3 flex gap-1">
           {BUNDLER_OUTPUTS.map((zone) => (
@@ -351,11 +341,11 @@ export function MainSchematic({
         </div>
       </MachineOutline>
 
-      <div className="absolute" style={{ left: 728, top: 116 }}>
-        <FlowArrow running={animationRunning} className="size-6" />
+      <div className="absolute" style={{ left: 740, top: 132 }}>
+        <FlowArrow running={animationRunning} className="size-3" />
       </div>
 
-      <div className="absolute" style={{ left: 752, top: 116 }}>
+      <div className="absolute" style={{ left: 756, top: 104 }}>
         <HorizontalSequence
           zones={["RTTY1", "RTTY2", "IMRT2"]}
           bundlesByZone={bundlesByZone}
@@ -366,16 +356,16 @@ export function MainSchematic({
 
       <div
         className="absolute border-t-2 border-r-2 border-slate-400"
-        style={{ left: 1028, top: 151, width: 20, height: 165 }}
+        style={{ left: 1036, top: 139, width: 152, height: 142 }}
         aria-hidden
       />
 
-      <div className="absolute" style={{ left: 1041, top: 230 }}>
-        <FlowArrow running={animationRunning} direction="down" className="size-3.5" />
+      <div className="absolute" style={{ left: 1183, top: 205 }}>
+        <FlowArrow running={animationRunning} direction="down" className="size-2.5" />
       </div>
 
-      <div className="absolute" style={{ left: 1048, top: 304 }}>
-        <FlowArrow running={animationRunning} className="size-6" />
+      <div className="absolute" style={{ left: 1188, top: 275 }}>
+        <FlowArrow running={animationRunning} className="size-3" />
       </div>
 
       <VerticalSection
@@ -385,19 +375,27 @@ export function MainSchematic({
         hasSnapshot={hasSnapshot}
         running={animationRunning}
         direction="up"
-        style={{ left: 1072, top: 76 }}
+        style={{ left: 1200, top: 64 }}
       />
 
-      <div className="absolute" style={{ left: 1232, top: 121 }}>
-        <FlowArrow running={animationRunning} className="size-6" />
+      <div className="absolute" style={{ left: 1237, top: 320 }}>
+        <FlowArrow running={animationRunning} direction="up" className="size-2.5" />
+      </div>
+
+      <div className="absolute" style={{ left: 1329, top: 320 }}>
+        <FlowArrow running={animationRunning} direction="up" className="size-2.5" />
+      </div>
+
+      <div className="absolute" style={{ left: 1380, top: 111 }}>
+        <FlowArrow running={animationRunning} className="size-3" />
       </div>
 
       <aside
         className="absolute"
-        style={{ left: 1256, top: 52 }}
+        style={{ left: 1392, top: 44 }}
         aria-label="Robot 2 physical equipment context"
       >
-        <RobotCard robot={ROBOT_2_UNKNOWN} className="h-40 w-[6.75rem] bg-white/95 p-2" />
+        <RobotCard robot={ROBOT_2_UNKNOWN} className="h-40 w-20 gap-2 bg-white/95 p-2" />
       </aside>
 
       <div

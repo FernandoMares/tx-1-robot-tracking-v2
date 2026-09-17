@@ -76,20 +76,21 @@ export function TrackingZoneSlot({
       <div
         className={cn(
           "flex flex-wrap content-start gap-1.5",
-          compact ? "h-10 overflow-hidden p-1.5" : "min-h-16 p-2",
+          compact
+            ? bundles.length > 1
+              ? "h-10 gap-0.5 overflow-hidden p-1"
+              : "h-10 overflow-hidden p-1.5"
+            : "min-h-16 p-2",
         )}
       >
         {!hasSnapshot ? (
           <span className="self-center text-[11px] text-slate-400">Waiting</span>
         ) : bundles.length === 0 ? (
           <span className="self-center text-[11px] text-slate-400">Empty</span>
-        ) : compact && bundles.length > 1 ? (
-          <span className="self-center text-[10px] font-medium text-slate-600">
-            {bundles.length} co-located
-          </span>
         ) : (
           bundles.map((bundle, index) => {
             const identity = bundleIdentity(bundle)
+            const numericIdentity = /^\d+$/.test(identity)
             const status = bundle.Status ?? "Unknown status"
             const correlation = bundle.CorrelationStatus ?? "Unknown correlation"
 
@@ -97,13 +98,25 @@ export function TrackingZoneSlot({
               <span
                 key={`${bundle.TrackingId}-${index}`}
                 className={cn(
-                  "min-w-0 rounded border px-2 py-1 text-slate-800",
+                  "max-w-full min-w-0 rounded border text-slate-800",
                   waitingForQmos ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50",
-                  compact ? "text-[10px]" : "text-[11px]",
+                  compact
+                    ? bundles.length > 1
+                      ? "w-full px-1 py-0 text-[9px] leading-3"
+                      : "px-1 py-1 text-[10px]"
+                    : "px-2 py-1 text-[11px]",
+                  compact && numericIdentity && "w-full text-center",
                 )}
                 title={`${bundle.TrackingId} · ${status} · ${correlation}`}
               >
-                <strong className="block truncate font-semibold">{identity}</strong>
+                <strong
+                  className={cn(
+                    "block font-semibold",
+                    numericIdentity ? "whitespace-nowrap tabular-nums tracking-tight" : "truncate",
+                  )}
+                >
+                  {identity}
+                </strong>
                 {!compact && <span className="block truncate text-[10px] text-slate-500">{status}</span>}
               </span>
             )

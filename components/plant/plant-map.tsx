@@ -42,7 +42,7 @@ export function PlantMap({
 
     const observer = new ResizeObserver(([entry]) => {
       const availableWidth = entry.contentRect.width
-      setDiagramScale(Math.min(1.25, Math.max(0.95, availableWidth / MAIN_SCHEMATIC_WIDTH)))
+      setDiagramScale(Math.min(1.3, Math.max(0.95, availableWidth / MAIN_SCHEMATIC_WIDTH)))
     })
 
     observer.observe(viewport)
@@ -51,7 +51,7 @@ export function PlantMap({
 
   return (
     <section className="flex min-w-0 max-w-full flex-col rounded-xl border border-border bg-card" aria-label="Plant overview">
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-3 py-2">
         <div className="flex flex-col gap-1">
           <h2 className="text-base leading-none font-semibold text-foreground">Plant Overview</h2>
           <p className="text-sm text-muted-foreground">
@@ -70,7 +70,7 @@ export function PlantMap({
       </header>
 
       <div
-        className="max-w-full overflow-x-auto overscroll-x-contain px-2 py-3"
+        className="max-w-full overflow-x-auto overscroll-x-contain px-1 py-2"
         tabIndex={0}
         aria-label="Scrollable plant floor diagram"
         ref={diagramViewportRef}
@@ -99,7 +99,7 @@ export function PlantMap({
       </div>
 
       {/* Legend */}
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2">
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-3 py-1.5">
         <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {LEGEND.map((item) => (
             <li key={item.status} className="flex items-center gap-2 text-xs text-muted-foreground">

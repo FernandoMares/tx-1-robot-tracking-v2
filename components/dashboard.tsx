@@ -67,7 +67,7 @@ export function Dashboard() {
       />
 
       <div className="flex flex-1">
-        <main className="flex min-w-0 flex-1 flex-col gap-2 px-2 py-2 sm:px-3">
+        <main className="flex min-w-0 flex-1 flex-col gap-1 p-1">
           <TrackingConnectionBanner
             tracking={tracking}
             layoutValidation={trackingLayoutValidation}
