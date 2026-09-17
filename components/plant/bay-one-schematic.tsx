@@ -1,7 +1,5 @@
 "use client"
 
-import { GitBranch } from "lucide-react"
-
 import { SchematicScreen } from "@/components/plant/schematic-screen"
 import { TrackingZoneSlot } from "@/components/plant/tracking-zone-slot"
 import { DiagramArrow } from "@/components/plant/zoom-schematic-primitives"
@@ -84,8 +82,9 @@ function Zone({
 }
 
 /**
- * Bay 1 mirrors the PDF's material flow from left to right. SGRT1/2 are shown as
- * incoming handoff context while NCCT1/2 remain the two owned Bay 1 zones.
+ * Bay 1 mirrors the overview's physical alignment: the scale is above the
+ * SGRT handoff zones, with the NCCT zones below. CurrentZone remains the only
+ * source of bundle placement; visual columns do not create HMI routing logic.
  */
 export function BayOneSchematic({
   updatedAt,
@@ -100,82 +99,79 @@ export function BayOneSchematic({
   return (
     <SchematicScreen
       title="Bay 1"
-      description="NCCT1 and NCCT2 tracking zones with Stackers handoff context"
+      description="Stackers handoff, NCCT tracking zones and physical equipment context"
       updatedAt={updatedAt}
       animationRunning={animationRunning}
       tracking={tracking}
-      canvasWidth={1280}
-      canvasHeight={540}
+      canvasWidth={1100}
+      canvasHeight={500}
       muted={muted}
     >
-      <div className="absolute top-8 left-12 flex items-center gap-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-        <span>Material flow</span>
-        <span aria-hidden>Left to right</span>
-      </div>
-
-      <div
+      <section
         className="absolute rounded-lg border border-slate-200 bg-slate-50/45"
-        style={{ left: 466, top: 70, width: 370, height: 410 }}
-        aria-hidden
+        style={{ left: 30, top: 24, width: 620, height: 420 }}
+        aria-label="Bay 1 tracked positions"
       />
       <span
         className="absolute z-10 text-[11px] font-bold tracking-wide text-slate-500 uppercase"
-        style={{ left: 488, top: 86 }}
+        style={{ left: 60, top: 42 }}
       >
         Bay 1 tracked positions
       </span>
 
-      <span
-        className="absolute z-10 text-[10px] font-semibold tracking-wide text-slate-400 uppercase"
-        style={{ left: 129, top: 86 }}
-      >
-        Handoff from Stackers
-      </span>
-
-      <Zone zoneName="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={125} top={126} width={225} />
-      <Zone zoneName="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={520} top={112} width={260} />
-
-      <Zone zoneName="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={125} top={316} width={225} />
-      <Zone zoneName="NCCT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={520} top={302} width={260} />
-
-      <DiagramArrow direction="right" left={368} top={242} size={48} />
-      <div
-        className="absolute z-10 flex flex-col items-center gap-1 rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 text-center"
-        style={{ left: 416, top: 216, width: 82 }}
-      >
-        <GitBranch className="size-5 text-slate-500" aria-hidden />
-        <span className="text-[9px] font-semibold text-slate-500">Route choice</span>
-      </div>
-      <DiagramArrow direction="right" left={498} top={242} size={24} />
-      <DiagramArrow direction="right" left={868} top={242} size={56} />
-
-      <div
-        className="absolute z-10 rounded-lg border border-dashed border-slate-300 bg-white/70"
-        style={{ left: 960, top: 72, width: 286, height: 408 }}
-      >
-        <span className="absolute top-4 right-5 text-[11px] font-bold tracking-wide text-slate-500 uppercase">
-          Physical equipment context
-        </span>
-      </div>
-      <EquipmentContext
-        title="Bay 1 Manual Station"
-        note="Equipment context; not a CurrentZone slot"
-        left={988}
-        top={126}
-        width={230}
-      />
       <EquipmentContext
         title="Scale Weight Station"
-        note="Equipment context; tracking remains at zone level"
-        left={988}
-        top={316}
-        width={230}
+        note="Physical scale above the SGRT and NCCT tracking positions"
+        left={80}
+        top={72}
+        width={520}
         tone="scale"
       />
 
-      <p className="absolute bottom-6 left-[134px] max-w-[680px] text-[11px] leading-4 text-slate-500">
-        Bundle placement comes from CurrentZone. The backend selects NCCT1 or NCCT2; the HMI does not infer a
-        one-to-one pairing with SGRT1/2 or with the equipment cards.
+      <span
+        className="absolute z-10 text-[10px] font-semibold tracking-wide text-slate-400 uppercase"
+        style={{ left: 80, top: 166 }}
+      >
+        Handoff from Stackers
+      </span>
+      <Zone zoneName="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={80} top={188} width={240} />
+      <Zone zoneName="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={360} top={188} width={240} />
+
+      <DiagramArrow direction="down" left={186} top={290} size={28} />
+      <DiagramArrow direction="down" left={466} top={290} size={28} />
+
+      <span
+        className="absolute z-10 text-[10px] font-semibold tracking-wide text-slate-400 uppercase"
+        style={{ left: 80, top: 320 }}
+      >
+        NCCT tracking zones
+      </span>
+      <Zone zoneName="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={80} top={340} width={240} />
+      <Zone zoneName="NCCT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} left={360} top={340} width={240} />
+
+      <section
+        className="absolute rounded-lg border border-dashed border-slate-300 bg-white/70"
+        style={{ left: 700, top: 92, width: 350, height: 250 }}
+        aria-label="Physical equipment context"
+      >
+        <span className="absolute top-5 right-0 left-0 text-center text-[11px] font-bold tracking-wide text-slate-500 uppercase">
+          Physical equipment context
+        </span>
+      </section>
+      <EquipmentContext
+        title="Bay 1 Manual Station"
+        note="Equipment context; not a CurrentZone slot"
+        left={730}
+        top={168}
+        width={290}
+      />
+
+      <p
+        className="absolute rounded-md border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2 text-[10px] leading-4 text-slate-500"
+        style={{ left: 700, top: 366, width: 350 }}
+      >
+        Bundle placement comes from CurrentZone. The backend selects the active NCCT zone; the HMI does not infer
+        routing or a physical slot.
       </p>
     </SchematicScreen>
   )

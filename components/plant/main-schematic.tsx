@@ -332,7 +332,7 @@ export function MainSchematic({
       <MachineOutline
         label="BUND Bundler"
         detail="Four bundler outputs feeding the second tracking section"
-        style={{ left: 360, top: 92, width: 376, height: 220 }}
+        style={{ left: 500, top: 92, width: 376, height: 220 }}
       >
         <div className="absolute top-3 left-3 flex gap-1">
           {BUNDLER_OUTPUTS.map((zone) => (
@@ -341,11 +341,11 @@ export function MainSchematic({
         </div>
       </MachineOutline>
 
-      <div className="absolute" style={{ left: 740, top: 132 }}>
+      <div className="absolute" style={{ left: 880, top: 132 }}>
         <FlowArrow running={animationRunning} className="size-3" />
       </div>
 
-      <div className="absolute" style={{ left: 756, top: 104 }}>
+      <div className="absolute" style={{ left: 900, top: 104 }}>
         <HorizontalSequence
           zones={["RTTY1", "RTTY2", "IMRT2"]}
           bundlesByZone={bundlesByZone}
@@ -356,7 +356,7 @@ export function MainSchematic({
 
       <div
         className="absolute border-t-2 border-r-2 border-slate-400"
-        style={{ left: 1036, top: 139, width: 152, height: 142 }}
+        style={{ left: 1180, top: 139, width: 8, height: 142 }}
         aria-hidden
       />
 

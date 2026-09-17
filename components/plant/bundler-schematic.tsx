@@ -30,21 +30,21 @@ interface PositionedZone {
   compact?: boolean
 }
 
-const SOURCE_ZONES = [...TRACKING_ZONES_BY_GROUP["bundler-source"]].reverse()
+const SOURCE_ZONES = TRACKING_ZONES_BY_GROUP["bundler-source"]
 const COMMON_LINE_ZONES = TRACKING_ZONES_BY_GROUP["bundler-line"]
 
 const SOURCE_POSITIONS: PositionedZone[] = SOURCE_ZONES.map((zoneName, index) => ({
   zoneName,
-  left: 448 - index * 132,
-  top: 132,
-  width: 122,
+  left: 40 + index * 140,
+  top: 140,
+  width: 130,
 }))
 
 const COMMON_LINE_POSITIONS: PositionedZone[] = COMMON_LINE_ZONES.map((zoneName, index) => ({
   zoneName,
-  left: 612 + index * 220,
-  top: 315,
-  width: 138,
+  left: 700 + index * 240,
+  top: 150,
+  width: 180,
   compact: true,
 }))
 
@@ -86,14 +86,23 @@ export function BundlerSchematic({
       updatedAt={updatedAt}
       animationRunning={animationRunning}
       tracking={tracking}
-      canvasWidth={1320}
-      canvasHeight={480}
+      canvasWidth={1400}
+      canvasHeight={420}
       muted={muted}
     >
-      <EquipmentHeader label="BUND BUNDLERS" left={52} top={32} width={518} />
+      <section
+        className="absolute rounded-lg border border-emerald-300 bg-emerald-50/25 shadow-sm"
+        style={{ left: 20, top: 24, width: 620, height: 270 }}
+        aria-label="Bundler source sections"
+      />
+      <EquipmentHeader label="BUND BUNDLERS" left={40} top={42} width={550} />
 
       {/* LMD labels describe equipment only; RTOUT* are the tracking zones. */}
-      <div className="absolute top-[92px] left-[52px] grid w-[518px] grid-cols-4 gap-2" aria-label="Bundler equipment">
+      <div
+        className="absolute grid grid-cols-4 gap-2"
+        style={{ left: 40, top: 102, width: 550 }}
+        aria-label="Bundler equipment"
+      >
         {["LMD 1", "LMD 2", "LMD 3", "LMD 4"].map((label) => (
           <span
             key={label}
@@ -113,19 +122,20 @@ export function BundlerSchematic({
         />
       ))}
 
-      {/* Four independent outputs converge before entering RTTY1. */}
-      <div className="absolute top-[254px] left-[113px] w-[396px] border-t border-slate-400" aria-hidden />
-      {SOURCE_POSITIONS.map((position) => (
-        <span
-          key={`${position.zoneName}-source-connector`}
-          className="absolute top-[230px] h-6 border-l border-slate-400"
-          style={{ left: position.left + 61 }}
-          aria-hidden
-        />
-      ))}
-      <div className="absolute top-[254px] left-[509px] w-[133px] border-t border-slate-400" aria-hidden />
-      <DiagramArrow direction="right" left={599} top={233} size={44} />
-      <div className="absolute top-[254px] left-[680px] h-[61px] border-l border-slate-400" aria-hidden />
+      <p
+        className="absolute text-center text-[10px] text-slate-500"
+        style={{ left: 40, top: 252, width: 550 }}
+      >
+        Four bundler outputs feed the shared Bay 2 transfer route
+      </p>
+
+      <DiagramArrow direction="right" left={654} top={168} size={32} />
+      <span
+        className="absolute text-[10px] font-bold tracking-wide text-slate-500 uppercase"
+        style={{ left: 700, top: 122 }}
+      >
+        Bay 2 transfer flow
+      </span>
 
       {COMMON_LINE_POSITIONS.map((position, index) => (
         <div key={position.zoneName}>
@@ -133,18 +143,24 @@ export function BundlerSchematic({
           {index > 0 && (
             <DiagramArrow
               direction="right"
-              left={position.left - 77}
-              top={326}
-              size={42}
+              left={position.left - 46}
+              top={168}
+              size={32}
             />
           )}
         </div>
       ))}
 
-      <span className="absolute top-[286px] left-[1052px] text-[10px] font-bold tracking-wide text-slate-500 uppercase">
+      <span
+        className="absolute text-center text-[10px] font-bold tracking-wide text-slate-500 uppercase"
+        style={{ left: 1180, top: 122, width: 180 }}
+      >
         Bay 2 handoff
       </span>
-      <p className="absolute top-[412px] left-[52px] w-[518px] text-left text-[10px] text-slate-500">
+      <p
+        className="absolute rounded-md border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2 text-[10px] text-slate-500"
+        style={{ left: 700, top: 264, width: 660 }}
+      >
         Equipment is contextual; live placement is determined only by CurrentZone
       </p>
     </SchematicScreen>
