@@ -111,7 +111,8 @@ export interface TrackedBundleDto extends ExtensibleDto {
   PieceCount5: number | null
   Disposition: string | null
   HoldCode: string | null
-  PrinterId: string | null
+  /** Numeric in API v0.34; older service builds may serialize it as text. */
+  PrinterId: string | number | null
   TagCopy: number | null
   Status: string | null
   CorrelationStatus: string | null
@@ -258,7 +259,8 @@ export interface TrackingEventDto extends ExtensibleDto {
   PieceCount5?: number | null
   Disposition?: string | null
   HoldCode?: string | null
-  PrinterId?: string | null
+  /** Numeric in API v0.34; older service builds may serialize it as text. */
+  PrinterId?: string | number | null
   TagCopy?: number | null
   CorrelationStatus?: string | null
   OperatorId?: string | null

@@ -35,6 +35,10 @@ function isNullableNumber(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isFinite(value))
 }
 
+function isNullableStringOrNumber(value: unknown): value is string | number | null {
+  return isNullableString(value) || isNullableNumber(value)
+}
+
 function isNullableBoolean(value: unknown): value is boolean | null {
   return value === null || typeof value === "boolean"
 }
@@ -122,7 +126,6 @@ export function isTrackedBundleDto(value: unknown): value is TrackedBundleDto {
         "MillOrder5",
         "Disposition",
         "HoldCode",
-        "PrinterId",
         "Status",
         "CorrelationStatus",
         "CreatedUtc",
@@ -130,6 +133,7 @@ export function isTrackedBundleDto(value: unknown): value is TrackedBundleDto {
       ],
       isNullableString,
     ) &&
+    isNullableStringOrNumber(value.PrinterId) &&
     fieldsMatch(
       value,
       [
@@ -394,7 +398,6 @@ function isTrackingEvent(value: unknown): boolean {
         "MillOrder5",
         "Disposition",
         "HoldCode",
-        "PrinterId",
         "CorrelationStatus",
         "OperatorId",
         "Reason",
@@ -405,6 +408,7 @@ function isTrackingEvent(value: unknown): boolean {
       ],
       isNullableString,
     ) &&
+    optionalFieldsMatch(value, ["PrinterId"], isNullableStringOrNumber) &&
     optionalFieldsMatch(
       value,
       [
