@@ -16,7 +16,7 @@ const QMOS_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_QMOS_CONNEC
 const OPC_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_OPC_CONNECTED, true)
 const LOG_REQUESTS = booleanSetting(process.env.TRACKING_SIMULATOR_LOG_REQUESTS, false)
 const SCENARIO = "LOCAL_HMI_SIMULATOR"
-const API_VERSION = "sim-1.1.0"
+const API_VERSION = "sim-1.2.0"
 const STARTED_AT = Date.now()
 const CYCLE_STEPS = 9
 const MAX_REQUEST_BODY_BYTES = 64 * 1024
@@ -26,6 +26,11 @@ let globalMillOrder = {
   millOrder: "SIM-MO-001",
   enabled: true,
   updatedUtc: new Date(STARTED_AT).toISOString(),
+}
+let globalDestination = {
+  DestinationId: 3773,
+  Description: "1.A.2..",
+  UpdatedUtc: new Date(STARTED_AT).toISOString(),
 }
 
 const qmosMillOrders = [
@@ -65,6 +70,15 @@ const qmosMillOrders = [
     ProductWidth: 4,
     ProductThickness: 0.375,
   },
+]
+
+const qmosBundleLocations = [
+  { Id: 3763, Description: "1.0.0.." },
+  { Id: 3771, Description: "1.A.1.." },
+  { Id: 3772, Description: "1.A.10.." },
+  { Id: 3773, Description: "1.A.2.." },
+  { Id: 3774, Description: "1.A.3.." },
+  { Id: 3775, Description: "1.A.4.." },
 ]
 
 function zone(ZoneId, ZoneName, ZoneType, DisplayOrder, Capacity, Description) {
@@ -325,13 +339,19 @@ function capabilities() {
       "/api/tracking/map",
       "/api/tracking/state",
       "/api/tracking/mill-order",
+      "/api/tracking/destination",
       "/api/tracking/bundles/{trackingId}",
       "/api/tracking/opc",
       "/api/tracking/events/recent",
       "/api/qmos/status",
       "/api/qmos/mill-orders",
+      "/api/qmos/bundle-locations",
     ],
-    commands: ["/api/tracking/correct", "PUT /api/tracking/mill-order"],
+    commands: [
+      "/api/tracking/correct",
+      "PUT /api/tracking/mill-order",
+      "PUT /api/tracking/destination",
+    ],
     engineeringOpc: [],
     qmosCommands: [],
     engineeringSimulation: [],
@@ -436,7 +456,10 @@ const server = createServer(async (request, response) => {
 
   const now = Date.now()
   if (method === "PUT") {
-    if (url.pathname !== "/api/tracking/mill-order") {
+    if (
+      url.pathname !== "/api/tracking/mill-order" &&
+      url.pathname !== "/api/tracking/destination"
+    ) {
       return sendJson(response, 404, { error: "Endpoint not found", path: url.pathname })
     }
 
@@ -450,6 +473,30 @@ const server = createServer(async (request, response) => {
       body = await readJsonBody(request)
     } catch {
       return sendJson(response, 400, { error: "A valid JSON request body is required" })
+    }
+
+    if (url.pathname === "/api/tracking/destination") {
+      const destinationId =
+        typeof body === "object" &&
+        body !== null &&
+        !Array.isArray(body) &&
+        Number.isSafeInteger(body.destinationId) &&
+        body.destinationId > 0
+          ? body.destinationId
+          : null
+      const selectedLocation = qmosBundleLocations.find((location) => location.Id === destinationId)
+
+      if (!selectedLocation) {
+        return sendJson(response, 400, { error: "destinationId must identify a valid bundle location." })
+      }
+
+      globalDestination = {
+        DestinationId: selectedLocation.Id,
+        Description: selectedLocation.Description,
+        UpdatedUtc: new Date(now).toISOString(),
+      }
+
+      return sendJson(response, 200, globalDestination)
     }
 
     const millOrder =
@@ -537,6 +584,7 @@ const server = createServer(async (request, response) => {
     "/api/tracking/map": trackingMap,
     "/api/tracking/state": () => trackingState(now),
     "/api/tracking/mill-order": () => globalMillOrder,
+    "/api/tracking/destination": () => globalDestination,
     "/api/tracking/opc": () => opcStatus(now),
     "/api/tracking/events/recent": () => recentEvents(now),
     "/api/qmos/status": () => ({ enabled: true, connected: QMOS_CONNECTED }),
@@ -544,6 +592,7 @@ const server = createServer(async (request, response) => {
       const max = positiveInteger(url.searchParams.get("max"), 20, 1)
       return qmosMillOrders.slice(0, max)
     },
+    "/api/qmos/bundle-locations": () => qmosBundleLocations,
   }
 
   const endpoint = endpoints[url.pathname]

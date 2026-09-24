@@ -1,8 +1,11 @@
 import type {
+  GlobalDestinationDto,
+  GlobalDestinationUpdateRequestDto,
   GlobalMillOrderDto,
   GlobalMillOrderUpdateRequestDto,
   GlobalMillOrderUpdateResponseDto,
   OpcStatusDto,
+  QmosBundleLocationsResponseDto,
   QmosMillOrderDto,
   QmosMillOrdersDto,
   QmosMillOrdersResponseDto,
@@ -315,6 +318,20 @@ export function isQmosMillOrdersResponseDto(
     : isQmosMillOrdersDto(value)
 }
 
+export function isQmosBundleLocationsResponseDto(
+  value: unknown,
+): value is QmosBundleLocationsResponseDto {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (location) =>
+        isObject(location) &&
+        ((isPositiveInteger(location.Id) && isNonEmptyString(location.Description)) ||
+          (isPositiveInteger(location.id) && isNonEmptyString(location.description))),
+    )
+  )
+}
+
 export function isGlobalMillOrderDto(value: unknown): value is GlobalMillOrderDto {
   return (
     isObject(value) &&
@@ -345,6 +362,21 @@ export function isGlobalMillOrderUpdateResponseDto(
     isNonEmptyString(value.updatedUtc) &&
     typeof value.appliesTo === "string"
   )
+}
+
+export function isGlobalDestinationDto(value: unknown): value is GlobalDestinationDto {
+  return (
+    isObject(value) &&
+    (value.DestinationId === null || isPositiveInteger(value.DestinationId)) &&
+    isNullableString(value.Description) &&
+    isNullableString(value.UpdatedUtc)
+  )
+}
+
+export function isGlobalDestinationUpdateRequestDto(
+  value: unknown,
+): value is GlobalDestinationUpdateRequestDto {
+  return isObject(value) && isPositiveInteger(value.destinationId)
 }
 
 export function isTrackingCorrectionRequestDto(

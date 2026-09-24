@@ -77,10 +77,15 @@ Las operaciones principales son:
 | `/api/tracking/map` | Catalogo de zonas, rutas, destinos y reglas. | Al iniciar. |
 | `/api/tracking/state` | Estado actual de los bundles. | Polling, inicialmente cada segundo. |
 | `/api/qmos/mill-orders?max=50` | Candidatos de Mill Order para seleccion del operador. | Al abrir o actualizar el selector. |
+| `/api/qmos/bundle-locations` | Destinos QMOS validos para busqueda y seleccion del operador. | Al abrir o actualizar el selector. |
 | `GET /api/tracking/mill-order` | Mill Order global activa y fecha de actualizacion. | Al abrir la pantalla, al actualizar y despues de guardar. |
 | `PUT /api/tracking/mill-order` | Guarda la Mill Order global para los siguientes QMOS CREATE. | Solo tras confirmacion del operador. |
+| `GET /api/tracking/destination` | Destination global activo y fecha de actualizacion. | Al abrir la pantalla, al actualizar y despues de guardar. |
+| `PUT /api/tracking/destination` | Guarda el Destination global para los siguientes QMOS CREATE. | Solo tras confirmacion del operador. |
 
 El servicio `0.12` se observo devolviendo `/api/qmos/mill-orders` como un arreglo JSON directo. Algunas respuestas/herramientas anteriores lo mostraron envuelto como `{ "value": [...], "Count": n }`. El cliente acepta ambos formatos y los normaliza internamente para no acoplar la pantalla a esa diferencia de serializacion.
+
+El servicio `0.35` devuelve `/api/qmos/bundle-locations` como un arreglo directo con `Id` y `Description`. El contrato previo documento `id` y `description`; el cliente acepta ambas variantes y las normaliza. En la validacion de produccion se observaron 1,476 ubicaciones, por lo que el HMI utiliza busqueda por descripcion o ID y limita los resultados visibles.
 
 La version devuelta en `apiVersion` se conserva como dato diagnostico. De acuerdo con el equipo de backend, sus cambios actuales corresponden a distintas compilaciones y no a cambios del contrato, por lo que no se debe codificar una comparacion rigida contra un unico valor como `0.12`.
 
@@ -88,7 +93,9 @@ El cliente tambien tipa las lecturas de bundle individual, eventos, OPC y estado
 
 ## Seleccion global y correccion individual
 
-La seleccion normal de produccion no depende de un bundle. El HMI consulta el catalogo QMOS y el valor global actual, solicita confirmacion antes del cambio, ejecuta `PUT /api/tracking/mill-order` y vuelve a leer el valor para verificar que quedo activo.
+La seleccion normal de produccion no depende de un bundle. El HMI consulta los catalogos QMOS y los valores globales actuales, exige una Mill Order y un Destination, solicita confirmacion antes del cambio, ejecuta los PUT necesarios y vuelve a leer ambos valores para verificar que quedaron activos.
+
+Los dos valores se guardan mediante endpoints independientes y no forman una transaccion atomica. El HMI guarda primero Destination, verifica finalmente ambos valores y, ante un error parcial, vuelve a leer el estado y advierte que uno de los valores puede haber cambiado.
 
 El cambio no reescribe bundles existentes ni reenvia transacciones QMOS terminadas. Tracking aplica la precedencia definida por backend: orden especifica del bundle, orden global activa y finalmente el fallback INI si existe.
 
@@ -96,7 +103,7 @@ El cambio no reescribe bundles existentes ni reenvia transacciones QMOS terminad
 
 ## Operaciones fuera de alcance
 
-El proxy admite `PUT /api/tracking/mill-order`, limitado a `millOrder`, y conserva `POST /api/tracking/correct`, limitado a `TrackingId`, `OperatorId`, `Reason` y `MillOrder1`. Ambos exigen `Content-Type: application/json` y eliminan cualquier otra propiedad. Siguen fuera de alcance:
+El proxy admite `PUT /api/tracking/mill-order`, limitado a `millOrder`, y `PUT /api/tracking/destination`, limitado a `destinationId`. Tambien conserva `POST /api/tracking/correct`, limitado a `TrackingId`, `OperatorId`, `Reason` y `MillOrder1`. Los comandos exigen `Content-Type: application/json` y eliminan cualquier otra propiedad. Siguen fuera de alcance:
 
 - `POST /api/tracking/reset`
 - `POST /api/tracking/opc/write`
@@ -111,7 +118,7 @@ La respuesta `accepted: true` de una correccion individual confirma que el event
 
 Una respuesta exitosa en Postman, navegacion directa o `curl` no garantiza que Chrome permita un `fetch` entre puertos o redes diferentes. Por eso el HMI utiliza el proxy de mismo origen `/tracking-api`.
 
-El proxy mantiene listas explicitas por metodo. Solicitudes GET fuera de las lecturas aprobadas, solicitudes POST distintas de `/api/tracking/correct` y solicitudes PUT distintas de `/api/tracking/mill-order` reciben 404.
+El proxy mantiene listas explicitas por metodo. Solicitudes GET fuera de las lecturas aprobadas, solicitudes POST distintas de `/api/tracking/correct` y solicitudes PUT distintas de las dos selecciones globales reciben 404.
 
 El salto entre el navegador y Next.js debe usar el protocolo aprobado para el HMI. Next.js puede comunicarse internamente por HTTP con el servicio dentro de la red controlada, sujeto a la arquitectura de produccion que se acuerde.
 
@@ -121,8 +128,9 @@ Antes de considerar validada la conexion live, comprueba que:
 
 - las lecturas principales responden a traves de `/tracking-api`;
 - la consulta de Mill Orders respeta el limite solicitado;
-- el `GET` global coincide con la seleccion almacenada por Tracking;
-- un `PUT` autorizado puede confirmarse con un `GET` posterior;
+- el catalogo de bundle locations permite buscar por descripcion e ID;
+- los dos `GET` globales coinciden con las selecciones almacenadas por Tracking;
+- cada `PUT` autorizado puede confirmarse con su `GET` posterior;
 - la orden nueva solo se aplica a QMOS CREATE posteriores y no modifica bundles existentes;
 - `/api/tracking/state` se consulta sin solicitudes solapadas;
 - al detener la API se muestra un estado stale/offline y no aparecen datos mock;

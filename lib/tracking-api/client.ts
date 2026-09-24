@@ -1,9 +1,13 @@
 import type {
   ApiErrorResponseDto,
+  GlobalDestinationDto,
+  GlobalDestinationUpdateRequestDto,
   GlobalMillOrderDto,
   GlobalMillOrderUpdateRequestDto,
   GlobalMillOrderUpdateResponseDto,
   OpcStatusDto,
+  QmosBundleLocationDto,
+  QmosBundleLocationsResponseDto,
   QmosMillOrdersDto,
   QmosMillOrdersResponseDto,
   QmosStatusDto,
@@ -17,10 +21,13 @@ import type {
   TrackingStatusDto,
 } from "./types"
 import {
+  isGlobalDestinationDto,
+  isGlobalDestinationUpdateRequestDto,
   isGlobalMillOrderDto,
   isGlobalMillOrderUpdateRequestDto,
   isGlobalMillOrderUpdateResponseDto,
   isOpcStatusDto,
+  isQmosBundleLocationsResponseDto,
   isQmosMillOrdersResponseDto,
   isQmosStatusDto,
   isTrackedBundleDto,
@@ -305,6 +312,24 @@ export class TrackingApiClient {
       : response
   }
 
+  async getQmosBundleLocations(signal?: AbortSignal): Promise<QmosBundleLocationDto[]> {
+    const response: QmosBundleLocationsResponseDto = await this.get(
+      "/api/qmos/bundle-locations",
+      isQmosBundleLocationsResponseDto,
+      signal,
+    )
+
+    return response.map((location) => {
+      if (typeof location.Id === "number" && typeof location.Description === "string") {
+        return { Id: location.Id, Description: location.Description }
+      }
+      if (typeof location.id === "number" && typeof location.description === "string") {
+        return { Id: location.id, Description: location.description }
+      }
+      throw new Error("QMOS returned an invalid bundle location")
+    })
+  }
+
   getGlobalMillOrder(signal?: AbortSignal): Promise<GlobalMillOrderDto> {
     return this.get("/api/tracking/mill-order", isGlobalMillOrderDto, signal)
   }
@@ -321,6 +346,26 @@ export class TrackingApiClient {
       "/api/tracking/mill-order",
       { millOrder: request.millOrder.trim() },
       isGlobalMillOrderUpdateResponseDto,
+      signal,
+    )
+  }
+
+  getGlobalDestination(signal?: AbortSignal): Promise<GlobalDestinationDto> {
+    return this.get("/api/tracking/destination", isGlobalDestinationDto, signal)
+  }
+
+  updateGlobalDestination(
+    request: GlobalDestinationUpdateRequestDto,
+    signal?: AbortSignal,
+  ): Promise<GlobalDestinationDto> {
+    if (!isGlobalDestinationUpdateRequestDto(request)) {
+      throw new Error("A positive integer destinationId is required")
+    }
+
+    return this.put(
+      "/api/tracking/destination",
+      { destinationId: request.destinationId },
+      isGlobalDestinationDto,
       signal,
     )
   }

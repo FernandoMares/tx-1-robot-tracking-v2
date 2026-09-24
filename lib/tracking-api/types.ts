@@ -194,6 +194,23 @@ export interface QmosMillOrdersDto extends ExtensibleDto {
 /** The live service has also been observed returning the collection as a bare array. */
 export type QmosMillOrdersResponseDto = QmosMillOrderDto[] | QmosMillOrdersDto
 
+/** Bundle destination returned by the live QMOS v0.35 catalog. */
+export interface QmosBundleLocationDto extends ExtensibleDto {
+  Id: number
+  Description: string
+}
+
+/** Lowercase field names documented by the API contract. */
+export interface QmosBundleLocationContractDto extends ExtensibleDto {
+  id: number
+  description: string
+}
+
+/** The client accepts the documented and observed field casing. */
+export type QmosBundleLocationsResponseDto = Array<
+  QmosBundleLocationDto | QmosBundleLocationContractDto
+>
+
 /** Global Mill Order selected by the HMI for subsequent QMOS CREATE operations. */
 export interface GlobalMillOrderDto extends ExtensibleDto {
   millOrder: string | null
@@ -213,6 +230,18 @@ export interface GlobalMillOrderUpdateResponseDto extends ExtensibleDto {
   enabled: boolean
   updatedUtc: string
   appliesTo: string
+}
+
+/** Global QMOS bundle destination selected by the HMI. */
+export interface GlobalDestinationDto extends ExtensibleDto {
+  DestinationId: number | null
+  Description: string | null
+  UpdatedUtc: ApiDateValue
+}
+
+/** Allowlisted payload used to change the global bundle destination. */
+export interface GlobalDestinationUpdateRequestDto {
+  destinationId: number
 }
 
 /** Allowlisted payload accepted by the public manual-correction command. */

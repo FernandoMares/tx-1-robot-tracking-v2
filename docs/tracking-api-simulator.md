@@ -44,6 +44,7 @@ Abre `http://localhost:3000`. Despues de cambiar cualquier variable `NEXT_PUBLIC
 - Un identificador inexistente en `/api/tracking/bundles/{trackingId}` devuelve HTTP 404.
 - El catalogo QMOS contiene tres Mill Orders ficticias, responde como arreglo JSON directo y respeta el parametro `max`.
 - La Mill Order global inicia como `SIM-MO-001` y un cambio queda visible en la siguiente lectura.
+- El Destination global inicia como `1.A.2..` (ID `3773`) y puede cambiarse desde el catalogo simulado.
 - Una correccion aceptada queda visible en `MillOrder1` desde la siguiente lectura del bundle.
 - Detener el simulador con `Ctrl+C` permite probar la desconexion y el estado stale del frontend.
 
@@ -58,9 +59,12 @@ GET /api/tracking/bundles/{trackingId}
 GET /api/tracking/opc
 GET /api/tracking/events/recent
 GET /api/tracking/mill-order
+GET /api/tracking/destination
 GET /api/qmos/status
 GET /api/qmos/mill-orders?max=20
+GET /api/qmos/bundle-locations
 PUT /api/tracking/mill-order
+PUT /api/tracking/destination
 POST /api/tracking/correct
 ```
 
@@ -69,6 +73,14 @@ El PUT global acepta unicamente la Mill Order y simula la respuesta sincrona del
 ```json
 {
   "millOrder": "SIM-MO-002"
+}
+```
+
+El PUT de Destination acepta unicamente un ID existente en el catalogo simulado:
+
+```json
+{
+  "destinationId": 3773
 }
 ```
 
