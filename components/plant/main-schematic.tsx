@@ -19,6 +19,7 @@ interface MainSchematicProps {
 export const MAIN_SCHEMATIC_WIDTH = 1480
 export const MAIN_SCHEMATIC_HEIGHT = 760
 const ZONE_WIDTH = 84
+const BUNDLER_ROW_TOP = 250
 
 const STACKER_SOURCES = ["ERT1A", "ERT1B", "ERT2C", "ERT2D"] as const
 const STACKER_TRANSFERS = ["STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"] as const
@@ -343,7 +344,7 @@ export function MainSchematic({
       <MachineOutline
         label="BUND Bundler"
         detail="Four bundler outputs feeding the second tracking section"
-        style={{ left: 500, top: 92, width: 376, height: 220 }}
+        style={{ left: 500, top: BUNDLER_ROW_TOP - 12, width: 376, height: 220 }}
       >
         <div className="absolute top-3 left-3 flex gap-1">
           {BUNDLER_OUTPUTS.map((zone) => (
@@ -352,11 +353,11 @@ export function MainSchematic({
         </div>
       </MachineOutline>
 
-      <div className="absolute" style={{ left: 880, top: 132 }}>
+      <div className="absolute" style={{ left: 880, top: BUNDLER_ROW_TOP + 28 }}>
         <FlowArrow running={animationRunning} className="size-3" />
       </div>
 
-      <div className="absolute" style={{ left: 900, top: 104 }}>
+      <div className="absolute" style={{ left: 900, top: BUNDLER_ROW_TOP }}>
         <HorizontalSequence
           zones={["RTTY1", "RTTY2", "IMRT2"]}
           bundlesByZone={bundlesByZone}
@@ -365,17 +366,7 @@ export function MainSchematic({
         />
       </div>
 
-      <div
-        className="absolute border-t-2 border-r-2 border-slate-400"
-        style={{ left: 1180, top: 139, width: 8, height: 142 }}
-        aria-hidden
-      />
-
-      <div className="absolute" style={{ left: 1183, top: 205 }}>
-        <FlowArrow running={animationRunning} direction="down" className="size-2.5" />
-      </div>
-
-      <div className="absolute" style={{ left: 1188, top: 275 }}>
+      <div className="absolute" style={{ left: 1184, top: BUNDLER_ROW_TOP + 28 }}>
         <FlowArrow running={animationRunning} className="size-3" />
       </div>
 
