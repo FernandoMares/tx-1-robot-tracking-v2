@@ -57,7 +57,7 @@ export function PlantMap({
           <p className="text-sm text-muted-foreground">
             {matchedIds
               ? `${matchedIds.size} of ${tables.length} tables match the active filters`
-              : "Official Exit Tracking layout · 33 mapped zones"}
+              : "Exit Tracking layout · LCH positions hidden in operator view"}
           </p>
         </div>
 

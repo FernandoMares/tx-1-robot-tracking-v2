@@ -5,11 +5,15 @@ import type {
   GlobalMillOrderDto,
   GlobalMillOrderUpdateRequestDto,
   GlobalMillOrderUpdateResponseDto,
+  GlobalPrinterDto,
+  GlobalPrinterUpdateRequestDto,
+  GlobalPrinterUpdateResponseDto,
   OpcStatusDto,
   QmosBundleLocationDto,
   QmosBundleLocationsResponseDto,
   QmosMillOrdersDto,
   QmosMillOrdersResponseDto,
+  QmosPrinterDto,
   QmosStatusDto,
   TrackedBundleDto,
   TrackingCapabilitiesDto,
@@ -26,9 +30,13 @@ import {
   isGlobalMillOrderDto,
   isGlobalMillOrderUpdateRequestDto,
   isGlobalMillOrderUpdateResponseDto,
+  isGlobalPrinterDto,
+  isGlobalPrinterUpdateRequestDto,
+  isGlobalPrinterUpdateResponseDto,
   isOpcStatusDto,
   isQmosBundleLocationsResponseDto,
   isQmosMillOrdersResponseDto,
+  isQmosPrintersDto,
   isQmosStatusDto,
   isTrackedBundleDto,
   isTrackingCapabilitiesDto,
@@ -330,6 +338,10 @@ export class TrackingApiClient {
     })
   }
 
+  getQmosPrinters(signal?: AbortSignal): Promise<QmosPrinterDto[]> {
+    return this.get("/api/qmos/printers", isQmosPrintersDto, signal)
+  }
+
   getGlobalMillOrder(signal?: AbortSignal): Promise<GlobalMillOrderDto> {
     return this.get("/api/tracking/mill-order", isGlobalMillOrderDto, signal)
   }
@@ -366,6 +378,26 @@ export class TrackingApiClient {
       "/api/tracking/destination",
       { destinationId: request.destinationId },
       isGlobalDestinationDto,
+      signal,
+    )
+  }
+
+  getGlobalPrinter(signal?: AbortSignal): Promise<GlobalPrinterDto> {
+    return this.get("/api/tracking/printer", isGlobalPrinterDto, signal)
+  }
+
+  updateGlobalPrinter(
+    request: GlobalPrinterUpdateRequestDto,
+    signal?: AbortSignal,
+  ): Promise<GlobalPrinterUpdateResponseDto> {
+    if (!isGlobalPrinterUpdateRequestDto(request)) {
+      throw new Error("A positive integer PrinterId is required")
+    }
+
+    return this.put(
+      "/api/tracking/printer",
+      { PrinterId: request.PrinterId },
+      isGlobalPrinterUpdateResponseDto,
       signal,
     )
   }

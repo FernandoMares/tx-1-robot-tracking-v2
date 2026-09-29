@@ -211,6 +211,12 @@ export type QmosBundleLocationsResponseDto = Array<
   QmosBundleLocationDto | QmosBundleLocationContractDto
 >
 
+/** Printer option returned by the live QMOS catalog. */
+export interface QmosPrinterDto extends ExtensibleDto {
+  PrinterId: number
+  PrinterName: string
+}
+
 /** Global Mill Order selected by the HMI for subsequent QMOS CREATE operations. */
 export interface GlobalMillOrderDto extends ExtensibleDto {
   millOrder: string | null
@@ -242,6 +248,27 @@ export interface GlobalDestinationDto extends ExtensibleDto {
 /** Allowlisted payload used to change the global bundle destination. */
 export interface GlobalDestinationUpdateRequestDto {
   destinationId: number
+}
+
+/** Global printer used for subsequent automatic PRINT_NEXT actions. */
+export interface GlobalPrinterDto extends ExtensibleDto {
+  PrinterId: number | null
+  PrinterName: string | null
+  UpdatedUtc: ApiDateValue
+}
+
+/** Allowlisted payload used to change the active global printer. */
+export interface GlobalPrinterUpdateRequestDto {
+  PrinterId: number
+}
+
+/** Persistence acknowledgement from PUT /api/tracking/printer. */
+export interface GlobalPrinterUpdateResponseDto extends ExtensibleDto {
+  updated: boolean
+  printerId: number
+  printerName: string
+  updatedUtc: string
+  appliesTo: string
 }
 
 /** Allowlisted payload accepted by the public manual-correction command. */

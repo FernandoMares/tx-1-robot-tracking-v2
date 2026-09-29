@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from "react"
 import { ArrowDown, ArrowRight, ArrowUp, Scale } from "lucide-react"
 
 import { RobotCard } from "@/components/plant/robot-card"
+import { ScaleWeightReadout } from "@/components/plant/scale-weight-readout"
 import { TrackingZoneSlot } from "@/components/plant/tracking-zone-slot"
 import { ROBOT_2_UNKNOWN } from "@/lib/mock-data"
 import type { BundlesByZone, TrackingZoneName } from "@/lib/tracking-zone-layout"
@@ -23,12 +24,12 @@ const STACKER_SOURCES = ["ERT1A", "ERT1B", "ERT2C", "ERT2D"] as const
 const STACKER_TRANSFERS = ["STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"] as const
 const BUNDLER_OUTPUTS = ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD"] as const
 const UPPER_TRACKING_COLUMNS = [
-  ["CCH1A", "LCH1A", "SGRT1A"],
-  ["CCH1B", "LCH1B", "SGRT1B"],
+  ["CCH1A", "SGRT1A"],
+  ["CCH1B", "SGRT1B"],
 ] as const
 const LOWER_TRACKING_COLUMNS = [
-  ["CCH2A", "LCH2A", "SGRT2A"],
-  ["CCH2B", "LCH2B", "SGRT2B"],
+  ["CCH2A", "SGRT2A"],
+  ["CCH2B", "SGRT2B"],
 ] as const
 
 function Zone({
@@ -47,6 +48,7 @@ function Zone({
       zoneName={name}
       bundles={bundlesByZone[name]}
       compact
+      compactVisibleRows={name.startsWith("CCH") ? 5 : undefined}
       hasSnapshot={hasSnapshot}
       className={cn("shrink-0", className)}
       style={{ width: ZONE_WIDTH }}
@@ -54,18 +56,27 @@ function Zone({
   )
 }
 
-function ScaleContext() {
+function ScaleContext({
+  bundlesByZone,
+  hasSnapshot,
+}: {
+  bundlesByZone: BundlesByZone
+  hasSnapshot: boolean
+}) {
   return (
     <aside
-      className="flex h-[4.25rem] items-center justify-center gap-2 rounded-sm border border-dashed border-slate-400 bg-slate-50 px-2 text-center shadow-sm"
+      className="flex h-20 flex-col items-center justify-center gap-1 rounded-sm border border-dashed border-slate-400 bg-slate-50 px-1 py-1 text-center shadow-sm"
       style={{ gridColumn: "1 / -1" }}
-      aria-label="Scale Weight Station, physical equipment context, not an API tracking zone"
-      title="Physical equipment context; not an API tracking zone"
+      aria-label="Scale Weight Station, showing the weight reported for bundles in SGRT2"
+      title="Physical scale; weights come from SGRT2 bundles in the tracking API"
     >
-      <Scale className="size-5 shrink-0 text-slate-600" aria-hidden />
-      <strong className="text-[9px] leading-3 tracking-wide text-slate-700 uppercase">
-        Scale weight station
-      </strong>
+      <div className="flex items-center justify-center gap-1">
+        <Scale className="size-4 shrink-0 text-slate-600" aria-hidden />
+        <strong className="text-[9px] leading-3 tracking-wide text-slate-700 uppercase">
+          Scale weight station
+        </strong>
+      </div>
+      <ScaleWeightReadout bundles={bundlesByZone.SGRT2 ?? []} hasSnapshot={hasSnapshot} compact />
     </aside>
   )
 }
@@ -233,7 +244,7 @@ export function MainSchematic({
       className="relative shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
       style={{ width: MAIN_SCHEMATIC_WIDTH, height: MAIN_SCHEMATIC_HEIGHT }}
       role="group"
-      aria-label="Mirrored Exit Tracking physical overview with 33 API tracking zones"
+      aria-label="Mirrored Exit Tracking physical overview"
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-zone via-cell-fill to-zone" aria-hidden />
 
@@ -277,7 +288,7 @@ export function MainSchematic({
 
       <section
         className="absolute"
-        style={{ left: 908, top: 407 }}
+        style={{ left: 908, top: 395 }}
         aria-label="Scale Weight Station above SGRT1 and SGRT2, with NCCT1 and NCCT2 below"
       >
         <p className="mb-2 text-center text-[9px] font-bold tracking-[0.08em] text-slate-500 uppercase">
@@ -287,7 +298,7 @@ export function MainSchematic({
           className="grid gap-x-2 gap-y-5"
           style={{ gridTemplateColumns: `${ZONE_WIDTH}px ${ZONE_WIDTH}px` }}
         >
-          <ScaleContext />
+          <ScaleContext bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           <Zone name="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           <Zone name="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
           <Zone name="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
@@ -297,13 +308,13 @@ export function MainSchematic({
           running={animationRunning}
           direction="down"
           className="absolute size-2.5"
-          style={{ left: 37, top: 184 }}
+          style={{ left: 37, top: 196 }}
         />
         <FlowArrow
           running={animationRunning}
           direction="down"
           className="absolute size-2.5"
-          style={{ left: 129, top: 184 }}
+          style={{ left: 129, top: 196 }}
         />
       </section>
 
@@ -386,13 +397,13 @@ export function MainSchematic({
         <FlowArrow running={animationRunning} direction="up" className="size-2.5" />
       </div>
 
-      <div className="absolute" style={{ left: 1380, top: 111 }}>
+      <div className="absolute" style={{ left: 1380, top: 157 }}>
         <FlowArrow running={animationRunning} className="size-3" />
       </div>
 
       <aside
         className="absolute"
-        style={{ left: 1392, top: 44 }}
+        style={{ left: 1392, top: 70 }}
         aria-label="Robot 2 physical equipment context"
       >
         <RobotCard robot={ROBOT_2_UNKNOWN} className="h-40 w-20 gap-2 bg-white/95 p-2" />
@@ -402,8 +413,7 @@ export function MainSchematic({
         className="absolute bottom-5 max-w-[35rem] rounded-md border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2 text-[10px] text-slate-500"
         style={{ left: 520 }}
       >
-        Layout mirrors the approved Tracking Sections Overview for left-to-right reading. Zone occupancy comes only
-        from the tracking API.
+        Operator view of the tracking sections. Zone occupancy comes only from the tracking API.
       </div>
     </div>
   )

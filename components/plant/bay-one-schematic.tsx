@@ -1,5 +1,8 @@
 "use client"
 
+import type { ReactNode } from "react"
+
+import { ScaleWeightReadout } from "@/components/plant/scale-weight-readout"
 import { SchematicScreen } from "@/components/plant/schematic-screen"
 import { TrackingZoneSlot } from "@/components/plant/tracking-zone-slot"
 import { DiagramArrow } from "@/components/plant/zoom-schematic-primitives"
@@ -25,6 +28,7 @@ interface EquipmentContextProps {
   top: number
   width: number
   tone?: "manual" | "scale"
+  children?: ReactNode
 }
 
 /** Physical equipment is context only; bundles are placed exclusively in API zones. */
@@ -35,6 +39,7 @@ function EquipmentContext({
   top,
   width,
   tone = "manual",
+  children,
 }: EquipmentContextProps) {
   return (
     <aside
@@ -50,7 +55,14 @@ function EquipmentContext({
       >
         {title}
       </div>
-      <p className="px-3 py-2 text-center text-[10px] leading-4 text-slate-500">{note}</p>
+      {children ? (
+        <div className="flex items-center gap-2 px-3 py-2">
+          <p className="w-1/2 text-center text-[10px] leading-4 text-slate-500">{note}</p>
+          <div className="min-w-0 flex-1">{children}</div>
+        </div>
+      ) : (
+        <p className="px-3 py-2 text-center text-[10px] leading-4 text-slate-500">{note}</p>
+      )}
     </aside>
   )
 }
@@ -126,7 +138,9 @@ export function BayOneSchematic({
         top={72}
         width={520}
         tone="scale"
-      />
+      >
+        <ScaleWeightReadout bundles={bundlesByZone.SGRT2 ?? []} hasSnapshot={hasSnapshot} />
+      </EquipmentContext>
 
       <span
         className="absolute z-10 text-[10px] font-semibold tracking-wide text-slate-400 uppercase"

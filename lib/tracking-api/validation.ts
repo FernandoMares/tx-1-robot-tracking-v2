@@ -4,11 +4,15 @@ import type {
   GlobalMillOrderDto,
   GlobalMillOrderUpdateRequestDto,
   GlobalMillOrderUpdateResponseDto,
+  GlobalPrinterDto,
+  GlobalPrinterUpdateRequestDto,
+  GlobalPrinterUpdateResponseDto,
   OpcStatusDto,
   QmosBundleLocationsResponseDto,
   QmosMillOrderDto,
   QmosMillOrdersDto,
   QmosMillOrdersResponseDto,
+  QmosPrinterDto,
   QmosStatusDto,
   TrackedBundleDto,
   TrackingCapabilitiesDto,
@@ -332,6 +336,18 @@ export function isQmosBundleLocationsResponseDto(
   )
 }
 
+export function isQmosPrinterDto(value: unknown): value is QmosPrinterDto {
+  return (
+    isObject(value) &&
+    isPositiveInteger(value.PrinterId) &&
+    isNonEmptyString(value.PrinterName)
+  )
+}
+
+export function isQmosPrintersDto(value: unknown): value is QmosPrinterDto[] {
+  return Array.isArray(value) && value.every(isQmosPrinterDto)
+}
+
 export function isGlobalMillOrderDto(value: unknown): value is GlobalMillOrderDto {
   return (
     isObject(value) &&
@@ -377,6 +393,34 @@ export function isGlobalDestinationUpdateRequestDto(
   value: unknown,
 ): value is GlobalDestinationUpdateRequestDto {
   return isObject(value) && isPositiveInteger(value.destinationId)
+}
+
+export function isGlobalPrinterDto(value: unknown): value is GlobalPrinterDto {
+  return (
+    isObject(value) &&
+    (value.PrinterId === null || isPositiveInteger(value.PrinterId)) &&
+    isNullableString(value.PrinterName) &&
+    isNullableString(value.UpdatedUtc)
+  )
+}
+
+export function isGlobalPrinterUpdateRequestDto(
+  value: unknown,
+): value is GlobalPrinterUpdateRequestDto {
+  return isObject(value) && isPositiveInteger(value.PrinterId)
+}
+
+export function isGlobalPrinterUpdateResponseDto(
+  value: unknown,
+): value is GlobalPrinterUpdateResponseDto {
+  return (
+    isObject(value) &&
+    typeof value.updated === "boolean" &&
+    isPositiveInteger(value.printerId) &&
+    isNonEmptyString(value.printerName) &&
+    isNonEmptyString(value.updatedUtc) &&
+    isNonEmptyString(value.appliesTo)
+  )
 }
 
 export function isTrackingCorrectionRequestDto(

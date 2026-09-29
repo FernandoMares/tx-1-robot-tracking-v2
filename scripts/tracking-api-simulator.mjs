@@ -15,8 +15,9 @@ const STEP_MS = positiveInteger(process.env.TRACKING_SIMULATOR_STEP_MS, 5000, 50
 const QMOS_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_QMOS_CONNECTED, true)
 const OPC_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_OPC_CONNECTED, true)
 const LOG_REQUESTS = booleanSetting(process.env.TRACKING_SIMULATOR_LOG_REQUESTS, false)
+const BUFFER_DEMO = process.env.TRACKING_SIMULATOR_BUFFER_DEMO?.trim().toLowerCase() === "true"
 const SCENARIO = "LOCAL_HMI_SIMULATOR"
-const API_VERSION = "sim-1.2.0"
+const API_VERSION = "sim-1.3.0"
 const STARTED_AT = Date.now()
 const CYCLE_STEPS = 9
 const MAX_REQUEST_BODY_BYTES = 64 * 1024
@@ -31,6 +32,11 @@ let globalDestination = {
   DestinationId: 3773,
   Description: "1.A.2..",
   UpdatedUtc: new Date(STARTED_AT).toISOString(),
+}
+let globalPrinter = {
+  PrinterId: null,
+  PrinterName: null,
+  UpdatedUtc: null,
 }
 
 const qmosMillOrders = [
@@ -81,6 +87,13 @@ const qmosBundleLocations = [
   { Id: 3775, Description: "1.A.4.." },
 ]
 
+const qmosPrinters = [
+  { PrinterId: 1, PrinterName: "SIM_TX1_BAY2_WEST" },
+  { PrinterId: 2, PrinterName: "SIM_TX1_BAY2_EAST" },
+  { PrinterId: 3, PrinterName: "SIM_TX1_BUNDLE_AUTO" },
+  { PrinterId: 4, PrinterName: "SIM_TX1_TEST_PRINTER" },
+]
+
 function zone(ZoneId, ZoneName, ZoneType, DisplayOrder, Capacity, Description) {
   return { ZoneId, ZoneName, ZoneType, DisplayOrder, Capacity, Description, IsEnabled: true }
 }
@@ -94,6 +107,12 @@ const zones = [
   zone(106, "CCH2A", "DESTINATION", 60, 1, "Simulated second-section exit."),
   zone(107, "SGRT1B", "PROCESS", 70, 2, "Simulated stationary comparison zone."),
   zone(108, "SGRT2B", "PROCESS", 80, 2, "Simulated warning-state comparison zone."),
+  ...(BUFFER_DEMO
+    ? [
+        zone(109, "SGRT2", "PROCESS", 90, 1, "Simulated scale position for the optional visual demo."),
+        zone(110, "CCH2B", "DESTINATION", 100, 6, "Simulated multi-bundle buffer for the optional visual demo."),
+      ]
+    : []),
 ]
 
 const movingRoute = zones.slice(0, 6)
@@ -223,9 +242,57 @@ function warningBundle() {
   })
 }
 
+function visualDemoBundles() {
+  if (!BUFFER_DEMO) return []
+
+  const scaleBundle = {
+    ...makeBundle({
+      trackingId: "SIM-DEMO-SCALE",
+      bundleId: "101628207",
+      currentZone: "SGRT2",
+      routeName: null,
+      status: "TRACKING",
+      correlationStatus: "MATCHED",
+      createdUtc: STARTED_AT,
+      lastUpdateUtc: STARTED_AT,
+      l2Id: 101628207,
+    }),
+    Weight: 1875.25,
+  }
+
+  const bufferBundles = Array.from({ length: 5 }, (_, index) => {
+    const id = 101628201 + index
+    return makeBundle({
+      trackingId: `SIM-DEMO-BUFFER-${index + 1}`,
+      bundleId: String(id),
+      currentZone: "CCH2B",
+      routeName: null,
+      status: "TRACKING",
+      correlationStatus: "MATCHED",
+      createdUtc: STARTED_AT,
+      lastUpdateUtc: STARTED_AT,
+      l2Id: id,
+    })
+  })
+
+  const warning = makeBundle({
+    trackingId: "SIM-DEMO-BUFFER-WARNING",
+    bundleId: null,
+    currentZone: "CCH2B",
+    routeName: null,
+    status: "WAITING_QMOS_ID",
+    correlationStatus: "UNMATCHED",
+    createdUtc: STARTED_AT,
+    lastUpdateUtc: STARTED_AT,
+    l2Id: 101628206,
+  })
+
+  return [scaleBundle, ...bufferBundles, warning]
+}
+
 function bundles(now = Date.now()) {
   const moving = movingBundle(currentStep(now))
-  return [staticBundle(), warningBundle(), ...(moving ? [moving] : [])].map((bundle) => {
+  return [staticBundle(), warningBundle(), ...(moving ? [moving] : []), ...visualDemoBundles()].map((bundle) => {
     const correction = bundleCorrections.get(bundle.TrackingId)
     if (!correction) return bundle
 
@@ -340,17 +407,20 @@ function capabilities() {
       "/api/tracking/state",
       "/api/tracking/mill-order",
       "/api/tracking/destination",
+      "/api/tracking/printer",
       "/api/tracking/bundles/{trackingId}",
       "/api/tracking/opc",
       "/api/tracking/events/recent",
       "/api/qmos/status",
       "/api/qmos/mill-orders",
       "/api/qmos/bundle-locations",
+      "/api/qmos/printers",
     ],
     commands: [
       "/api/tracking/correct",
       "PUT /api/tracking/mill-order",
       "PUT /api/tracking/destination",
+      "PUT /api/tracking/printer",
     ],
     engineeringOpc: [],
     qmosCommands: [],
@@ -458,7 +528,8 @@ const server = createServer(async (request, response) => {
   if (method === "PUT") {
     if (
       url.pathname !== "/api/tracking/mill-order" &&
-      url.pathname !== "/api/tracking/destination"
+      url.pathname !== "/api/tracking/destination" &&
+      url.pathname !== "/api/tracking/printer"
     ) {
       return sendJson(response, 404, { error: "Endpoint not found", path: url.pathname })
     }
@@ -497,6 +568,36 @@ const server = createServer(async (request, response) => {
       }
 
       return sendJson(response, 200, globalDestination)
+    }
+
+    if (url.pathname === "/api/tracking/printer") {
+      const printerId =
+        typeof body === "object" &&
+        body !== null &&
+        !Array.isArray(body) &&
+        Number.isSafeInteger(body.PrinterId) &&
+        body.PrinterId > 0
+          ? body.PrinterId
+          : null
+      const selectedPrinter = qmosPrinters.find((printer) => printer.PrinterId === printerId)
+
+      if (!selectedPrinter) {
+        return sendJson(response, 400, { error: "PrinterId must identify a valid QMOS printer." })
+      }
+
+      globalPrinter = {
+        PrinterId: selectedPrinter.PrinterId,
+        PrinterName: selectedPrinter.PrinterName,
+        UpdatedUtc: dotNetDate(now),
+      }
+
+      return sendJson(response, 200, {
+        updated: true,
+        printerId: selectedPrinter.PrinterId,
+        printerName: selectedPrinter.PrinterName,
+        updatedUtc: globalPrinter.UpdatedUtc,
+        appliesTo: "subsequent automatic print actions unless a DB rule explicitly overrides PrinterId",
+      })
     }
 
     const millOrder =
@@ -585,6 +686,7 @@ const server = createServer(async (request, response) => {
     "/api/tracking/state": () => trackingState(now),
     "/api/tracking/mill-order": () => globalMillOrder,
     "/api/tracking/destination": () => globalDestination,
+    "/api/tracking/printer": () => globalPrinter,
     "/api/tracking/opc": () => opcStatus(now),
     "/api/tracking/events/recent": () => recentEvents(now),
     "/api/qmos/status": () => ({ enabled: true, connected: QMOS_CONNECTED }),
@@ -593,6 +695,7 @@ const server = createServer(async (request, response) => {
       return qmosMillOrders.slice(0, max)
     },
     "/api/qmos/bundle-locations": () => qmosBundleLocations,
+    "/api/qmos/printers": () => qmosPrinters,
   }
 
   const endpoint = endpoints[url.pathname]
@@ -622,6 +725,7 @@ server.on("error", (error) => {
 server.listen(PORT, HOST, () => {
   console.log("Tracking API simulator running at http://" + HOST + ":" + PORT)
   console.log("Scenario: " + SCENARIO)
+  console.log("Optional buffer and scale demo: " + BUFFER_DEMO)
   console.log("Bundle movement step: " + STEP_MS + " ms")
   console.log("QMOS connected: " + QMOS_CONNECTED + "; OPC connected: " + OPC_CONNECTED)
   console.log("Press Ctrl+C to stop.")

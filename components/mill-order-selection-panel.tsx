@@ -7,6 +7,7 @@ import {
   ClipboardList,
   LoaderCircle,
   MapPin,
+  Printer,
   RefreshCw,
   Search,
   TriangleAlert,
@@ -23,8 +24,10 @@ import {
   type ApiDateValue,
   type GlobalDestinationDto,
   type GlobalMillOrderDto,
+  type GlobalPrinterDto,
   type QmosBundleLocationDto,
   type QmosMillOrderDto,
+  type QmosPrinterDto,
   type TrackingApiConfig,
   type TrackingRuntimeState,
 } from "@/lib/tracking-api"
@@ -99,6 +102,15 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
   const [updateMessage, setUpdateMessage] = useState<string | null>(null)
   const [refreshRevision, setRefreshRevision] = useState(0)
   const [editorOpen, setEditorOpen] = useState(false)
+  const [printers, setPrinters] = useState<QmosPrinterDto[]>([])
+  const [activePrinter, setActivePrinter] = useState<GlobalPrinterDto | null>(null)
+  const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null)
+  const [printerLoadStatus, setPrinterLoadStatus] = useState<LoadStatus>("idle")
+  const [printerLoadError, setPrinterLoadError] = useState<string | null>(null)
+  const [printerUpdateStatus, setPrinterUpdateStatus] = useState<UpdateStatus>("idle")
+  const [printerUpdateMessage, setPrinterUpdateMessage] = useState<string | null>(null)
+  const [printerRefreshRevision, setPrinterRefreshRevision] = useState(0)
+  const [printerEditorOpen, setPrinterEditorOpen] = useState(false)
 
   const client = useMemo(
     () =>
@@ -136,9 +148,12 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
   )
   const canReadProductionSelection =
     canReadOrders && canReadActiveOrder && canReadLocations && canReadActiveDestination
-
   const refresh = useCallback(() => {
     setRefreshRevision((revision) => revision + 1)
+  }, [])
+
+  const refreshPrinter = useCallback(() => {
+    setPrinterRefreshRevision((revision) => revision + 1)
   }, [])
 
   useEffect(() => {
@@ -190,6 +205,40 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
     return () => controller.abort()
   }, [canReadProductionSelection, client, refreshRevision, tracking.mode])
 
+  useEffect(() => {
+    if (!client || tracking.mode !== "live") {
+      setPrinters([])
+      setActivePrinter(null)
+      setSelectedPrinterId(null)
+      setPrinterLoadStatus("idle")
+      setPrinterLoadError(null)
+      return
+    }
+
+    const controller = new AbortController()
+    setPrinterLoadStatus("loading")
+    setPrinterLoadError(null)
+
+    void Promise.all([
+      client.getQmosPrinters(controller.signal),
+      client.getGlobalPrinter(controller.signal),
+    ])
+      .then(([availablePrinters, currentPrinter]) => {
+        if (controller.signal.aborted) return
+        setPrinters(availablePrinters)
+        setActivePrinter(currentPrinter)
+        setSelectedPrinterId(currentPrinter.PrinterId)
+        setPrinterLoadStatus("ready")
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        setPrinterLoadStatus("error")
+        setPrinterLoadError(describeApiError(error))
+      })
+
+    return () => controller.abort()
+  }, [client, printerRefreshRevision, tracking.mode])
+
   const activeMillOrder = activeOrder?.enabled ? activeOrder.millOrder : null
   const activeDestinationId = activeDestination?.DestinationId ?? null
   const activeDestinationDescription = activeDestination?.Description ?? null
@@ -222,6 +271,22 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
   }, [destinationQuery, locations])
 
   const updating = updateStatus === "updating"
+  const printerUpdating = printerUpdateStatus === "updating"
+  const activePrinterId = activePrinter?.PrinterId ?? null
+  const activePrinterName = activePrinter?.PrinterName ?? null
+  const activePrinterUpdatedAt = formatUpdatedUtc(activePrinter?.UpdatedUtc)
+  const activePrinterMissingFromCatalog =
+    activePrinterId !== null && !printers.some((printer) => printer.PrinterId === activePrinterId)
+  const selectedPrinter = printers.find((printer) => printer.PrinterId === selectedPrinterId) ?? null
+  const printerChanged = selectedPrinterId !== null && selectedPrinterId !== activePrinterId
+  const readyToUpdatePrinter = Boolean(
+    client &&
+      selectedPrinter &&
+      printerChanged &&
+      printerLoadStatus === "ready" &&
+      tracking.syncStatus === "live" &&
+      !printerUpdating,
+  )
   const orderChanged = Boolean(selectedMillOrder && selectedMillOrder !== activeMillOrder)
   const destinationChanged = Boolean(
     selectedDestinationId && selectedDestinationId !== activeDestinationId,
@@ -322,8 +387,54 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
     }
   }
 
+  async function handlePrinterSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!client || !readyToUpdatePrinter || !selectedPrinter || selectedPrinterId === null) return
+
+    const confirmed = window.confirm(
+      `Set ${selectedPrinter.PrinterName} (#${selectedPrinterId}) as the active printer for ` +
+        "subsequent automatic print actions? A buffer rule may override this selection.",
+    )
+    if (!confirmed) return
+
+    setPrinterUpdateStatus("updating")
+    setPrinterUpdateMessage("Saving and verifying the active printer...")
+    let putAcknowledged = false
+
+    try {
+      const response = await client.updateGlobalPrinter({ PrinterId: selectedPrinterId })
+      if (!response.updated || response.printerId !== selectedPrinterId) {
+        throw new Error("Tracking answered, but the selected printer was not acknowledged.")
+      }
+      putAcknowledged = true
+
+      const verifiedPrinter = await client.getGlobalPrinter()
+      if (verifiedPrinter.PrinterId !== selectedPrinterId) {
+        throw new Error("Tracking answered, but the active printer could not be verified.")
+      }
+
+      setActivePrinter(verifiedPrinter)
+      setPrinterUpdateStatus("success")
+      setPrinterUpdateMessage(
+        `${verifiedPrinter.PrinterName ?? selectedPrinter.PrinterName} is now the active printer for automatic prints.`,
+      )
+    } catch (error) {
+      try {
+        setActivePrinter(await client.getGlobalPrinter())
+      } catch {
+        // Preserve the original error; the operator can refresh to read the current selection.
+      }
+      setPrinterUpdateStatus("error")
+      setPrinterUpdateMessage(
+        `${putAcknowledged ? "The printer may already have changed; check the current selection. " : ""}${describeApiError(error)}`,
+      )
+    }
+  }
+
   const headerUnavailable =
     loadStatus === "error" || (tracking.capabilities && !canReadProductionSelection)
+  const printerHeaderUnavailable =
+    printerLoadStatus === "error" || tracking.mode !== "live" || !client
 
   return (
     <>
@@ -371,9 +482,33 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
               </p>
             </div>
           </div>
+
+          <div className="flex min-w-0 items-center gap-3 border-border sm:border-l sm:pl-6">
+            <Printer className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="min-w-0 max-w-64">
+              <p className="text-xs font-semibold text-muted-foreground">Active Printer</p>
+              <p
+                className={`truncate text-xl leading-tight font-semibold ${
+                  printerLoadStatus === "ready" && activePrinterId === null
+                    ? "text-warning-fg"
+                    : "text-foreground"
+                }`}
+                title={activePrinterName ?? undefined}
+                role="status"
+                aria-live="polite"
+              >
+                {printerLoadStatus === "ready"
+                  ? activePrinterName ??
+                    (activePrinterId === null ? "Not selected" : `Printer #${activePrinterId}`)
+                  : printerHeaderUnavailable
+                    ? "Unavailable"
+                    : "Reading..."}
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canReadProductionSelection && (
             <Button
               type="button"
@@ -391,7 +526,20 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
             </Button>
           )}
           <Button type="button" variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
-            Change selection
+            Change order / destination
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setPrinterEditorOpen(true)
+              setPrinterUpdateStatus("idle")
+              setPrinterUpdateMessage(null)
+              refreshPrinter()
+            }}
+          >
+            Change printer
           </Button>
         </div>
       </section>
@@ -596,6 +744,128 @@ export function GlobalMillOrderPanel({ tracking, config }: GlobalMillOrderPanelP
                         <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                       )}
                       {updateMessage}
+                    </p>
+                  )}
+                </form>
+              )}
+            </section>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={printerEditorOpen} onOpenChange={setPrinterEditorOpen}>
+        <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-lg">
+          <SheetHeader className="border-b border-border px-5 py-4 pr-12 text-left">
+            <SheetTitle className="text-lg">Select active printer</SheetTitle>
+            <SheetDescription>
+              The global printer applies to subsequent automatic prints. A configured buffer rule may override it.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <section className="flex flex-col gap-4" aria-label="Global printer selection controls">
+              {client && tracking.mode === "live" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  onClick={refreshPrinter}
+                  disabled={printerLoadStatus === "loading" || printerUpdating}
+                >
+                  <RefreshCw
+                    className={
+                      printerLoadStatus === "loading" ? "animate-spin motion-reduce:animate-none" : ""
+                    }
+                    aria-hidden
+                  />
+                  Refresh printers
+                </Button>
+              )}
+
+              {tracking.mode !== "live" || !client ? (
+                <CapabilityWarning>Printer selection requires a live Tracking connection.</CapabilityWarning>
+              ) : printerLoadStatus === "error" ? (
+                <p className="flex items-start gap-1.5 text-xs text-error-fg" role="alert">
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  {printerLoadError}
+                </p>
+              ) : printerLoadStatus !== "ready" ? (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+                  Reading the active printer and QMOS catalog...
+                </p>
+              ) : (
+                <form className="flex flex-col gap-5" onSubmit={handlePrinterSubmit}>
+                  <CurrentSelection
+                    label="Current Printer"
+                    value={
+                      activePrinterName ??
+                      (activePrinterId === null ? "No global selection" : `Printer #${activePrinterId}`)
+                    }
+                    detail={activePrinterId === null ? undefined : `ID ${activePrinterId}`}
+                    updatedAt={activePrinterUpdatedAt}
+                    missing={activePrinterId === null}
+                  />
+
+                  <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
+                    Select global printer
+                    <select
+                      className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+                      value={selectedPrinterId ?? ""}
+                      onChange={(event) => {
+                        setSelectedPrinterId(event.target.value ? Number(event.target.value) : null)
+                        setPrinterUpdateStatus("idle")
+                        setPrinterUpdateMessage(null)
+                      }}
+                      disabled={printerUpdating || printers.length === 0}
+                    >
+                      <option value="">Select a printer</option>
+                      {activePrinterMissingFromCatalog && activePrinterId !== null && (
+                        <option value={activePrinterId} disabled>
+                          {activePrinterName ?? `Printer #${activePrinterId}`} · Not in current catalog
+                        </option>
+                      )}
+                      {printers.map((printer) => (
+                        <option key={printer.PrinterId} value={printer.PrinterId}>
+                          {printer.PrinterName} · ID {printer.PrinterId}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {printers.length === 0 && (
+                    <CapabilityWarning>QMOS returned no available printers.</CapabilityWarning>
+                  )}
+                  {tracking.syncStatus !== "live" && (
+                    <CapabilityWarning>
+                      Wait for a live Tracking connection before changing the printer.
+                    </CapabilityWarning>
+                  )}
+
+                  <Button type="submit" className="w-full" disabled={!readyToUpdatePrinter}>
+                    {printerUpdating && <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden />}
+                    {printerUpdating ? "Saving active printer" : "Set active printer"}
+                  </Button>
+
+                  {printerUpdateMessage && (
+                    <p
+                      className={
+                        printerUpdateStatus === "success"
+                          ? "flex items-start gap-1.5 text-xs text-active-fg"
+                          : printerUpdateStatus === "error"
+                            ? "flex items-start gap-1.5 text-xs text-error-fg"
+                            : "text-xs text-muted-foreground"
+                      }
+                      role={printerUpdateStatus === "error" ? "alert" : "status"}
+                    >
+                      {printerUpdateStatus === "success" && (
+                        <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                      )}
+                      {printerUpdateStatus === "error" && (
+                        <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                      )}
+                      {printerUpdateMessage}
                     </p>
                   )}
                 </form>

@@ -1,11 +1,13 @@
 import type {
   GlobalDestinationUpdateRequestDto,
   GlobalMillOrderUpdateRequestDto,
+  GlobalPrinterUpdateRequestDto,
   TrackingCorrectionRequestDto,
 } from "@/lib/tracking-api/types"
 import {
   isGlobalDestinationUpdateRequestDto,
   isGlobalMillOrderUpdateRequestDto,
+  isGlobalPrinterUpdateRequestDto,
   isTrackingCorrectionRequestDto,
 } from "@/lib/tracking-api/validation"
 
@@ -16,16 +18,19 @@ const STATIC_READ_ENDPOINTS = new Set([
   "/api/tracking/state",
   "/api/tracking/mill-order",
   "/api/tracking/destination",
+  "/api/tracking/printer",
   "/api/tracking/opc",
   "/api/tracking/events/recent",
   "/api/qmos/status",
   "/api/qmos/mill-orders",
   "/api/qmos/bundle-locations",
+  "/api/qmos/printers",
 ])
 
 const TRACKING_CORRECTION_ENDPOINT = "/api/tracking/correct"
 const GLOBAL_MILL_ORDER_ENDPOINT = "/api/tracking/mill-order"
 const GLOBAL_DESTINATION_ENDPOINT = "/api/tracking/destination"
+const GLOBAL_PRINTER_ENDPOINT = "/api/tracking/printer"
 const QMOS_MILL_ORDERS_ENDPOINT = "/api/qmos/mill-orders"
 const DEFAULT_QMOS_MILL_ORDERS = 20
 const MAX_QMOS_MILL_ORDERS = 100
@@ -216,7 +221,8 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
 
   if (
     decodedPath !== GLOBAL_MILL_ORDER_ENDPOINT &&
-    decodedPath !== GLOBAL_DESTINATION_ENDPOINT
+    decodedPath !== GLOBAL_DESTINATION_ENDPOINT &&
+    decodedPath !== GLOBAL_PRINTER_ENDPOINT
   ) {
     return jsonError(404, "Tracking API endpoint not found.")
   }
@@ -233,17 +239,25 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
     return jsonError(400, "A valid JSON request body is required.")
   }
 
-  let sanitizedBody: GlobalMillOrderUpdateRequestDto | GlobalDestinationUpdateRequestDto
+  let sanitizedBody:
+    | GlobalMillOrderUpdateRequestDto
+    | GlobalDestinationUpdateRequestDto
+    | GlobalPrinterUpdateRequestDto
   if (decodedPath === GLOBAL_MILL_ORDER_ENDPOINT) {
     if (!isGlobalMillOrderUpdateRequestDto(body)) {
       return jsonError(400, "millOrder must be a non-empty string of at most 32 characters.")
     }
     sanitizedBody = { millOrder: body.millOrder.trim() }
-  } else {
+  } else if (decodedPath === GLOBAL_DESTINATION_ENDPOINT) {
     if (!isGlobalDestinationUpdateRequestDto(body)) {
       return jsonError(400, "destinationId must be a positive integer.")
     }
     sanitizedBody = { destinationId: body.destinationId }
+  } else {
+    if (!isGlobalPrinterUpdateRequestDto(body)) {
+      return jsonError(400, "PrinterId must be a positive integer.")
+    }
+    sanitizedBody = { PrinterId: body.PrinterId }
   }
 
   let proxyTarget: URL

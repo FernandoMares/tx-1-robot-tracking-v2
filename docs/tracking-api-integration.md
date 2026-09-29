@@ -2,7 +2,7 @@
 
 Para probar el flujo completo sin acceso al servidor, consulta [Simulador local de Tracking API](./tracking-api-simulator.md).
 
-La integracion conecta el frontend con las lecturas de tracking y permite seleccionar la Mill Order global que Tracking utilizara en las siguientes operaciones QMOS CREATE. La correccion manual por bundle permanece disponible en el cliente tecnico, pero no forma parte del flujo normal de seleccion de produccion. El modo predeterminado sigue siendo `mock`, de modo que clonar y ejecutar el proyecto no genera trafico hacia el entorno de pruebas.
+La integracion conecta el frontend con las lecturas de tracking y permite seleccionar la Mill Order y el Destination globales para las siguientes operaciones QMOS CREATE, ademas de la impresora global para las siguientes impresiones automaticas. La correccion manual por bundle permanece disponible en el cliente tecnico, pero no forma parte del flujo normal de seleccion de produccion. El modo predeterminado sigue siendo `mock`, de modo que clonar y ejecutar el proyecto no genera trafico hacia el entorno de pruebas.
 
 ## Arquitectura elegida
 
@@ -78,10 +78,13 @@ Las operaciones principales son:
 | `/api/tracking/state` | Estado actual de los bundles. | Polling, inicialmente cada segundo. |
 | `/api/qmos/mill-orders?max=50` | Candidatos de Mill Order para seleccion del operador. | Al abrir o actualizar el selector. |
 | `/api/qmos/bundle-locations` | Destinos QMOS validos para busqueda y seleccion del operador. | Al abrir o actualizar el selector. |
+| `/api/qmos/printers` | Catalogo QMOS de impresoras (`PrinterId`, `PrinterName`). | Al abrir o actualizar el selector de impresora. |
 | `GET /api/tracking/mill-order` | Mill Order global activa y fecha de actualizacion. | Al abrir la pantalla, al actualizar y despues de guardar. |
 | `PUT /api/tracking/mill-order` | Guarda la Mill Order global para los siguientes QMOS CREATE. | Solo tras confirmacion del operador. |
 | `GET /api/tracking/destination` | Destination global activo y fecha de actualizacion. | Al abrir la pantalla, al actualizar y despues de guardar. |
 | `PUT /api/tracking/destination` | Guarda el Destination global para los siguientes QMOS CREATE. | Solo tras confirmacion del operador. |
+| `GET /api/tracking/printer` | Impresora global activa (`PrinterId`, `PrinterName`, `UpdatedUtc`), o valores nulos si aun no se ha seleccionado. | Al abrir la pantalla, al actualizar y despues de guardar. |
+| `PUT /api/tracking/printer` | Guarda la impresora global mediante `{ "PrinterId": n }`; devuelve `updated`, `printerId`, `printerName`, `updatedUtc` y `appliesTo`. | Solo tras confirmacion del operador. |
 
 El servicio `0.12` se observo devolviendo `/api/qmos/mill-orders` como un arreglo JSON directo. Algunas respuestas/herramientas anteriores lo mostraron envuelto como `{ "value": [...], "Count": n }`. El cliente acepta ambos formatos y los normaliza internamente para no acoplar la pantalla a esa diferencia de serializacion.
 
@@ -91,11 +94,23 @@ La version devuelta en `apiVersion` se conserva como dato diagnostico. De acuerd
 
 El cliente tambien tipa las lecturas de bundle individual, eventos, OPC y estado de QMOS para diagnostico y actualizacion puntual.
 
+## Representacion de zonas y peso
+
+La posicion de cada bundle proviene de `CurrentZone` en `/api/tracking/state`. En Plant Overview y Bay 1, la tarjeta de la bascula muestra el campo `Weight` de los bundles cuya zona actual es exactamente `SGRT2`, junto a su identificador. Si no hay un bundle en `SGRT2`, lo indica; si el bundle no tiene `Weight`, muestra que el peso no esta disponible. El HMI no calcula pesos ni agrega unidades que la API no proporciona.
+
+Plant Overview y Bay 2 ya no dibujan las posiciones `LCH1A`, `LCH1B`, `LCH2A` y `LCH2B`. Estas zonas permanecen en el catalogo y en los datos de Tracking: ocultar su tarjeta no elimina ni reasigna los bundles que la API reporte ahi.
+
+Las tarjetas de `CCH1A/B` y `CCH2A/B` tienen altura para mostrar cinco identificadores completos de bundles. Si hay mas de cinco, la lista de la tarjeta se desplaza verticalmente; el contador sigue mostrando el total reportado por Tracking. La lista no representa una secuencia fisica dentro del buffer.
+
 ## Seleccion global y correccion individual
 
 La seleccion normal de produccion no depende de un bundle. El HMI consulta los catalogos QMOS y los valores globales actuales, exige una Mill Order y un Destination, solicita confirmacion antes del cambio, ejecuta los PUT necesarios y vuelve a leer ambos valores para verificar que quedaron activos.
 
 Los dos valores se guardan mediante endpoints independientes y no forman una transaccion atomica. El HMI guarda primero Destination, verifica finalmente ambos valores y, ante un error parcial, vuelve a leer el estado y advierte que uno de los valores puede haber cambiado.
+
+La impresora se selecciona por separado. El HMI consulta `/api/qmos/printers`, muestra las opciones recibidas sin codificar nombres ni IDs, consulta `/api/tracking/printer` y envia el `PrinterId` elegido a `PUT /api/tracking/printer`. El servicio valida el ID contra el catalogo QMOS; un ID inexistente devuelve HTTP 400 y no modifica la seleccion. El GET posterior confirma el valor activo. En produccion, Tracking lo persiste en SQL Server y sobrevive a reinicios del HMI y del servicio.
+
+La impresora global se utiliza en acciones automaticas `PRINT_NEXT` posteriores. Una regla `BufferEventRule` con `PrinterId` no nulo conserva prioridad sobre la seleccion global. El contrato del comando explicito `POST /api/qmos/print` no cambia: quien lo invoque debe seguir enviando la impresora requerida por ese comando.
 
 El cambio no reescribe bundles existentes ni reenvia transacciones QMOS terminadas. Tracking aplica la precedencia definida por backend: orden especifica del bundle, orden global activa y finalmente el fallback INI si existe.
 
@@ -103,7 +118,7 @@ El cambio no reescribe bundles existentes ni reenvia transacciones QMOS terminad
 
 ## Operaciones fuera de alcance
 
-El proxy admite `PUT /api/tracking/mill-order`, limitado a `millOrder`, y `PUT /api/tracking/destination`, limitado a `destinationId`. Tambien conserva `POST /api/tracking/correct`, limitado a `TrackingId`, `OperatorId`, `Reason` y `MillOrder1`. Los comandos exigen `Content-Type: application/json` y eliminan cualquier otra propiedad. Siguen fuera de alcance:
+El proxy admite `PUT /api/tracking/mill-order`, limitado a `millOrder`; `PUT /api/tracking/destination`, limitado a `destinationId`; y `PUT /api/tracking/printer`, limitado a `PrinterId`. Tambien conserva `POST /api/tracking/correct`, limitado a `TrackingId`, `OperatorId`, `Reason` y `MillOrder1`. Los comandos exigen `Content-Type: application/json` y eliminan cualquier otra propiedad. Siguen fuera de alcance:
 
 - `POST /api/tracking/reset`
 - `POST /api/tracking/opc/write`
@@ -118,7 +133,7 @@ La respuesta `accepted: true` de una correccion individual confirma que el event
 
 Una respuesta exitosa en Postman, navegacion directa o `curl` no garantiza que Chrome permita un `fetch` entre puertos o redes diferentes. Por eso el HMI utiliza el proxy de mismo origen `/tracking-api`.
 
-El proxy mantiene listas explicitas por metodo. Solicitudes GET fuera de las lecturas aprobadas, solicitudes POST distintas de `/api/tracking/correct` y solicitudes PUT distintas de las dos selecciones globales reciben 404.
+El proxy mantiene listas explicitas por metodo. Solicitudes GET fuera de las lecturas aprobadas, solicitudes POST distintas de `/api/tracking/correct` y solicitudes PUT distintas de las tres selecciones globales reciben 404.
 
 El salto entre el navegador y Next.js debe usar el protocolo aprobado para el HMI. Next.js puede comunicarse internamente por HTTP con el servicio dentro de la red controlada, sujeto a la arquitectura de produccion que se acuerde.
 
@@ -129,9 +144,15 @@ Antes de considerar validada la conexion live, comprueba que:
 - las lecturas principales responden a traves de `/tracking-api`;
 - la consulta de Mill Orders respeta el limite solicitado;
 - el catalogo de bundle locations permite buscar por descripcion e ID;
-- los dos `GET` globales coinciden con las selecciones almacenadas por Tracking;
+- el catalogo de impresoras muestra los IDs y nombres enviados por QMOS;
+- los `GET` de Mill Order, Destination e impresora coinciden con las selecciones almacenadas por Tracking;
 - cada `PUT` autorizado puede confirmarse con su `GET` posterior;
+- `PUT /api/tracking/printer` rechaza IDs inexistentes sin cambiar la impresora activa;
 - la orden nueva solo se aplica a QMOS CREATE posteriores y no modifica bundles existentes;
+- la impresora global se usa en `PRINT_NEXT` posteriores salvo que una regla tenga `PrinterId` explicito;
+- la bascula muestra el `Weight` del bundle ubicado en `SGRT2`, sin inventar un valor o una unidad cuando falte;
+- las zonas `LCH1A/B` y `LCH2A/B` siguen disponibles como datos de Tracking aunque no se dibujen en Plant Overview ni Bay 2;
+- `CCH1A/B` y `CCH2A/B` muestran hasta cinco IDs completos antes de requerir desplazamiento vertical, sin ocultar bundles adicionales del contador;
 - `/api/tracking/state` se consulta sin solicitudes solapadas;
 - al detener la API se muestra un estado stale/offline y no aparecen datos mock;
 - al levantar nuevamente la API el polling se recupera;
