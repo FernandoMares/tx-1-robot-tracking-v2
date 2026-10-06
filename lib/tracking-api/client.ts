@@ -19,6 +19,7 @@ import type {
   TrackingCapabilitiesDto,
   TrackingCommandAcceptedDto,
   TrackingCorrectionRequestDto,
+  TrackingRemovalRequestDto,
   TrackingEventsResponseDto,
   TrackingMapDto,
   TrackingStateDto,
@@ -42,6 +43,7 @@ import {
   isTrackingCapabilitiesDto,
   isTrackingCommandAcceptedDto,
   isTrackingCorrectionRequestDto,
+  isTrackingRemovalRequestDto,
   isTrackingEventsResponseDto,
   isTrackingMapDto,
   isTrackingStateDto,
@@ -420,6 +422,27 @@ export class TrackingApiClient {
     return this.post(
       "/api/tracking/correct",
       sanitizedRequest,
+      isTrackingCommandAcceptedDto,
+      signal,
+    )
+  }
+
+  removeBundle(
+    request: TrackingRemovalRequestDto,
+    signal?: AbortSignal,
+  ): Promise<TrackingCommandAcceptedDto> {
+    if (!isTrackingRemovalRequestDto(request)) {
+      throw new Error("Removal requires a TrackingId, REMOVE operation, OperatorId, and Reason")
+    }
+
+    return this.post(
+      "/api/tracking/correct",
+      {
+        TrackingId: request.TrackingId.trim(),
+        Operation: "REMOVE",
+        OperatorId: request.OperatorId.trim(),
+        Reason: request.Reason.trim(),
+      } satisfies TrackingRemovalRequestDto,
       isTrackingCommandAcceptedDto,
       signal,
     )

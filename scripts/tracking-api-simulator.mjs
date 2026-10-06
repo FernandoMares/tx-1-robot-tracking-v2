@@ -17,11 +17,13 @@ const OPC_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_OPC_CONNECTE
 const LOG_REQUESTS = booleanSetting(process.env.TRACKING_SIMULATOR_LOG_REQUESTS, false)
 const BUFFER_DEMO = process.env.TRACKING_SIMULATOR_BUFFER_DEMO?.trim().toLowerCase() === "true"
 const SCENARIO = "LOCAL_HMI_SIMULATOR"
-const API_VERSION = "sim-1.3.0"
+const API_VERSION = "sim-1.4.0"
 const STARTED_AT = Date.now()
 const CYCLE_STEPS = 9
 const MAX_REQUEST_BODY_BYTES = 64 * 1024
 const bundleCorrections = new Map()
+const removedTrackingIds = new Set()
+let lastManualChangeAt = STARTED_AT
 let nextCorrectionEventId = 100_000
 let globalMillOrder = {
   millOrder: "SIM-MO-001",
@@ -292,23 +294,25 @@ function visualDemoBundles() {
 
 function bundles(now = Date.now()) {
   const moving = movingBundle(currentStep(now))
-  return [staticBundle(), warningBundle(), ...(moving ? [moving] : []), ...visualDemoBundles()].map((bundle) => {
-    const correction = bundleCorrections.get(bundle.TrackingId)
-    if (!correction) return bundle
+  return [staticBundle(), warningBundle(), ...(moving ? [moving] : []), ...visualDemoBundles()]
+    .filter((bundle) => !removedTrackingIds.has(bundle.TrackingId))
+    .map((bundle) => {
+      const correction = bundleCorrections.get(bundle.TrackingId)
+      if (!correction) return bundle
 
-    return {
-      ...bundle,
-      MillOrder1: correction.MillOrder1,
-      LastUpdateUtc: dotNetDate(correction.updatedAt),
-    }
-  })
+      return {
+        ...bundle,
+        MillOrder1: correction.MillOrder1,
+        LastUpdateUtc: dotNetDate(correction.updatedAt),
+      }
+    })
 }
 
 function trackingState(now = Date.now()) {
   const step = currentStep(now)
   return {
     ScenarioName: SCENARIO,
-    LastUpdateUtc: dotNetDate(stepTimestamp(step)),
+    LastUpdateUtc: dotNetDate(Math.max(stepTimestamp(step), lastManualChangeAt)),
     Bundles: bundles(now),
   }
 }
@@ -507,12 +511,17 @@ async function readJsonBody(request) {
 function sanitizeCorrection(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null
 
-  const fields = ["TrackingId", "OperatorId", "Reason", "MillOrder1"]
+  if (value.Operation !== undefined && value.Operation !== "REMOVE") return null
+  const fields = value.Operation === "REMOVE"
+    ? ["TrackingId", "OperatorId", "Reason"]
+    : ["TrackingId", "OperatorId", "Reason", "MillOrder1"]
   const sanitized = {}
   for (const field of fields) {
     if (typeof value[field] !== "string" || value[field].trim().length === 0) return null
     sanitized[field] = value[field].trim()
   }
+
+  if (value.Operation === "REMOVE") sanitized.Operation = "REMOVE"
 
   return sanitized
 }
@@ -645,7 +654,7 @@ const server = createServer(async (request, response) => {
     const correction = sanitizeCorrection(body)
     if (!correction) {
       return sendJson(response, 400, {
-        error: "TrackingId, OperatorId, Reason, and MillOrder1 must be non-empty strings",
+        error: "A correction needs MillOrder1; removal needs Operation=REMOVE. TrackingId, OperatorId, and Reason are required.",
       })
     }
 
@@ -658,6 +667,16 @@ const server = createServer(async (request, response) => {
 
     const eventId = nextCorrectionEventId
     nextCorrectionEventId += 1
+    if (correction.Operation === "REMOVE") {
+      removedTrackingIds.add(correction.TrackingId)
+      lastManualChangeAt = now
+      return sendJson(response, 202, {
+        accepted: true,
+        eventId,
+        eventType: "MANUAL_REMOVE",
+        trackingId: correction.TrackingId,
+      })
+    }
     bundleCorrections.set(correction.TrackingId, {
       MillOrder1: correction.MillOrder1,
       updatedAt: now,

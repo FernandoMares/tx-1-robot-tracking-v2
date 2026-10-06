@@ -279,6 +279,14 @@ export interface TrackingCorrectionRequestDto {
   MillOrder1: string
 }
 
+/** Removes one bundle from active L2 tracking; this is not a global reset. */
+export interface TrackingRemovalRequestDto {
+  TrackingId: string
+  Operation: "REMOVE"
+  OperatorId: string
+  Reason: string
+}
+
 /** Asynchronous command acknowledgement returned by tracking. */
 export interface TrackingCommandAcceptedDto extends ExtensibleDto {
   accepted: boolean

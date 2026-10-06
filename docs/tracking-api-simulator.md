@@ -50,6 +50,7 @@ Abre `http://localhost:3000`. Despues de cambiar cualquier variable `NEXT_PUBLIC
 - El catalogo contiene cuatro impresoras ficticias. La seleccion global inicia vacia y un `PUT` valido queda visible en `GET /api/tracking/printer` mientras el simulador siga ejecutandose.
 - Un `PrinterId` inexistente devuelve HTTP 400 y conserva la seleccion previa. Al reiniciar el simulador, la seleccion ficticia vuelve a estar vacia; la persistencia entre reinicios corresponde al servicio real.
 - Una correccion aceptada queda visible en `MillOrder1` desde la siguiente lectura del bundle.
+- `POST /api/tracking/correct` con `Operation: "REMOVE"` y `TrackingId`, `OperatorId`, `Reason` acepta el retiro de un solo bundle ficticio. Desde la siguiente lectura, ese `TrackingId` desaparece de `/api/tracking/state` y su consulta individual devuelve 404. El simulador no reproduce ocupacion PLC real.
 - Detener el simulador con `Ctrl+C` permite probar la desconexion y el estado stale del frontend.
 
 ### Demostracion visual opcional de bascula y buffer
@@ -131,6 +132,25 @@ El POST requiere estos cuatro datos funcionales; cualquier propiedad adicional s
   "MillOrder1": "SIM-MO-003"
 }
 ```
+
+Para probar **retiro manual** en el simulador, selecciona un bundle en la HMI y usa la accion **Remove from Tracking**. El comando enviado tiene esta forma distinta de la correccion anterior:
+
+```json
+{
+  "TrackingId": "SIM-TRACK-HOLD",
+  "Operation": "REMOVE",
+  "OperatorId": "qa-user",
+  "Reason": "Simulated physical removal"
+}
+```
+
+La aceptacion es asincrona para la HMI: esta vuelve a leer `state` y solo confirma visualmente cuando ya no encuentra ese `TrackingId`. No pruebes el comando contra la API de planta sin autorizacion operativa.
+
+Pruebas automatizadas de esta funcion: `node scripts/test-manual-removal.mjs`.
+El runner valida DTO, cliente y proxy y levanta su propio simulador en loopback.
+Comprueba retiro por `TrackingId`, conservacion de otros bundles (incluidos vecinos
+en la misma zona), rechazo de entradas invalidas y de un segundo retiro del mismo
+ID. No necesita una API de planta ni valida PLC o auditoria historica reales.
 
 ## Configuracion opcional
 

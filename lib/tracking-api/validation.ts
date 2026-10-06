@@ -18,6 +18,7 @@ import type {
   TrackingCapabilitiesDto,
   TrackingCommandAcceptedDto,
   TrackingCorrectionRequestDto,
+  TrackingRemovalRequestDto,
   TrackingEventsResponseDto,
   TrackingMapDto,
   TrackingStateDto,
@@ -432,6 +433,16 @@ export function isTrackingCorrectionRequestDto(
     isNonEmptyString(value.OperatorId) &&
     isNonEmptyString(value.Reason) &&
     isNonEmptyString(value.MillOrder1)
+  )
+}
+
+export function isTrackingRemovalRequestDto(value: unknown): value is TrackingRemovalRequestDto {
+  return (
+    isObject(value) &&
+    isNonEmptyString(value.TrackingId) &&
+    value.Operation === "REMOVE" &&
+    isNonEmptyString(value.OperatorId) &&
+    isNonEmptyString(value.Reason)
   )
 }
 

@@ -85,6 +85,7 @@ Las operaciones principales son:
 | `PUT /api/tracking/destination` | Guarda el Destination global para los siguientes QMOS CREATE. | Solo tras confirmacion del operador. |
 | `GET /api/tracking/printer` | Impresora global activa (`PrinterId`, `PrinterName`, `UpdatedUtc`), o valores nulos si aun no se ha seleccionado. | Al abrir la pantalla, al actualizar y despues de guardar. |
 | `PUT /api/tracking/printer` | Guarda la impresora global mediante `{ "PrinterId": n }`; devuelve `updated`, `printerId`, `printerName`, `updatedUtc` y `appliesTo`. | Solo tras confirmacion del operador. |
+| `POST /api/tracking/correct` con `Operation: "REMOVE"` | Solicita retirar un solo bundle del tracking activo usando su `TrackingId`, operador y motivo. | Solo tras seleccion y confirmacion explicita. |
 
 El servicio `0.12` se observo devolviendo `/api/qmos/mill-orders` como un arreglo JSON directo. Algunas respuestas/herramientas anteriores lo mostraron envuelto como `{ "value": [...], "Count": n }`. El cliente acepta ambos formatos y los normaliza internamente para no acoplar la pantalla a esa diferencia de serializacion.
 
@@ -116,9 +117,21 @@ El cambio no reescribe bundles existentes ni reenvia transacciones QMOS terminad
 
 `POST /api/tracking/correct` conserva su semantica de correccion manual para un bundle existente, pero el HMI no debe invocarlo para asignar rutinariamente la orden de produccion.
 
+### Retiro manual de un bundle
+
+Desde el panel **Tracked bundles**, el operador selecciona un bundle y captura `OperatorId` y `Reason`. La HMI muestra el `TrackingId` real, solicita una segunda confirmacion y envia exclusivamente `{ TrackingId, Operation: "REMOVE", OperatorId, Reason }` a `POST /api/tracking/correct`. No usa el `BundleId`, LPN, tag ni la zona como identidad del comando. El retiro no invoca `/api/tracking/reset`.
+
+Una respuesta `accepted: true` confirma que la solicitud fue aceptada, **no** que el bundle ya desaparecio. La HMI vuelve a consultar Tracking y muestra la ausencia solo cuando una lectura `live`, recibida despues de la respuesta, ya no contiene ese `TrackingId`. Mientras esta pendiente no permite reenviar el mismo comando; ante timeout o respuesta ambigua advierte que el retiro pudo haberse aceptado y que debe verificarse el estado antes de repetirlo. El backend es responsable de limpiar HEAD/TAIL y ocupacion PLC, y preservar historial y auditoria; la HMI no escribe esas posiciones individualmente.
+
+Despues de la confirmacion se comprueba otra vez que el bundle siga presente y que la ultima lectura no haya vencido (`staleMs`). Si la confirmacion quedo abierta demasiado tiempo, se solicita refresco sin enviar el POST. El bloqueo evita dobles envios dentro del panel montado; no persiste al recargar el navegador ni sustituye idempotencia en el backend.
+
+La accion solo se habilita con conexion `live` y cuando `capabilities.commands` anuncia `/api/tracking/correct`. El `OperatorId` se captura como texto: **la HMI no autentica la identidad del operador**. Antes del uso operativo deben acordarse permisos, identidad y pruebas de commissioning con el equipo de planta.
+
+Anunciar ese endpoint no demuestra por si solo soporte de `REMOVE`, porque ya existia para correcciones. Confirmar la version/implementacion del backend. Ver [procedimiento de prueba en servidor](manual-bundle-removal-commissioning.md). Esta HMI usa `REMOVE`, la operacion recomendada en el apendice; no agrega un selector `RETIRE` ni reposicionamiento por `CurrentZone`.
+
 ## Operaciones fuera de alcance
 
-El proxy admite `PUT /api/tracking/mill-order`, limitado a `millOrder`; `PUT /api/tracking/destination`, limitado a `destinationId`; y `PUT /api/tracking/printer`, limitado a `PrinterId`. Tambien conserva `POST /api/tracking/correct`, limitado a `TrackingId`, `OperatorId`, `Reason` y `MillOrder1`. Los comandos exigen `Content-Type: application/json` y eliminan cualquier otra propiedad. Siguen fuera de alcance:
+El proxy admite `PUT /api/tracking/mill-order`, limitado a `millOrder`; `PUT /api/tracking/destination`, limitado a `destinationId`; y `PUT /api/tracking/printer`, limitado a `PrinterId`. `POST /api/tracking/correct` conserva la correccion anterior con `TrackingId`, `OperatorId`, `Reason` y `MillOrder1`, y admite por separado el retiro con `TrackingId`, `Operation: "REMOVE"`, `OperatorId` y `Reason`. Los comandos exigen `Content-Type: application/json` y eliminan cualquier otra propiedad. Siguen fuera de alcance:
 
 - `POST /api/tracking/reset`
 - `POST /api/tracking/opc/write`
@@ -152,6 +165,8 @@ Antes de considerar validada la conexion live, comprueba que:
 - la impresora global se usa en `PRINT_NEXT` posteriores salvo que una regla tenga `PrinterId` explicito;
 - la bascula muestra el `Weight` del bundle ubicado en `SGRT2`, sin inventar un valor o una unidad cuando falte;
 - las zonas `LCH1A/B` y `LCH2A/B` siguen disponibles como datos de Tracking aunque no se dibujen en Plant Overview ni Bay 2;
+- el retiro manual envia el `TrackingId` del bundle seleccionado, requiere operador, motivo y confirmacion, y no usa reset global;
+- una aceptacion de retiro no se presenta como finalizada hasta que una nueva lectura `live` ya no muestra ese `TrackingId`;
 - `CCH1A/B` y `CCH2A/B` muestran hasta cinco IDs completos antes de requerir desplazamiento vertical, sin ocultar bundles adicionales del contador;
 - `/api/tracking/state` se consulta sin solicitudes solapadas;
 - al detener la API se muestra un estado stale/offline y no aparecen datos mock;
