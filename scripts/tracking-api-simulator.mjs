@@ -16,6 +16,7 @@ const QMOS_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_QMOS_CONNEC
 const OPC_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_OPC_CONNECTED, true)
 const LOG_REQUESTS = booleanSetting(process.env.TRACKING_SIMULATOR_LOG_REQUESTS, false)
 const BUFFER_DEMO = process.env.TRACKING_SIMULATOR_BUFFER_DEMO?.trim().toLowerCase() === "true"
+const FIFO_DEMO = process.env.TRACKING_SIMULATOR_FIFO_DEMO?.trim().toLowerCase() === "true"
 const SCENARIO = "LOCAL_HMI_SIMULATOR"
 const API_VERSION = "sim-1.3.0"
 const STARTED_AT = Date.now()
@@ -104,7 +105,7 @@ const zones = [
   zone(103, "CCH1A", "PROCESS", 30, 1, "Simulated first-section exit."),
   zone(104, "SGRT2A", "PROCESS", 40, 1, "Simulated second-section entry."),
   zone(105, "LCH2A", "PROCESS", 50, 1, "Simulated second-section transfer."),
-  zone(106, "CCH2A", "DESTINATION", 60, 1, "Simulated second-section exit."),
+  zone(106, "CCH2A", "DESTINATION", 60, FIFO_DEMO ? 8 : 1, "Simulated second-section exit."),
   zone(107, "SGRT1B", "PROCESS", 70, 2, "Simulated stationary comparison zone."),
   zone(108, "SGRT2B", "PROCESS", 80, 2, "Simulated warning-state comparison zone."),
   ...(BUFFER_DEMO
@@ -290,9 +291,43 @@ function visualDemoBundles() {
   return [scaleBundle, ...bufferBundles, warning]
 }
 
+function fifoDemoBundles() {
+  if (!FIFO_DEMO) return []
+
+  // Deliberately shuffled wire order. Sequence, tag number, and array position
+  // are different so the v0.42 ordering rule can be checked visually.
+  const entries = [
+    { tag: 101637552, sequence: 5164 },
+    { tag: 101637550, sequence: 5162 },
+    { tag: 101637559, sequence: null },
+    { tag: 101637555, sequence: 5166 },
+    { tag: 101637551, sequence: 5161 },
+    { tag: 101637558 },
+    { tag: 101637553, sequence: 5163 },
+    { tag: 101637554, sequence: 5165 },
+  ]
+  return entries.map((entry, index) => ({
+    ...makeBundle({
+      trackingId: "SIM-FIFO-" + (index + 1),
+      bundleId: String(entry.tag),
+      currentZone: "CCH2A",
+      routeName: null,
+      status: "TRACKING",
+      correlationStatus: "MATCHED",
+      createdUtc: STARTED_AT,
+      lastUpdateUtc: STARTED_AT,
+      l2Id: entry.tag,
+    }),
+    ...(entry.sequence === undefined ? {} : {
+      LogicalBufferName: entry.sequence === null ? null : "CCH2A",
+      QueueSequence: entry.sequence,
+    }),
+  }))
+}
+
 function bundles(now = Date.now()) {
   const moving = movingBundle(currentStep(now))
-  return [staticBundle(), warningBundle(), ...(moving ? [moving] : []), ...visualDemoBundles()].map((bundle) => {
+  return [staticBundle(), warningBundle(), ...(moving ? [moving] : []), ...visualDemoBundles(), ...fifoDemoBundles()].map((bundle) => {
     const correction = bundleCorrections.get(bundle.TrackingId)
     if (!correction) return bundle
 

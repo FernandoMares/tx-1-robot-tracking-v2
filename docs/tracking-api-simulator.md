@@ -72,6 +72,45 @@ Remove-Item Env:TRACKING_SIMULATOR_BUFFER_DEMO -ErrorAction SilentlyContinue
 pnpm simulator
 ```
 
+### Demostracion opcional de orden FIFO (v0.42)
+
+En la terminal del simulador, detener la instancia anterior y activar:
+
+```powershell
+$env:TRACKING_SIMULATOR_FIFO_DEMO="true"
+pnpm simulator
+```
+
+El escenario agrega ocho bundles ficticios en `CCH2A`: seis miembros FIFO con `LogicalBufferName` y `QueueSequence`, uno con campos nulos y otro con campos ausentes. La respuesta JSON llega deliberadamente desordenada y los IDs no son consecutivos respecto de la entrada al buffer. Los demas bundles conservan su comportamiento normal; el bundle movil puede sumarse temporalmente a `CCH2A` durante su recorrido.
+
+Los seis miembros con secuencia deben aparecer en este orden relativo tanto en Plant Overview como en Bay 2:
+
+| QueueSequence | Identificador |
+| --- | --- |
+| 5161 | 101637551 |
+| 5162 | 101637550 |
+| 5163 | 101637553 |
+| 5164 | 101637552 |
+| 5165 | 101637554 |
+| 5166 | 101637555 |
+
+Los bundles `101637559` (campos nulos) y `101637558` (campos ausentes) conservan su lugar de visualizacion y no reciben rango FIFO. La tarjeta muestra un `*` con la explicacion de orden parcial, mantiene el contador completo y permite desplazarse despues de cinco filas. El tooltip de cada miembro FIFO incluye su secuencia. Esta demo no modifica colas ni equipos reales.
+
+Para volver al escenario predeterminado, detener el simulador y ejecutar:
+
+```powershell
+Remove-Item Env:TRACKING_SIMULATOR_FIFO_DEMO -ErrorAction SilentlyContinue
+pnpm simulator
+```
+
+Las regresiones automatizadas usan los archivos fuente del proyecto y procesos de simulacion propios en puertos libres de loopback. No leen `.env.local`, no contactan el servidor de planta y no envian comandos de escritura:
+
+```powershell
+node scripts/test-fifo-ordering.mjs
+```
+
+### Endpoints simulados
+
 El simulador responde a:
 
 ```text

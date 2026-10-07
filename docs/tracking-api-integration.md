@@ -102,6 +102,39 @@ Plant Overview y Bay 2 ya no dibujan las posiciones `LCH1A`, `LCH1B`, `LCH2A` y 
 
 Las tarjetas de `CCH1A/B` y `CCH2A/B` tienen altura para mostrar cinco identificadores completos de bundles. Si hay mas de cinco, la lista de la tarjeta se desplaza verticalmente; el contador sigue mostrando el total reportado por Tracking. La lista no representa una secuencia fisica dentro del buffer.
 
+### Orden FIFO de los buffers (contrato v0.42)
+
+`GET /api/tracking/state` agrega dos campos opcionales a cada bundle. No requiere otro endpoint ni una solicitud adicional:
+
+| Campo | Significado |
+| --- | --- |
+| `LogicalBufferName` | Buffer logico al que pertenece actualmente el bundle. |
+| `QueueSequence` | Secuencia de entrada al FIFO, asignada por L2. Un valor menor entro antes. |
+
+`CurrentZone` sigue siendo la unica fuente de ubicacion en el dibujo. Dentro de cada tarjeta, los miembros de un mismo buffer logico se muestran por `QueueSequence` ascendente. La regla se aplica a cualquier nombre de buffer recibido, no solo a `CCH2A`, y es compartida por Plant Overview, Bay 2 y las demas vistas mediante `TrackingZoneSlot` y `lib/tracking-fifo.ts`.
+
+Por ejemplo, las secuencias `5161, 5162, 5163, 5164` deben mostrar los identificadores `101637551, 101637550, 101637553, 101637552`, respectivamente. El numero del bundle, `TagNumber`, `TrackingId` y la posicion original dentro del JSON no se utilizan para decidir precedencia FIFO. El orden de entrada tampoco se interpreta como un indice fisico HEAD/TAIL.
+
+Compatibilidad y datos incompletos:
+
+- Los servicios anteriores pueden omitir ambos campos; el HMI conserva la visualizacion previa sin afirmar que sea FIFO.
+- `QueueSequence: null` significa que no es un miembro activo de FIFO. No se convierte en cero. Cero numerico si es una secuencia utilizable.
+- Para ordenar se necesita un nombre de buffer no vacio y una secuencia entera representable sin perdida de precision. Los valores numericos no utilizables no reciben una posicion FIFO inventada.
+- Si una tarjeta mezcla buffers distintos, cada grupo se ordena solamente dentro de sus propios lugares en la lista. Los bundles sin metadata utilizable conservan su lugar; no se eliminan ni se trasladan a otra zona.
+- Si hay miembros FIFO junto a entradas sin metadata, o secuencias repetidas dentro del mismo buffer, aparece un `*` junto al nombre de zona. El tooltip explica la limitacion. Los empates conservan su orden relativo sin atribuirles una precedencia confirmada.
+- El tooltip de cada miembro valido muestra el buffer y su `QueueSequence`. Conteos, identificadores, colores y desplazamiento de las tarjetas permanecen iguales.
+
+Esta funcionalidad es exclusivamente de lectura: no cambia la cola de L2, el PLC, ni envia correcciones manuales. Las funciones de retiro/reposicionamiento se desarrollan por separado y no son requisito para esta integracion.
+
+Prueba local automatizada:
+
+```powershell
+node scripts/test-fifo-ordering.mjs
+pnpm typecheck
+```
+
+Para la validacion en QA, revisar la respuesta real de `/api/tracking/state`, identificar al menos dos miembros del mismo buffer cuyos IDs no coincidan con el orden de entrada y comparar sus `QueueSequence` contra Plant Overview y Bay 2. Comprobar tambien mas de cinco miembros, campos nulos/ausentes y recuperacion del polling. La simulacion local no sustituye esta comprobacion con L2 v0.42.
+
 ## Seleccion global y correccion individual
 
 La seleccion normal de produccion no depende de un bundle. El HMI consulta los catalogos QMOS y los valores globales actuales, exige una Mill Order y un Destination, solicita confirmacion antes del cambio, ejecuta los PUT necesarios y vuelve a leer ambos valores para verificar que quedaron activos.
@@ -153,6 +186,8 @@ Antes de considerar validada la conexion live, comprueba que:
 - la bascula muestra el `Weight` del bundle ubicado en `SGRT2`, sin inventar un valor o una unidad cuando falte;
 - las zonas `LCH1A/B` y `LCH2A/B` siguen disponibles como datos de Tracking aunque no se dibujen en Plant Overview ni Bay 2;
 - `CCH1A/B` y `CCH2A/B` muestran hasta cinco IDs completos antes de requerir desplazamiento vertical, sin ocultar bundles adicionales del contador;
+- los miembros de cada buffer logico se muestran por `QueueSequence` ascendente en Overview y Bay 2, sin ordenar por ID ni modificar su `CurrentZone`;
+- los campos FIFO nulos o ausentes siguen siendo compatibles y no se interpretan como secuencia cero;
 - `/api/tracking/state` se consulta sin solicitudes solapadas;
 - al detener la API se muestra un estado stale/offline y no aparecen datos mock;
 - al levantar nuevamente la API el polling se recupera;

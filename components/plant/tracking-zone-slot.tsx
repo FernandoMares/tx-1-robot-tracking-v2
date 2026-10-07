@@ -5,6 +5,7 @@ import {
   type TrackingZoneName,
 } from "@/lib/tracking-zone-layout"
 import type { TrackedBundleDto } from "@/lib/tracking-api"
+import { getFifoMembership, orderBundlesByLogicalFifo } from "@/lib/tracking-fifo"
 import { cn } from "@/lib/utils"
 
 export interface TrackingZoneSlotProps {
@@ -24,8 +25,8 @@ function bundleIdentity(bundle: TrackedBundleDto): string {
 }
 
 /**
- * Generic zone-level renderer. Multiple chips mean co-location only: their
- * visual order must not be interpreted as a physical slot sequence.
+ * CurrentZone determines placement. Within each logical FIFO, L2 QueueSequence
+ * determines display precedence; this is not a physical HEAD/TAIL slot index.
  */
 export function TrackingZoneSlot({
   zoneName,
@@ -37,6 +38,13 @@ export function TrackingZoneSlot({
   style,
 }: TrackingZoneSlotProps) {
   const zone = getTrackingVisualZone(zoneName)
+  const fifo = orderBundlesByLogicalFifo(bundles)
+  const fifoIncomplete = fifo.hasFifoMembers && (fifo.hasUnorderedMembers || fifo.hasDuplicateSequences)
+  const fifoDescription = fifo.hasFifoMembers
+    ? "FIFO members are shown by QueueSequence ascending within each logical buffer." +
+      (fifo.hasUnorderedMembers ? " Other bundles have no usable FIFO membership; their display positions are not FIFO ranks." : "") +
+      (fifo.hasDuplicateSequences ? " Duplicate sequences: equal entries have no confirmed FIFO precedence." : "")
+    : undefined
   const occupied = hasSnapshot && bundles.length > 0
   const waitingForQmos = bundles.some(
     (bundle) =>
@@ -51,6 +59,9 @@ export function TrackingZoneSlot({
     <section
       data-zone-name={zoneName}
       data-zone-occupied={occupied || undefined}
+      data-fifo-order={hasSnapshot && fifo.hasFifoMembers ? fifoIncomplete ? "partial" : "ascending" : undefined}
+      title={hasSnapshot ? fifoDescription : undefined}
+      aria-description={hasSnapshot ? fifoDescription : undefined}
       className={cn(
         "overflow-hidden rounded-sm border bg-white shadow-sm",
         waitingForQmos
@@ -74,7 +85,7 @@ export function TrackingZoneSlot({
           waitingForQmos ? "bg-amber-600" : occupied ? "bg-emerald-700" : "bg-slate-700",
         )}
       >
-        <span>{zone.label}</span>
+        <span>{zone.label}{hasSnapshot && fifoIncomplete && <span className="ml-0.5" aria-label="FIFO order incomplete" title={fifoDescription}>*</span>}</span>
         <span className="tabular rounded bg-black/15 px-1.5 py-0.5" aria-label={`${bundles.length} bundles`}>
           {hasSnapshot ? bundles.length : "—"}
         </span>
@@ -98,17 +109,28 @@ export function TrackingZoneSlot({
         ) : bundles.length === 0 ? (
           <span className="self-center text-[11px] text-slate-400">Empty</span>
         ) : (
-          bundles.map((bundle, index) => {
+          fifo.bundles.map((bundle, index) => {
             const identity = bundleIdentity(bundle)
             const numericIdentity = /^\d+$/.test(identity)
             const status = bundle.Status ?? "Unknown status"
             const correlation = bundle.CorrelationStatus ?? "Unknown correlation"
+            const membership = getFifoMembership(bundle)
+            const fifoDetail = membership
+              ? ` · FIFO ${membership.bufferName} · QueueSequence ${membership.sequence}`
+              : bundle.QueueSequence === null
+                ? " · Not currently an active FIFO member"
+                : bundle.LogicalBufferName != null || bundle.QueueSequence !== undefined
+                  ? " · FIFO order unavailable"
+                  : ""
             const bundleWaitingForQmos =
               bundle.Status === "WAITING_QMOS_ID" || bundle.CorrelationStatus === "UNMATCHED"
 
             return (
               <span
                 key={`${bundle.TrackingId}-${index}`}
+                data-tracking-id={bundle.TrackingId}
+                data-fifo-buffer={membership?.bufferName}
+                data-queue-sequence={membership?.sequence}
                 className={cn(
                   "max-w-full min-w-0 rounded border text-slate-800",
                   bundleWaitingForQmos ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50",
@@ -121,7 +143,7 @@ export function TrackingZoneSlot({
                     : "px-2 py-1 text-[11px]",
                   compact && numericIdentity && "w-full text-center",
                 )}
-                title={`${bundle.TrackingId} · ${status} · ${correlation}`}
+                title={`${bundle.TrackingId} · ${status} · ${correlation}${fifoDetail}`}
               >
                 <strong
                   className={cn(

@@ -93,6 +93,10 @@ export interface TrackedBundleDto extends ExtensibleDto {
   BundleId: string | null
   SourceArea: string | null
   CurrentZone: string | null
+  /** v0.42: logical FIFO membership; absent on older services, null outside FIFO. */
+  LogicalBufferName?: string | null
+  /** v0.42: L2-assigned entry sequence, not a bundle identifier or physical slot. */
+  QueueSequence?: number | null
   RouteName: string | null
   Weight: number | null
   BundleType: string | null

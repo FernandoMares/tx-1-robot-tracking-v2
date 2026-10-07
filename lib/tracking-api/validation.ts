@@ -158,9 +158,10 @@ export function isTrackedBundleDto(value: unknown): value is TrackedBundleDto {
     ) &&
     optionalFieldsMatch(
       value,
-      ["ProductionMode", "CreationSectionGroup", "CreationSignalName"],
+      ["ProductionMode", "CreationSectionGroup", "CreationSignalName", "LogicalBufferName"],
       isNullableString,
-    )
+    ) &&
+    optionalFieldsMatch(value, ["QueueSequence"], isNullableNumber)
   )
 }
 
