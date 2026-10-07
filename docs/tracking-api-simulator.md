@@ -50,6 +50,7 @@ Abre `http://localhost:3000`. Despues de cambiar cualquier variable `NEXT_PUBLIC
 - El catalogo contiene cuatro impresoras ficticias. La seleccion global inicia vacia y un `PUT` valido queda visible en `GET /api/tracking/printer` mientras el simulador siga ejecutandose.
 - Un `PrinterId` inexistente devuelve HTTP 400 y conserva la seleccion previa. Al reiniciar el simulador, la seleccion ficticia vuelve a estar vacia; la persistencia entre reinicios corresponde al servicio real.
 - Una correccion aceptada queda visible en `MillOrder1` desde la siguiente lectura del bundle.
+- Una reposicion con `CurrentZone`, sin `Operation` ni `MillOrder1`, cambia la posicion del TrackingId indicado desde la siguiente lectura y preserva los demas bundles. Zonas desconocidas/deshabilitadas devuelven 400; reposicionar en la zona actual devuelve 409. Son comportamientos del simulador, no una garantia del backend real.
 - `POST /api/tracking/correct` con `Operation: "REMOVE"` y `TrackingId`, `OperatorId`, `Reason` acepta el retiro de un solo bundle ficticio. Desde la siguiente lectura, ese `TrackingId` desaparece de `/api/tracking/state` y su consulta individual devuelve 404. El simulador no reproduce ocupacion PLC real.
 - Detener el simulador con `Ctrl+C` permite probar la desconexion y el estado stale del frontend.
 
@@ -122,7 +123,7 @@ El PUT de impresora usa `PrinterId` con mayusculas, de acuerdo con el contrato v
 
 El GET de la seleccion devuelve `PrinterId`, `PrinterName` y `UpdatedUtc`; el PUT exitoso devuelve `updated`, `printerId`, `printerName`, `updatedUtc` y `appliesTo`. La seleccion afecta a las siguientes acciones automaticas `PRINT_NEXT`, salvo que una regla de base de datos tenga un `PrinterId` propio. El comando explicito `POST /api/qmos/print` no cambia y no esta simulado.
 
-El POST requiere estos cuatro datos funcionales; cualquier propiedad adicional se descarta:
+Para corregir Mill Order, el POST requiere estos cuatro datos funcionales. `CurrentZone` y `Operation` no deben mezclarse con esta correccion:
 
 ```json
 {
@@ -151,6 +152,46 @@ El runner valida DTO, cliente y proxy y levanta su propio simulador en loopback.
 Comprueba retiro por `TrackingId`, conservacion de otros bundles (incluidos vecinos
 en la misma zona), rechazo de entradas invalidas y de un segundo retiro del mismo
 ID. No necesita una API de planta ni valida PLC o auditoria historica reales.
+
+### Reposicionamiento manual simulado
+
+En **Tracked bundles**, buscar el bundle y usar **Reposition**. Seleccionar una
+posicion habilitada distinta de la actual, capturar operador y motivo y confirmar.
+El payload de ejemplo es:
+
+```json
+{
+  "TrackingId": "SIM-TRACK-HOLD",
+  "OperatorId": "qa-user",
+  "Reason": "Simulated position reconciliation",
+  "CurrentZone": "CCH2B"
+}
+```
+
+`CCH2B` requiere `TRACKING_SIMULATOR_BUFFER_DEMO=true`. El simulador admite
+destinos ocupados conservando los vecinos, **solo como simplificacion de pruebas**;
+no implementa interlocks, capacidad efectiva, rutas permitidas ni HEAD/TAIL/PLC.
+La nueva posicion permanece como override en memoria hasta reiniciar el simulador.
+Las correcciones de orden y posicion conservan el valor modificado por la otra.
+
+Pruebas aisladas adicionales (Node 24 y dependencias instaladas):
+
+```powershell
+node scripts/test-manual-reposition.mjs
+node scripts/test-manual-position.mjs
+```
+
+El primer runner cubre DTO, cliente, proxy, simulador, vecinos, destinos invalidos
+y compatibilidad con retiro/correccion de orden. El segundo prueba prevalidacion
+con estado nuevo, cambios de posicion/ocupacion/escenario y observacion del resultado.
+Con un standalone compilado en modo live y un navegador Chromium instalado,
+`node scripts/test-manual-actions-ui.mjs` verifica tambien el flujo visual usando
+su propio simulador/HMI. `EDGE_PATH` permite elegir el navegador; las capturas
+quedan en `dist/`. No debe ejecutarse sobre un standalone que este en uso.
+
+Para excluir zonas del catalogo habilitado de pruebas, se puede iniciar el
+simulador con `$env:TRACKING_SIMULATOR_DISABLED_ZONES="LCH2A,LCH2B"`.
+Esto marca `IsEnabled=false` en el mapa; no representa una regla de la planta.
 
 ## Configuracion opcional
 

@@ -126,14 +126,17 @@ remota, acordar previamente acceso y firewall con IT.
 3. Pulsar **Remove from Tracking**. Sin operador o motivo no debe habilitarse
    **Remove selected bundle**. Cancelar una confirmacion no debe enviar un POST.
 4. Capturar operador real y motivo. Revisar el `TrackingId` en la confirmacion.
-   Si se deja abierta demasiado tiempo, la HMI puede pedir refrescar y confirmar
-   de nuevo; en ese caso no envio la remocion.
+   Al aceptar, la HMI consulta nuevamente la configuracion y luego el estado.
+   Si cambia la posicion/huella o no puede validar el bundle, no envia la remocion
+   y pide revisar de nuevo. La duracion del dialogo no invalida por si sola el envio.
 5. Confirmar una sola vez. En Network, conservar el payload y la respuesta del
    POST (`accepted`, `eventId`, `trackingId`, `eventType`). Una aceptacion aun no
    equivale a una operacion terminada.
-6. La HMI solicita refresco y espera una lectura live recibida despues de la
-   respuesta, sin ese `TrackingId`. Mientras espera, bloquea otros envios desde
-   ese panel. Verificar tambien los demas bundles, considerando movimiento normal.
+6. La HMI solicita refresco e inicia nuevas lecturas despues de la respuesta,
+   esperando un estado sin ese `TrackingId`. Mientras espera, bloquea retiros y
+   reposicionamientos desde ese panel, incluso al cerrar/reabrir. Tras un minuto
+   sin confirmacion permite consultar de nuevo con **Check state again (read only)**,
+   sin reenviar el POST. Verificar tambien los demas bundles, considerando movimiento normal.
 7. Con backend/operacion, confirmar limpieza completa HEAD/TAIL y ocupacion
    publicada al PLC, preservacion del historial y auditoria con operador/motivo.
 

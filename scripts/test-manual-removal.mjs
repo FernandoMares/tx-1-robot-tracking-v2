@@ -144,9 +144,11 @@ test("proxy restricts POST, sanitizes removal and preserves legacy correction", 
   assert.equal(calls[0].method, "POST")
 
   const legacy = { TrackingId: removal.TrackingId, OperatorId: "operator", Reason: "Correct order", MillOrder1: "MO-123" }
-  assert.equal((await routeRequest(proxy.POST, { ...legacy, MillOrder1: " MO-123 ", CurrentZone: "discard" })).status, 202)
+  assert.equal((await routeRequest(proxy.POST, { ...legacy, MillOrder1: " MO-123 ", BundleId: "discard" })).status, 202)
   assert.deepEqual(calls[1].body, legacy)
-  for (const body of [...invalidRemovals(), { ...legacy, Operation: "RETIRE" }, { ...legacy, Operation: null }]) {
+  // CurrentZone now explicitly selects repositioning: mixing it with a Mill
+  // Order edit is ambiguous and must not silently become a different command.
+  for (const body of [...invalidRemovals(), { ...legacy, Operation: "RETIRE" }, { ...legacy, Operation: null }, { ...legacy, CurrentZone: "SGRT2A" }]) {
     assert.equal((await routeRequest(proxy.POST, body)).status, 400, JSON.stringify(body))
   }
   assert.equal((await routeRequest(proxy.POST, removal, { raw: "{" })).status, 400)

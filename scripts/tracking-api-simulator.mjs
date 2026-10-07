@@ -16,8 +16,11 @@ const QMOS_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_QMOS_CONNEC
 const OPC_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_OPC_CONNECTED, true)
 const LOG_REQUESTS = booleanSetting(process.env.TRACKING_SIMULATOR_LOG_REQUESTS, false)
 const BUFFER_DEMO = process.env.TRACKING_SIMULATOR_BUFFER_DEMO?.trim().toLowerCase() === "true"
+const DISABLED_ZONES = new Set(
+  (process.env.TRACKING_SIMULATOR_DISABLED_ZONES ?? "").split(",").map((name) => name.trim()).filter(Boolean),
+)
 const SCENARIO = "LOCAL_HMI_SIMULATOR"
-const API_VERSION = "sim-1.4.0"
+const API_VERSION = "sim-1.5.0"
 const STARTED_AT = Date.now()
 const CYCLE_STEPS = 9
 const MAX_REQUEST_BODY_BYTES = 64 * 1024
@@ -97,7 +100,7 @@ const qmosPrinters = [
 ]
 
 function zone(ZoneId, ZoneName, ZoneType, DisplayOrder, Capacity, Description) {
-  return { ZoneId, ZoneName, ZoneType, DisplayOrder, Capacity, Description, IsEnabled: true }
+  return { ZoneId, ZoneName, ZoneType, DisplayOrder, Capacity, Description, IsEnabled: !DISABLED_ZONES.has(ZoneName) }
 }
 
 const zones = [
@@ -302,7 +305,8 @@ function bundles(now = Date.now()) {
 
       return {
         ...bundle,
-        MillOrder1: correction.MillOrder1,
+        ...(correction.MillOrder1 !== undefined ? { MillOrder1: correction.MillOrder1 } : {}),
+        ...(correction.CurrentZone !== undefined ? { CurrentZone: correction.CurrentZone } : {}),
         LastUpdateUtc: dotNetDate(correction.updatedAt),
       }
     })
@@ -511,10 +515,12 @@ async function readJsonBody(request) {
 function sanitizeCorrection(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null
 
-  if (value.Operation !== undefined && value.Operation !== "REMOVE") return null
+  if ("Operation" in value && value.Operation !== "REMOVE") return null
+  const reposition = value.Operation !== "REMOVE" && "CurrentZone" in value
+  if (reposition && "MillOrder1" in value) return null
   const fields = value.Operation === "REMOVE"
     ? ["TrackingId", "OperatorId", "Reason"]
-    : ["TrackingId", "OperatorId", "Reason", "MillOrder1"]
+    : ["TrackingId", "OperatorId", "Reason", reposition ? "CurrentZone" : "MillOrder1"]
   const sanitized = {}
   for (const field of fields) {
     if (typeof value[field] !== "string" || value[field].trim().length === 0) return null
@@ -654,15 +660,29 @@ const server = createServer(async (request, response) => {
     const correction = sanitizeCorrection(body)
     if (!correction) {
       return sendJson(response, 400, {
-        error: "A correction needs MillOrder1; removal needs Operation=REMOVE. TrackingId, OperatorId, and Reason are required.",
+        error: "Specify CurrentZone for reposition, MillOrder1 for an order correction, or Operation=REMOVE. TrackingId, OperatorId, and Reason are required.",
       })
     }
 
-    if (!bundles(now).some((bundle) => bundle.TrackingId === correction.TrackingId)) {
+    const selected = bundles(now).find((bundle) => bundle.TrackingId === correction.TrackingId)
+    if (!selected) {
       return sendJson(response, 404, {
         error: "Bundle not found",
         trackingId: correction.TrackingId,
       })
+    }
+
+    if (correction.CurrentZone !== undefined) {
+      const destination = zones.find((entry) => entry.ZoneName === correction.CurrentZone)
+      if (!destination || !destination.IsEnabled) {
+        return sendJson(response, 400, { error: "CurrentZone must identify an enabled simulator map zone." })
+      }
+      if (selected.CurrentZone === destination.ZoneName) {
+        return sendJson(response, 409, { error: "Bundle is already in the requested zone." })
+      }
+      // Simulator-only policy: occupied destinations are allowed and their
+      // existing bundles are preserved. Real L2/PLC interlocks, footprint and
+      // capacity rules must be validated with the plant backend separately.
     }
 
     const eventId = nextCorrectionEventId
@@ -678,9 +698,13 @@ const server = createServer(async (request, response) => {
       })
     }
     bundleCorrections.set(correction.TrackingId, {
-      MillOrder1: correction.MillOrder1,
+      ...bundleCorrections.get(correction.TrackingId),
+      ...(correction.CurrentZone !== undefined
+        ? { CurrentZone: correction.CurrentZone }
+        : { MillOrder1: correction.MillOrder1 }),
       updatedAt: now,
     })
+    lastManualChangeAt = now
 
     return sendJson(response, 202, {
       accepted: true,

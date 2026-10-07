@@ -2,7 +2,7 @@
 
 Para probar el flujo completo sin acceso al servidor, consulta [Simulador local de Tracking API](./tracking-api-simulator.md).
 
-La integracion conecta el frontend con las lecturas de tracking y permite seleccionar la Mill Order y el Destination globales para las siguientes operaciones QMOS CREATE, ademas de la impresora global para las siguientes impresiones automaticas. La correccion manual por bundle permanece disponible en el cliente tecnico, pero no forma parte del flujo normal de seleccion de produccion. El modo predeterminado sigue siendo `mock`, de modo que clonar y ejecutar el proyecto no genera trafico hacia el entorno de pruebas.
+La integracion conecta el frontend con las lecturas de tracking y permite seleccionar la Mill Order y el Destination globales para las siguientes operaciones QMOS CREATE, ademas de la impresora global para las siguientes impresiones automaticas. El panel Tracked bundles permite solicitar retiros y reposicionamientos manuales; la correccion de MillOrder1 por bundle permanece en el cliente tecnico y no forma parte de la seleccion global de produccion. El modo predeterminado sigue siendo `mock`, de modo que clonar y ejecutar el proyecto no genera trafico hacia el entorno de pruebas.
 
 ## Arquitectura elegida
 
@@ -86,6 +86,7 @@ Las operaciones principales son:
 | `GET /api/tracking/printer` | Impresora global activa (`PrinterId`, `PrinterName`, `UpdatedUtc`), o valores nulos si aun no se ha seleccionado. | Al abrir la pantalla, al actualizar y despues de guardar. |
 | `PUT /api/tracking/printer` | Guarda la impresora global mediante `{ "PrinterId": n }`; devuelve `updated`, `printerId`, `printerName`, `updatedUtc` y `appliesTo`. | Solo tras confirmacion del operador. |
 | `POST /api/tracking/correct` con `Operation: "REMOVE"` | Solicita retirar un solo bundle del tracking activo usando su `TrackingId`, operador y motivo. | Solo tras seleccion y confirmacion explicita. |
+| `POST /api/tracking/correct` con `CurrentZone`, sin `Operation` | Solicita corregir la posicion registrada de un bundle. No ordena movimiento fisico. | Solo tras seleccion, confirmacion y nueva lectura del estado. |
 
 El servicio `0.12` se observo devolviendo `/api/qmos/mill-orders` como un arreglo JSON directo. Algunas respuestas/herramientas anteriores lo mostraron envuelto como `{ "value": [...], "Count": n }`. El cliente acepta ambos formatos y los normaliza internamente para no acoplar la pantalla a esa diferencia de serializacion.
 
@@ -121,17 +122,31 @@ El cambio no reescribe bundles existentes ni reenvia transacciones QMOS terminad
 
 Desde el panel **Tracked bundles**, el operador selecciona un bundle y captura `OperatorId` y `Reason`. La HMI muestra el `TrackingId` real, solicita una segunda confirmacion y envia exclusivamente `{ TrackingId, Operation: "REMOVE", OperatorId, Reason }` a `POST /api/tracking/correct`. No usa el `BundleId`, LPN, tag ni la zona como identidad del comando. El retiro no invoca `/api/tracking/reset`.
 
-Una respuesta `accepted: true` confirma que la solicitud fue aceptada, **no** que el bundle ya desaparecio. La HMI vuelve a consultar Tracking y muestra la ausencia solo cuando una lectura `live`, recibida despues de la respuesta, ya no contiene ese `TrackingId`. Mientras esta pendiente no permite reenviar el mismo comando; ante timeout o respuesta ambigua advierte que el retiro pudo haberse aceptado y que debe verificarse el estado antes de repetirlo. El backend es responsable de limpiar HEAD/TAIL y ocupacion PLC, y preservar historial y auditoria; la HMI no escribe esas posiciones individualmente.
+Una respuesta `accepted: true` confirma que la solicitud fue aceptada, **no** que el bundle ya desaparecio. La HMI inicia una nueva consulta de Tracking despues de recibir la respuesta y muestra la ausencia solo cuando ese estado ya no contiene el `TrackingId`. Mientras esta pendiente bloquea tanto el retiro como el reposicionamiento; ante timeout o respuesta ambigua advierte que el comando pudo haberse aceptado y debe verificarse antes de repetirlo. El backend es responsable de limpiar HEAD/TAIL y ocupacion PLC, y preservar historial y auditoria; la HMI no escribe esas posiciones individualmente.
 
-Despues de la confirmacion se comprueba otra vez que el bundle siga presente y que la ultima lectura no haya vencido (`staleMs`). Si la confirmacion quedo abierta demasiado tiempo, se solicita refresco sin enviar el POST. El bloqueo evita dobles envios dentro del panel montado; no persiste al recargar el navegador ni sustituye idempotencia en el backend.
+Despues de la confirmacion se vuelven a leer status, capabilities y map, y finalmente state inmediatamente antes de validar/enviar. El operador puede tomarse tiempo para leer el dialogo: ya no depende de aceptar antes de `staleMs`. Si cambia el escenario o la posicion/huella del bundle, o falla alguna lectura, no se envia el POST y se pide revisar de nuevo. El bloqueo evita dobles envios dentro del panel montado, incluso si se cierra y reabre; no persiste al recargar el navegador ni sustituye idempotencia en el backend.
+
+La verificacion posterior consulta state cada dos segundos, sin solapar sus propias consultas, durante un minuto. Si no observa el resultado, conserva el bloqueo y permite **Check state again (read only)**, que solo repite lecturas; nunca reenvia el comando. Estos GET de verificacion pueden coincidir con el polling normal del dashboard. El resultado observado no certifica por si solo la auditoria o el PLC.
 
 La accion solo se habilita con conexion `live` y cuando `capabilities.commands` anuncia `/api/tracking/correct`. El `OperatorId` se captura como texto: **la HMI no autentica la identidad del operador**. Antes del uso operativo deben acordarse permisos, identidad y pruebas de commissioning con el equipo de planta.
 
-Anunciar ese endpoint no demuestra por si solo soporte de `REMOVE`, porque ya existia para correcciones. Confirmar la version/implementacion del backend. Ver [procedimiento de prueba en servidor](manual-bundle-removal-commissioning.md). Esta HMI usa `REMOVE`, la operacion recomendada en el apendice; no agrega un selector `RETIRE` ni reposicionamiento por `CurrentZone`.
+Anunciar ese endpoint no demuestra por si solo soporte de `REMOVE`, porque ya existia para correcciones. Confirmar la version/implementacion del backend. Ver [procedimiento de prueba en servidor](manual-bundle-removal-commissioning.md). Esta HMI usa `REMOVE`, la operacion recomendada en el apendice; no agrega un selector `RETIRE`.
+
+### Reposicionamiento manual de un bundle
+
+El apartado 7 del apendice v0.39 documenta `POST /api/tracking/correct` con `{ TrackingId, OperatorId, Reason, CurrentZone }`, **sin Operation**. El panel **Tracked bundles** incluye busqueda por numero/TrackingId/zona y una accion **Reposition** independiente de **Remove from Tracking**. Requiere operador, motivo y una posicion distinta de la actual. `OperatorId` admite texto alfanumerico; no autentica al usuario.
+
+Las posiciones se obtienen de `map.Zones` con `IsEnabled: true` y nombre no ambiguo. No se usa el catalogo QMOS Destination ni una lista fija del dibujo. Las LCH ocultas en el diagrama siguen siendo candidatas si el backend las mantiene habilitadas. Se muestran ocupacion reportada y capacidad configurada como informacion, no como permiso o interlock.
+
+La confirmacion identifica TrackingId, origen, destino y ocupacion reportada. Despues se revalidan los datos frescos: un cambio en la configuracion u ocupantes reportados del destino tambien cancela el envio. La HMI no inventa reglas de cruce de rutas, capacidad, buffer o HEAD/TAIL: su validacion atomica corresponde al backend. Entre GET y POST existe una ventana de concurrencia; el contrato no proporciona version esperada/ETag ni llave de idempotencia para cerrarla desde el cliente.
+
+El cliente `repositionBundle` y el proxy solo envian los cuatro campos documentados. El proxy rechaza reposiciones con `Operation` o `MillOrder1` mezclados, sin reinterpretarlas como otra correccion. Tras el acuse verifica que una consulta posterior al comando reporte el mismo TrackingId en `CurrentZone` igual al destino; un HTTP 202 solo deja el comando pendiente. No se modifica el estado local de forma optimista ni se dibuja un movimiento simulado como confirmacion.
+
+Esta funcionalidad corrige tracking L2; no es una orden de movimiento de maquinaria. Las pruebas de simulador no validan reglas, PLC ni auditoria reales. Ver [comisionamiento de reposicionamiento](manual-bundle-reposition-commissioning.md) antes de habilitar uso operativo.
 
 ## Operaciones fuera de alcance
 
-El proxy admite `PUT /api/tracking/mill-order`, limitado a `millOrder`; `PUT /api/tracking/destination`, limitado a `destinationId`; y `PUT /api/tracking/printer`, limitado a `PrinterId`. `POST /api/tracking/correct` conserva la correccion anterior con `TrackingId`, `OperatorId`, `Reason` y `MillOrder1`, y admite por separado el retiro con `TrackingId`, `Operation: "REMOVE"`, `OperatorId` y `Reason`. Los comandos exigen `Content-Type: application/json` y eliminan cualquier otra propiedad. Siguen fuera de alcance:
+El proxy admite `PUT /api/tracking/mill-order`, limitado a `millOrder`; `PUT /api/tracking/destination`, limitado a `destinationId`; y `PUT /api/tracking/printer`, limitado a `PrinterId`. `POST /api/tracking/correct` admite tres cuerpos independientes: correccion de orden (`TrackingId`, `OperatorId`, `Reason`, `MillOrder1`), retiro (`TrackingId`, `Operation: "REMOVE"`, `OperatorId`, `Reason`) o reposicionamiento (`TrackingId`, `OperatorId`, `Reason`, `CurrentZone`). Los comandos exigen `Content-Type: application/json`. Se eliminan propiedades ajenas; mezclar `CurrentZone` y `MillOrder1` se rechaza en vez de elegir implicitamente una operacion. Siguen fuera de alcance:
 
 - `POST /api/tracking/reset`
 - `POST /api/tracking/opc/write`
@@ -166,9 +181,11 @@ Antes de considerar validada la conexion live, comprueba que:
 - la bascula muestra el `Weight` del bundle ubicado en `SGRT2`, sin inventar un valor o una unidad cuando falte;
 - las zonas `LCH1A/B` y `LCH2A/B` siguen disponibles como datos de Tracking aunque no se dibujen en Plant Overview ni Bay 2;
 - el retiro manual envia el `TrackingId` del bundle seleccionado, requiere operador, motivo y confirmacion, y no usa reset global;
-- una aceptacion de retiro no se presenta como finalizada hasta que una nueva lectura `live` ya no muestra ese `TrackingId`;
+- una aceptacion de retiro no se presenta como finalizada hasta que un GET iniciado despues del acuse ya no muestra ese `TrackingId`;
+- reposicionar envia `CurrentZone` sin `Operation` y solo muestra el resultado cuando un GET posterior reporta la posicion solicitada;
+- cancelar, campos vacios, destino igual al origen y cambios detectados durante la confirmacion no envian comandos;
 - `CCH1A/B` y `CCH2A/B` muestran hasta cinco IDs completos antes de requerir desplazamiento vertical, sin ocultar bundles adicionales del contador;
-- `/api/tracking/state` se consulta sin solicitudes solapadas;
+- cada bucle de lectura de `/api/tracking/state` evita solapar sus propias solicitudes; prevalidacion y verificacion manual agregan lecturas al polling normal;
 - al detener la API se muestra un estado stale/offline y no aparecen datos mock;
 - al levantar nuevamente la API el polling se recupera;
 - cambiar `.env.local` requiere reiniciar el servidor de desarrollo;
