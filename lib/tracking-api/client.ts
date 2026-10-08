@@ -19,6 +19,8 @@ import type {
   TrackingCapabilitiesDto,
   TrackingCommandAcceptedDto,
   TrackingCorrectionRequestDto,
+  TrackingRemovalRequestDto,
+  TrackingRepositionRequestDto,
   TrackingEventsResponseDto,
   TrackingMapDto,
   TrackingStateDto,
@@ -42,6 +44,8 @@ import {
   isTrackingCapabilitiesDto,
   isTrackingCommandAcceptedDto,
   isTrackingCorrectionRequestDto,
+  isTrackingRemovalRequestDto,
+  isTrackingRepositionRequestDto,
   isTrackingEventsResponseDto,
   isTrackingMapDto,
   isTrackingStateDto,
@@ -420,6 +424,48 @@ export class TrackingApiClient {
     return this.post(
       "/api/tracking/correct",
       sanitizedRequest,
+      isTrackingCommandAcceptedDto,
+      signal,
+    )
+  }
+
+  repositionBundle(
+    request: TrackingRepositionRequestDto,
+    signal?: AbortSignal,
+  ): Promise<TrackingCommandAcceptedDto> {
+    if (!isTrackingRepositionRequestDto(request)) {
+      throw new Error("Reposition requires TrackingId, OperatorId, Reason, and CurrentZone without Operation or MillOrder1")
+    }
+
+    return this.post(
+      "/api/tracking/correct",
+      {
+        TrackingId: request.TrackingId.trim(),
+        OperatorId: request.OperatorId.trim(),
+        Reason: request.Reason.trim(),
+        CurrentZone: request.CurrentZone.trim(),
+      } satisfies TrackingRepositionRequestDto,
+      isTrackingCommandAcceptedDto,
+      signal,
+    )
+  }
+
+  removeBundle(
+    request: TrackingRemovalRequestDto,
+    signal?: AbortSignal,
+  ): Promise<TrackingCommandAcceptedDto> {
+    if (!isTrackingRemovalRequestDto(request)) {
+      throw new Error("Removal requires a TrackingId, REMOVE operation, OperatorId, and Reason")
+    }
+
+    return this.post(
+      "/api/tracking/correct",
+      {
+        TrackingId: request.TrackingId.trim(),
+        Operation: "REMOVE",
+        OperatorId: request.OperatorId.trim(),
+        Reason: request.Reason.trim(),
+      } satisfies TrackingRemovalRequestDto,
       isTrackingCommandAcceptedDto,
       signal,
     )

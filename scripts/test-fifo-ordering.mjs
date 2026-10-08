@@ -213,7 +213,7 @@ test("actual zone renderer distinguishes complete, duplicate, legacy, empty and 
   assert.doesNotMatch(startup, /data-fifo-order|data-tracking-id/)
 })
 
-async function startSimulator(fifoDemo) {
+async function startSimulator(fifoDemo, { disabledZones = "" } = {}) {
   const reservation = createServer()
   await new Promise((done, reject) => { reservation.once("error", reject); reservation.listen(0, "127.0.0.1", done) })
   const port = reservation.address().port
@@ -226,6 +226,7 @@ async function startSimulator(fifoDemo) {
       TRACKING_SIMULATOR_STEP_MS: "3600000", TRACKING_SIMULATOR_BUFFER_DEMO: "false",
       TRACKING_SIMULATOR_FIFO_DEMO: String(fifoDemo), TRACKING_SIMULATOR_QMOS_CONNECTED: "true",
       TRACKING_SIMULATOR_OPC_CONNECTED: "true", TRACKING_SIMULATOR_LOG_REQUESTS: "false",
+      TRACKING_SIMULATOR_DISABLED_ZONES: disabledZones,
     },
   })
   const kill = () => { if (child.exitCode === null && child.signalCode === null) child.kill() }

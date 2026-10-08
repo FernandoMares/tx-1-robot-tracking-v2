@@ -1,195 +1,209 @@
-# Integracion con Tracking API
+# Integración con Tracking API
 
-Para probar el flujo completo sin acceso al servidor, consulta [Simulador local de Tracking API](./tracking-api-simulator.md).
+Referencia para mantener el cliente HTTP, el proxy y la presentación de datos. Complementa el [recorrido del código](handoff-session.md), el [simulador local](tracking-api-simulator.md) y el [estado de entrega](estado-entrega.md).
 
-La integracion conecta el frontend con las lecturas de tracking y permite seleccionar la Mill Order y el Destination globales para las siguientes operaciones QMOS CREATE, ademas de la impresora global para las siguientes impresiones automaticas. La correccion manual por bundle permanece disponible en el cliente tecnico, pero no forma parte del flujo normal de seleccion de produccion. El modo predeterminado sigue siendo `mock`, de modo que clonar y ejecutar el proyecto no genera trafico hacia el entorno de pruebas.
+## Alcance integrado y procedencia
 
-## Arquitectura elegida
+**Versión actual de este fuente: `release/integrated-hmi`.** Incluye lectura FIFO, selección global, retiro REMOVE y reposicionamiento juntos. El commit final y el despliegue deben registrarse tras completarlos; las filas siguientes son referencias históricas, no limitaciones funcionales de esta rama.
 
-El navegador consulta una ruta del mismo frontend. Next.js reenvia exclusivamente las operaciones aprobadas hacia el servicio:
+| Fuente | Funciones incluidas |
+| --- | --- |
+| Base `600d20f` | Lecturas de Tracking; selecciones globales de Mill Order, Destination e impresora; cliente técnico de corrección `MillOrder1`. |
+| FIFO `77f79bf`, publicado y reportado en 3000 | Base más campos opcionales FIFO y orden de tarjetas de zona. No incluye UI de retiro ni reposicionamiento. |
+| Manual `5338300`, checkpoint local separado | Añade `REMOVE` y reposicionamiento por `CurrentZone`. Su remoto conocido `ce3c8a9` no contiene necesariamente el checkpoint local completo. |
+| Kit de entrega preparado en la raíz | Documentación y mejoras de empaquetado/servicio que no deben atribuirse automáticamente al commit FIFO. |
+
+La versión de backend reportada actualmente es v0.42. El HMI conserva `apiVersion` como dato diagnóstico: no compara rígidamente contra un número. La compatibilidad real depende de capacidades, campos y validadores.
+
+## Arquitectura y configuración
 
 ```text
-Navegador -> /tracking-api -> proxy con allowlist de Next.js -> MaterialTrackingService :8085
+Navegador → /tracking-api → Route Handler de Next.js → MaterialTrackingService
 ```
 
-Esto evita que el navegador necesite acceso directo al puerto 8085 y elimina bloqueos de CORS, contenido mixto o permisos de red local durante las pruebas. El proxy usa listas permitidas por metodo, filtra los cuerpos y publica exclusivamente las operaciones aprobadas.
+La ruta de mismo origen evita que el navegador tenga que alcanzar directamente el backend o resolver CORS entre puertos. El servidor HMI debe tener conectividad al destino privado. RDP no crea un túnel.
 
-El acceso por RDP no crea por si mismo un tunel de red. El proceso de Next.js debe ejecutarse en una maquina que pueda alcanzar al servicio configurado en `TRACKING_API_PROXY_TARGET`.
-
-## Configuracion
-
-Copia `.env.example` como `.env.local` y cambia solamente los valores necesarios:
-
-```powershell
-Copy-Item -LiteralPath .env.example -Destination .env.local
-```
-
-| Variable | Valor de ejemplo | Funcion |
+| Variable | Valor habitual | Función |
 | --- | --- | --- |
-| `NEXT_PUBLIC_PLANT_DATA_MODE` | `mock` | Selecciona `mock` o `live`. |
-| `NEXT_PUBLIC_TRACKING_API_URL` | `/tracking-api` | Ruta de mismo origen que usara el navegador en modo `live`. |
-| `TRACKING_API_PROXY_TARGET` | `http://localhost:8085` | URL privada que usara Next.js para llegar al servicio. |
-| `NEXT_PUBLIC_TRACKING_POLL_MS` | `1000` | Intervalo normal entre lecturas de estado. |
-| `NEXT_PUBLIC_TRACKING_STALE_MS` | `3500` | Tiempo sin una lectura exitosa antes de considerar viejos los datos. |
-| `NEXT_PUBLIC_TRACKING_TIMEOUT_MS` | `4000` | Limite de tiempo de cada solicitud HTTP. |
+| `NEXT_PUBLIC_PLANT_DATA_MODE` | `mock` en desarrollo por defecto | Selecciona `mock` o `live`. |
+| `NEXT_PUBLIC_TRACKING_API_URL` | `/tracking-api` | Base usada por el navegador. |
+| `TRACKING_API_PROXY_TARGET` | `http://localhost:8085` | Destino privado usado por Node; localhost es el servidor HMI. |
+| `NEXT_PUBLIC_TRACKING_POLL_MS` | `1000` | Espera normal después de completar el ciclo de lectura. |
+| `NEXT_PUBLIC_TRACKING_STALE_MS` | `3500` | Antigüedad local permitida desde la última lectura exitosa. |
+| `NEXT_PUBLIC_TRACKING_TIMEOUT_MS` | `4000` | Timeout de la solicitud del cliente. |
 
-Para activar datos reales en el entorno de pruebas:
+Ver [config.ts](../lib/tracking-api/config.ts) y [.env.example](../.env.example). No sobrescribir un `.env.local` existente sin revisarlo. En una copia nueva se puede crearlo desde el ejemplo; para la capacitación es preferible usar variables sólo en las terminales de la demo.
 
-```dotenv
-NEXT_PUBLIC_PLANT_DATA_MODE=live
-NEXT_PUBLIC_TRACKING_API_URL=/tracking-api
-TRACKING_API_PROXY_TARGET=http://localhost:8085
-```
+Las variables `NEXT_PUBLIC_*` se incorporan al build y son visibles para el navegador: no son un lugar para secretos. Cambiarlas en un paquete productivo requiere reconstruirlo. `TRACKING_API_PROXY_TARGET` se lee en el servidor durante la ejecución; cambiarlo requiere actualizar el entorno del proceso y reiniciarlo, no otro build. En desarrollo, reiniciar después de modificar configuración.
 
-Las variables `NEXT_PUBLIC_*` quedan expuestas al navegador y normalmente se incorporan durante el build de Next.js. `TRACKING_API_PROXY_TARGET` solo se usa en el servidor, pero tampoco debe contener credenciales. Despues de modificar estas variables hay que reiniciar `pnpm dev`; para un despliegue hay que reconstruir la aplicacion con los valores del ambiente destino.
+El modo mock no consulta la API. El modo live no cambia automáticamente a mock ante un error: conserva la última lectura válida si existe y comunica la pérdida de frescura.
 
-El modo `live` no debe caer silenciosamente a datos simulados cuando la API falle. Debe conservar, si existe, la ultima lectura valida y marcarla como desconectada o desactualizada. El modo `mock` debe identificarse como tal y no realizar solicitudes a la API.
+## Cliente HTTP y validación
 
-## Como probar dentro del RDP
+[TrackingApiClient](../lib/tracking-api/client.ts) concentra los métodos públicos; [types.ts](../lib/tracking-api/types.ts) define DTOs y [validation.ts](../lib/tracking-api/validation.ts) valida respuestas en tiempo de ejecución.
 
-1. Clona o copia el repositorio dentro de la sesion RDP.
-2. Confirma que el servicio responde desde esa misma sesion:
+`request` usa `fetch` con `cache: "no-store"`, `credentials: "omit"`, señal de cancelación y timeout. En escrituras serializa JSON y envía `Content-Type: application/json`. Distingue errores HTTP, red, timeout, cancelación, JSON inválido y estructura incompatible. No hace reintentos automáticos de PUT o POST.
 
-   ```powershell
-   curl.exe -i --connect-timeout 3 --max-time 5 http://localhost:8085/api/tracking/status
-   ```
+Los tipos extensibles permiten campos adicionales del backend. Los validadores comprueban los campos conocidos, no convierten arbitrariamente cadenas en números. La normalización explícita se limita a variantes soportadas del contrato.
 
-3. Crea `.env.local`, configura `NEXT_PUBLIC_PLANT_DATA_MODE=live`, usa `/tracking-api` como URL publica y conserva `http://localhost:8085` como `TRACKING_API_PROXY_TARGET` si el servicio corre en la misma maquina.
-4. Instala dependencias y arranca el frontend:
+`parseApiDate`, en [date.ts](../lib/tracking-api/date.ts), acepta ISO y `/Date(milisegundos...)/`; fechas vacías, inválidas y valores mínimos sin significado se representan como no disponibles.
 
-   ```powershell
-   pnpm install
-   pnpm dev
-   ```
+## Lecturas y frecuencia real
 
-5. Abre `http://localhost:3000` en un navegador dentro del RDP y revisa tambien la pestana Network de las herramientas de desarrollo.
+Las rutas de esta tabla son las del backend. En el navegador se antepone `/tracking-api`, por ejemplo `/tracking-api/api/tracking/state`.
 
-Si la API corre en otro equipo, sustituye `TRACKING_API_PROXY_TARGET` por el host real solo despues de validar conectividad y firewall desde la maquina que ejecuta Next.js.
-
-## Endpoints usados en esta etapa
-
-Las operaciones principales son:
-
-| Endpoint | Uso | Frecuencia esperada |
+| Método del cliente | GET | Cuándo lo usa la interfaz |
 | --- | --- | --- |
-| `/api/tracking/status` | Salud basica, escenario y version reportada por el servicio. | Al iniciar. |
-| `/api/tracking/capabilities` | Capacidades publicadas por la compilacion activa. | Al iniciar. |
-| `/api/tracking/map` | Catalogo de zonas, rutas, destinos y reglas. | Al iniciar. |
-| `/api/tracking/state` | Estado actual de los bundles. | Polling, inicialmente cada segundo. |
-| `/api/qmos/mill-orders?max=50` | Candidatos de Mill Order para seleccion del operador. | Al abrir o actualizar el selector. |
-| `/api/qmos/bundle-locations` | Destinos QMOS validos para busqueda y seleccion del operador. | Al abrir o actualizar el selector. |
-| `/api/qmos/printers` | Catalogo QMOS de impresoras (`PrinterId`, `PrinterName`). | Al abrir o actualizar el selector de impresora. |
-| `GET /api/tracking/mill-order` | Mill Order global activa y fecha de actualizacion. | Al abrir la pantalla, al actualizar y despues de guardar. |
-| `PUT /api/tracking/mill-order` | Guarda la Mill Order global para los siguientes QMOS CREATE. | Solo tras confirmacion del operador. |
-| `GET /api/tracking/destination` | Destination global activo y fecha de actualizacion. | Al abrir la pantalla, al actualizar y despues de guardar. |
-| `PUT /api/tracking/destination` | Guarda el Destination global para los siguientes QMOS CREATE. | Solo tras confirmacion del operador. |
-| `GET /api/tracking/printer` | Impresora global activa (`PrinterId`, `PrinterName`, `UpdatedUtc`), o valores nulos si aun no se ha seleccionado. | Al abrir la pantalla, al actualizar y despues de guardar. |
-| `PUT /api/tracking/printer` | Guarda la impresora global mediante `{ "PrinterId": n }`; devuelve `updated`, `printerId`, `printerName`, `updatedUtc` y `appliesTo`. | Solo tras confirmacion del operador. |
+| `getStatus` | `/api/tracking/status` | Bootstrap y recuperación. |
+| `getCapabilities` | `/api/tracking/capabilities` | Bootstrap y recuperación. |
+| `getMap` | `/api/tracking/map` | Bootstrap y recuperación. |
+| `getState` | `/api/tracking/state` | Bootstrap y polling continuo. |
+| `getQmosMillOrders` | `/api/qmos/mill-orders?max=50` en el panel | Montaje/Refresh cuando las capacidades lo permiten. |
+| `getGlobalMillOrder` | `/api/tracking/mill-order` | Montaje/Refresh, después de guardar y recuperación de un error de guardado. |
+| `getQmosBundleLocations` | `/api/qmos/bundle-locations` | Montaje/Refresh según capacidades. |
+| `getGlobalDestination` | `/api/tracking/destination` | Montaje/Refresh y verificación de guardado. |
+| `getQmosPrinters` | `/api/qmos/printers` | Montaje del panel, apertura y Refresh del selector de impresora. |
+| `getGlobalPrinter` | `/api/tracking/printer` | Ciclo propio del selector y verificación posterior. |
+| `getBundle` | `/api/tracking/bundles/{trackingId}` | Disponible para consulta puntual; no es el polling principal. |
+| `getRecentEvents` | `/api/tracking/events/recent` | Diagnóstico puntual; el cliente no añade filtros ni parámetros. |
+| `getOpcStatus`, `getQmosStatus` | `/api/tracking/opc`, `/api/qmos/status` | Diagnóstico puntual; no se consultan continuamente en la pantalla normal. |
 
-El servicio `0.12` se observo devolviendo `/api/qmos/mill-orders` como un arreglo JSON directo. Algunas respuestas/herramientas anteriores lo mostraron envuelto como `{ "value": [...], "Count": n }`. El cliente acepta ambos formatos y los normaliza internamente para no acoplar la pantalla a esa diferencia de serializacion.
+[useTrackingApi](../hooks/use-tracking-api.ts) consulta inicialmente `status → capabilities → map → state`, comprueba servicio activo y coherencia de escenario. Después consulta normalmente sólo estado. Al fallar vuelve al bootstrap, con backoff exponencial, variación y tope de 30 segundos.
 
-El servicio `0.35` devuelve `/api/qmos/bundle-locations` como un arreglo directo con `Id` y `Description`. El contrato previo documento `id` y `description`; el cliente acepta ambas variantes y las normaliza. En la validacion de produccion se observaron 1,476 ubicaciones, por lo que el HMI utiliza busqueda por descripcion o ID y limita los resultados visibles.
+El temporizador se programa al terminar cada ciclo; ese bucle no solapa sus propias peticiones. Los GET independientes del panel de selecciones o del flujo manual incluido pueden coincidir con el polling: no existe un bloqueo global de todas las lecturas HTTP.
 
-La version devuelta en `apiVersion` se conserva como dato diagnostico. De acuerdo con el equipo de backend, sus cambios actuales corresponden a distintas compilaciones y no a cambios del contrato, por lo que no se debe codificar una comparacion rigida contra un unico valor como `0.12`.
+`lastSuccessfulPollAt` corresponde a recepción local; `sourceUpdatedAt` deriva de `LastUpdateUtc`. De ahí la diferencia entre Received y State changed. Que el servicio responda no acredita conexión real con PLC o QMOS.
 
-El cliente tambien tipa las lecturas de bundle individual, eventos, OPC y estado de QMOS para diagnostico y actualizacion puntual.
+## Catálogos y casing
 
-## Representacion de zonas y peso
-
-La posicion de cada bundle proviene de `CurrentZone` en `/api/tracking/state`. En Plant Overview y Bay 1, la tarjeta de la bascula muestra el campo `Weight` de los bundles cuya zona actual es exactamente `SGRT2`, junto a su identificador. Si no hay un bundle en `SGRT2`, lo indica; si el bundle no tiene `Weight`, muestra que el peso no esta disponible. El HMI no calcula pesos ni agrega unidades que la API no proporciona.
-
-Plant Overview y Bay 2 ya no dibujan las posiciones `LCH1A`, `LCH1B`, `LCH2A` y `LCH2B`. Estas zonas permanecen en el catalogo y en los datos de Tracking: ocultar su tarjeta no elimina ni reasigna los bundles que la API reporte ahi.
-
-Las tarjetas de `CCH1A/B` y `CCH2A/B` tienen altura para mostrar cinco identificadores completos de bundles. Si hay mas de cinco, la lista de la tarjeta se desplaza verticalmente; el contador sigue mostrando el total reportado por Tracking. La lista no representa una secuencia fisica dentro del buffer.
-
-### Orden FIFO de los buffers (contrato v0.42)
-
-`GET /api/tracking/state` agrega dos campos opcionales a cada bundle. No requiere otro endpoint ni una solicitud adicional:
-
-| Campo | Significado |
+| Intercambio | Campos relevantes |
 | --- | --- |
-| `LogicalBufferName` | Buffer logico al que pertenece actualmente el bundle. |
-| `QueueSequence` | Secuencia de entrada al FIFO, asignada por L2. Un valor menor entro antes. |
+| Status/capabilities | Principalmente camelCase, por ejemplo `running`, `service`, `scenario`, `apiVersion`. |
+| Map/state/bundles | PascalCase: `ScenarioName`, `Bundles`, `TrackingId`, `CurrentZone`, `LastUpdateUtc`. |
+| Orden global | `millOrder`, `enabled`, `updatedUtc`; request PUT usa `millOrder`. |
+| Destino global | GET con `DestinationId`, `Description`, `UpdatedUtc`; request PUT usa `destinationId`. |
+| Catálogo/GET de impresora | `PrinterId`, `PrinterName`, `UpdatedUtc` en la selección. |
+| PUT de impresora | Request `PrinterId`; respuesta `updated`, `printerId`, `printerName`, `updatedUtc`, `appliesTo`. |
 
-`CurrentZone` sigue siendo la unica fuente de ubicacion en el dibujo. Dentro de cada tarjeta, los miembros de un mismo buffer logico se muestran por `QueueSequence` ascendente. La regla se aplica a cualquier nombre de buffer recibido, no solo a `CCH2A`, y es compartida por Plant Overview, Bay 2 y las demas vistas mediante `TrackingZoneSlot` y `lib/tracking-fifo.ts`.
+El catálogo de órdenes acepta arreglo directo o envoltura `{ "value": [...], "Count": n }`. El de destinos acepta `Id/Description` y `id/description`, normalizándolos internamente. Estas tolerancias no significan que toda la API sea indiferente a mayúsculas.
 
-Por ejemplo, las secuencias `5161, 5162, 5163, 5164` deben mostrar los identificadores `101637551, 101637550, 101637553, 101637552`, respectivamente. El numero del bundle, `TagNumber`, `TrackingId` y la posicion original dentro del JSON no se utilizan para decidir precedencia FIFO. El orden de entrada tampoco se interpreta como un indice fisico HEAD/TAIL.
+Eventos recientes admite un arreglo directo o un objeto con `Events` y metadatos opcionales. Cada evento usa `EventId`, `EventType` y, cuando está presente, `TrackingId`; el ACK de un comando usa `eventId`, `eventType` y `trackingId`. No buscar únicamente `Id` ni confundir el casing de ambos mensajes. `getRecentEvents()` no acepta parámetros de filtro; no asumir que el servicio permite ampliar la ventana sin consultar su contrato.
 
-Compatibilidad y datos incompletos:
+En una validación previa se observaron 1,476 destinos; no es un límite ni una cantidad fija. El selector busca por descripción o ID y muestra hasta 80 coincidencias. Que una opción no aparezca inicialmente no prueba que no esté en el catálogo.
 
-- Los servicios anteriores pueden omitir ambos campos; el HMI conserva la visualizacion previa sin afirmar que sea FIFO.
-- `QueueSequence: null` significa que no es un miembro activo de FIFO. No se convierte en cero. Cero numerico si es una secuencia utilizable.
-- Para ordenar se necesita un nombre de buffer no vacio y una secuencia entera representable sin perdida de precision. Los valores numericos no utilizables no reciben una posicion FIFO inventada.
-- Si una tarjeta mezcla buffers distintos, cada grupo se ordena solamente dentro de sus propios lugares en la lista. Los bundles sin metadata utilizable conservan su lugar; no se eliminan ni se trasladan a otra zona.
-- Si hay miembros FIFO junto a entradas sin metadata, o secuencias repetidas dentro del mismo buffer, aparece un `*` junto al nombre de zona. El tooltip explica la limitacion. Los empates conservan su orden relativo sin atribuirles una precedencia confirmada.
-- El tooltip de cada miembro valido muestra el buffer y su `QueueSequence`. Conteos, identificadores, colores y desplazamiento de las tarjetas permanecen iguales.
+## Selecciones globales
 
-Esta funcionalidad es exclusivamente de lectura: no cambia la cola de L2, el PLC, ni envia correcciones manuales. Las funciones de retiro/reposicionamiento se desarrollan por separado y no son requisito para esta integracion.
+El código está en [GlobalMillOrderPanel](../components/mill-order-selection-panel.tsx).
 
-Prueba local automatizada:
+| Método | Endpoint | Cuerpo exacto del request |
+| --- | --- | --- |
+| `updateGlobalMillOrder` | PUT `/api/tracking/mill-order` | `{ "millOrder": "..." }` |
+| `updateGlobalDestination` | PUT `/api/tracking/destination` | `{ "destinationId": 3773 }` |
+| `updateGlobalPrinter` | PUT `/api/tracking/printer` | `{ "PrinterId": 4 }` |
+
+Los números son ejemplos de forma, no instrucciones operativas.
+
+Mill Order/Destination requieren capacidades anunciadas, carga válida y comunicación live. Impresora carga sus endpoints directamente y exige una selección válida del catálogo. El operador confirma antes del PUT. Las selecciones no se consultan en cada ciclo de estado: usar el Refresh correspondiente para observar cambios hechos por otra estación.
+
+`handleSubmit` escribe Destination primero si cambió y Mill Order después si cambió. Lee ambos al finalizar. Si una operación falla, `refreshActiveValuesAfterFailure` intenta recuperar lo que quedó activo. No hay transacción conjunta ni rollback automático, ni bloqueo entre operadores.
+
+`handlePrinterSubmit` valida la respuesta del PUT y vuelve a consultar la impresora activa. Un timeout no prueba que el servidor haya rechazado una escritura: revisar el GET antes de repetirla.
+
+Según el contrato, la selección global afecta operaciones posteriores: no reescribe bundles existentes ni reenvía transacciones terminadas. Orden específica del bundle, orden global y fallback INI tienen la precedencia definida por el backend. Para impresión automática `PRINT_NEXT`, una regla `BufferEventRule` con impresora explícita tiene prioridad. Persistencia SQL y estos efectos industriales deben verificarse con el backend; el simulador sólo conserva selecciones en memoria.
+
+## Representación: zona física, peso y FIFO
+
+[groupTrackingBundlesByZone](../lib/tracking-zone-layout.ts) agrupa únicamente por `CurrentZone`. El catálogo y los componentes de planta definen el dibujo; una zona nueva del backend no aparece automáticamente como nueva geometría.
+
+La báscula de Overview/Bay 1 recibe sólo bundles en la zona exacta `SGRT2`. Muestra `Weight`, incluido cero; si no hay bundle o falta peso lo indica. No usa SGRT2A/B, no calcula ni inventa unidades.
+
+Las tarjetas LCH están ocultas en Overview/Bay 2, pero sus datos y bundles no se eliminan del snapshot. Las tarjetas CCH muestran cinco filas antes del scroll y conservan el total en su contador.
+
+### Extensión FIFO v0.42 — incluida en esta versión integrada
+
+Los DTOs incorporan `LogicalBufferName?: string | null` y `QueueSequence?: number | null`. Campos ausentes o nulos son compatibles; no se sustituyen por `CurrentZone`, cero o un ID.
+
+El helper `lib/tracking-fifo.ts`, `orderBundlesByLogicalFifo`, opera sobre la lista de una tarjeta ya agrupada físicamente:
+
+- Usa nombre lógico no vacío y secuencia numérica entera segura.
+- Ordena ascendentemente cada nombre lógico exacto, sin comparar colas diferentes.
+- Reutiliza sólo los índices de ese grupo; entradas sin membresía válida conservan su posición.
+- Conserva orden recibido en empates y marca secuencias duplicadas como condición incompleta.
+- No muta el arreglo de entrada ni cambia `CurrentZone`.
+
+[TrackingZoneSlot](../components/plant/tracking-zone-slot.tsx) incorpora ese helper en esta versión integrada. La ayuda de la tarjeta expone buffer/secuencia y señala FIFO parcial cuando corresponde. El listado general “Tracked bundles” conserva el orden recibido; no es la vista para validar ese orden de tarjeta. FIFO es orden lógico de entrada, no una posición mecánica inferida.
+
+### Evidencia de QA y diagnóstico de sólo lectura
+
+La consulta directa al backend v0.42 para `BundleId: 101637697`, `TrackingId: TRK-0000103919`, `CurrentZone: CCH2A` devolvió `LogicalBufferName: null` y `QueueSequence: null`. No se confirmó aceptación FIFO en planta con esa muestra. Los nulos pueden ser válidos fuera de una cola lógica; la zona física por sí sola no demuestra membresía FIFO.
+
+Para un servidor cuyo backend sea local en 8085 y cuyo HMI esté en 3000, este diagnóstico sólo lee. Si la topología es otra, sustituir los destinos por los ya confirmados; no apuntar a un servicio desconocido.
 
 ```powershell
-node scripts/test-fifo-ordering.mjs
-pnpm typecheck
+$trackingIdToInspect = 'TRK-0000103919'
+$directState = Invoke-RestMethod -Uri 'http://127.0.0.1:8085/api/tracking/state' -TimeoutSec 10
+$proxyState = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/tracking-api/api/tracking/state' -TimeoutSec 10
+foreach ($sample in @(
+    @{ Source = 'backend'; State = $directState },
+    @{ Source = 'proxy'; State = $proxyState }
+)) {
+    $matches = @($sample.State.Bundles | Where-Object { $_.TrackingId -eq $trackingIdToInspect })
+    if ($matches.Count -eq 0) {
+        [pscustomobject]@{ Source = $sample.Source; TrackingId = $trackingIdToInspect; Found = $false }
+    }
+    foreach ($bundle in $matches) {
+        $names = @($bundle.PSObject.Properties.Name)
+        [pscustomobject]@{
+            Source = $sample.Source
+            TrackingId = $bundle.TrackingId
+            CurrentZone = $bundle.CurrentZone
+            HasLogicalBufferName = $names -contains 'LogicalBufferName'
+            LogicalBufferName = $bundle.LogicalBufferName
+            HasQueueSequence = $names -contains 'QueueSequence'
+            QueueSequence = $bundle.QueueSequence
+        } | ConvertTo-Json
+    }
+}
 ```
 
-Para la validacion en QA, revisar la respuesta real de `/api/tracking/state`, identificar al menos dos miembros del mismo buffer cuyos IDs no coincidan con el orden de entrada y comparar sus `QueueSequence` contra Plant Overview y Bay 2. Comprobar tambien mas de cinco miembros, campos nulos/ausentes y recuperacion del polling. La simulacion local no sustituye esta comprobacion con L2 v0.42.
+Un campo ausente y uno explícitamente nulo se ven igualmente vacíos en una tabla simple; las comprobaciones `Has...` los distinguen. Las dos consultas no son simultáneas: considerar movimiento o cambios de estado entre respuestas. No difundir el snapshot completo si contiene datos operativos.
 
-## Seleccion global y correccion individual
+## Corrección individual: separar tres caminos
 
-La seleccion normal de produccion no depende de un bundle. El HMI consulta los catalogos QMOS y los valores globales actuales, exige una Mill Order y un Destination, solicita confirmacion antes del cambio, ejecuta los PUT necesarios y vuelve a leer ambos valores para verificar que quedaron activos.
+El `correctBundle` legacy permanece disponible con `TrackingId, OperatorId, Reason, MillOrder1`, pero no se usa para elegir rutinariamente la orden global. En esta versión integrada convive con las dos acciones manuales del panel **Tracked bundles**:
 
-Los dos valores se guardan mediante endpoints independientes y no forman una transaccion atomica. El HMI guarda primero Destination, verifica finalmente ambos valores y, ante un error parcial, vuelve a leer el estado y advierte que uno de los valores puede haber cambiado.
+| Camino | Método/DTO | POST `/api/tracking/correct` |
+| --- | --- | --- |
+| Retiro | `removeBundle`, `TrackingRemovalRequestDto` | `TrackingId, Operation: "REMOVE", OperatorId, Reason`. |
+| Reposicionamiento | `repositionBundle`, `TrackingRepositionRequestDto` | `TrackingId, OperatorId, Reason, CurrentZone`, sin `Operation` ni `MillOrder1`. |
+| Corrección legacy | `correctBundle` | Los cuatro campos legacy, sin mezclar destino de reposicionamiento. |
 
-La impresora se selecciona por separado. El HMI consulta `/api/qmos/printers`, muestra las opciones recibidas sin codificar nombres ni IDs, consulta `/api/tracking/printer` y envia el `PrinterId` elegido a `PUT /api/tracking/printer`. El servicio valida el ID contra el catalogo QMOS; un ID inexistente devuelve HTTP 400 y no modifica la seleccion. El GET posterior confirma el valor activo. En produccion, Tracking lo persiste en SQL Server y sobrevive a reinicios del HMI y del servicio.
+No se implementó `RETIRE` en la UI ni se inventó `MOVE`. El reposicionamiento representa una corrección declarada del estado: no ordena por sí mismo mover maquinaria. El backend conserva las reglas reales de capacidad, rutas y operación.
 
-La impresora global se utiliza en acciones automaticas `PRINT_NEXT` posteriores. Una regla `BufferEventRule` con `PrinterId` no nulo conserva prioridad sobre la seleccion global. El contrato del comando explicito `POST /api/qmos/print` no cambia: quien lo invoque debe seguir enviando la impresora requerida por ese comando.
+El panel manual revalida después de la confirmación con metadatos y estado nuevos, compara bundle/escenario/origen/destino y bloquea comandos duplicados localmente. La verificación posterior empieza con un GET nuevo después de la respuesta; no considera suficiente un snapshot anterior. Observa ausencia del TrackingId para retiro o presencia única en el destino para reposicionamiento. Si no hay evidencia en la ventana de verificación, permite nueva lectura, no reenvío automático.
 
-El cambio no reescribe bundles existentes ni reenvia transacciones QMOS terminadas. Tracking aplica la precedencia definida por backend: orden especifica del bundle, orden global activa y finalmente el fallback INI si existe.
+Una respuesta 202 con `accepted: true` sólo confirma aceptación/encolado. El tipo de evento del ACK no se presupone `MANUAL_REMOVE`. La prueba de retiro de `TRK-0000100822` recibió evento `134331`, `MANUAL_CORRECTION`; el bundle siguió presente y el evento no se encontró en la ventana reciente consultada. Fue un resultado pendiente, no un retiro acreditado. `getRecentEvents` no implementa búsqueda histórica completa ni filtros inventados para encontrarlo.
 
-`POST /api/tracking/correct` conserva su semantica de correccion manual para un bundle existente, pero el HMI no debe invocarlo para asignar rutinariamente la orden de produccion.
+`OperatorId` es texto aportado por el cliente, no identidad autenticada. Los bloqueos de UI no sustituyen autorización, auditoría ni idempotencia del backend.
 
-## Operaciones fuera de alcance
+Antes del POST, el panel vuelve a consultar status, capabilities, map y finalmente state. Solo ofrece reposicionar a nombres únicos de `map.Zones` con `IsEnabled: true`; son posiciones de Tracking, no el catálogo QMOS Destination. Una LCH oculta puede seguir siendo destino si está habilitada en el mapa. Se muestran capacidad/ocupación como información, no como un permiso industrial.
 
-El proxy admite `PUT /api/tracking/mill-order`, limitado a `millOrder`; `PUT /api/tracking/destination`, limitado a `destinationId`; y `PUT /api/tracking/printer`, limitado a `PrinterId`. Tambien conserva `POST /api/tracking/correct`, limitado a `TrackingId`, `OperatorId`, `Reason` y `MillOrder1`. Los comandos exigen `Content-Type: application/json` y eliminan cualquier otra propiedad. Siguen fuera de alcance:
+El bloqueo se comparte entre REMOVE y Reposition dentro del panel montado y persiste al cerrarlo, pero no al recargar el navegador. La comprobación posterior inicia lecturas nuevas de state, con espera de dos segundos entre solicitudes durante aproximadamente un minuto. Si el resultado no se confirma, mantiene el bloqueo y permite **Check state again (read only)**; no repite el POST. La validación atómica de capacidad, rutas y PLC corresponde al backend; sigue existiendo una ventana de concurrencia entre GET y POST.
 
-- `POST /api/tracking/reset`
-- `POST /api/tracking/opc/write`
-- `POST /api/tracking/event`
-- cualquier operacion `POST` bajo `/api/qmos/*`, incluidas creacion, actualizacion de peso e impresion
+Procedimientos detallados: [retiro manual](manual-bundle-removal-commissioning.md) y [reposicionamiento](manual-bundle-reposition-commissioning.md). Combinar funciones no autoriza su ejecución sobre material real.
 
-Que `/api/tracking/capabilities` anuncie una operacion no significa que el usuario este autorizado para ejecutarla. La identidad enviada en `OperatorId` es dato proporcionado por el cliente hasta que se vincule a una identidad autenticada en el servidor. El despliegue debe acordar autenticacion, permisos, confirmacion del operador, idempotencia, auditoria y comportamiento ante timeout.
+## Proxy y superficie permitida
 
-La respuesta `accepted: true` de una correccion individual confirma que el evento fue encolado, no que el cambio ya aparezca en el bundle. El cliente tecnico debe volver a consultar el bundle hasta observar `MillOrder1`, y verificar estado o eventos antes de reintentar tras un timeout para evitar comandos duplicados.
+El [Route Handler](../app/tracking-api/%5B...path%5D/route.ts) permite los GET enumerados, los tres PUT globales y el POST de corrección según la versión. Rutas/métodos fuera de la allowlist reciben 404. Las escrituras requieren JSON y validan/sanitizan los campos; el query `max` de órdenes admite un único entero de 1 a 100.
 
-## Proxy, HTTP y seguridad
+El proxy transmite la respuesta del backend sin seleccionar propiedades del estado. En particular, no elimina los campos FIFO del JSON recibido. Devuelve errores del backend; problemas de configuración o conexión del proxy pueden producir 503 o 502.
 
-Una respuesta exitosa en Postman, navegacion directa o `curl` no garantiza que Chrome permita un `fetch` entre puertos o redes diferentes. Por eso el HMI utiliza el proxy de mismo origen `/tracking-api`.
+Siguen fuera de alcance del proxy: reset, escritura OPC, inyección de eventos y POST de QMOS, incluidos crear e imprimir. No habilitarlos porque aparezcan en capabilities. La allowlist reduce superficie, pero no aporta login, roles, control multiusuario ni protección industrial. El acceso de red/TLS debe acordarse con IT.
 
-El proxy mantiene listas explicitas por metodo. Solicitudes GET fuera de las lecturas aprobadas, solicitudes POST distintas de `/api/tracking/correct` y solicitudes PUT distintas de las tres selecciones globales reciben 404.
+## Criterios de verificación
 
-El salto entre el navegador y Next.js debe usar el protocolo aprobado para el HMI. Next.js puede comunicarse internamente por HTTP con el servicio dentro de la red controlada, sujeto a la arquitectura de produccion que se acuerde.
+Primero, sin escrituras: comprobar versión y escenario, estado directo/proxy, catálogos, selecciones activas, peso/zonas, lectura continua y señales de frescura. Para FIFO, exigir una muestra con datos lógicos válidos y contrastar tarjeta, no sólo listado general.
 
-## Verificacion minima
+En el simulador aislado: confirmar escrituras globales por GET, rechazo de impresora inexistente, desconexión/recuperación y escenarios visuales. No trasladar esos resultados a persistencia o sensores reales.
 
-Antes de considerar validada la conexion live, comprueba que:
-
-- las lecturas principales responden a traves de `/tracking-api`;
-- la consulta de Mill Orders respeta el limite solicitado;
-- el catalogo de bundle locations permite buscar por descripcion e ID;
-- el catalogo de impresoras muestra los IDs y nombres enviados por QMOS;
-- los `GET` de Mill Order, Destination e impresora coinciden con las selecciones almacenadas por Tracking;
-- cada `PUT` autorizado puede confirmarse con su `GET` posterior;
-- `PUT /api/tracking/printer` rechaza IDs inexistentes sin cambiar la impresora activa;
-- la orden nueva solo se aplica a QMOS CREATE posteriores y no modifica bundles existentes;
-- la impresora global se usa en `PRINT_NEXT` posteriores salvo que una regla tenga `PrinterId` explicito;
-- la bascula muestra el `Weight` del bundle ubicado en `SGRT2`, sin inventar un valor o una unidad cuando falte;
-- las zonas `LCH1A/B` y `LCH2A/B` siguen disponibles como datos de Tracking aunque no se dibujen en Plant Overview ni Bay 2;
-- `CCH1A/B` y `CCH2A/B` muestran hasta cinco IDs completos antes de requerir desplazamiento vertical, sin ocultar bundles adicionales del contador;
-- los miembros de cada buffer logico se muestran por `QueueSequence` ascendente en Overview y Bay 2, sin ordenar por ID ni modificar su `CurrentZone`;
-- los campos FIFO nulos o ausentes siguen siendo compatibles y no se interpretan como secuencia cero;
-- `/api/tracking/state` se consulta sin solicitudes solapadas;
-- al detener la API se muestra un estado stale/offline y no aparecen datos mock;
-- al levantar nuevamente la API el polling se recupera;
-- cambiar `.env.local` requiere reiniciar el servidor de desarrollo;
-- ningun secreto aparece en el bundle del navegador o el repositorio.
+En commissioning autorizado: coordinar valores/bundle, responsable y ventana; verificar efectos futuros y persistencia del backend, posibles reglas de prioridad y resultados manuales con el bundle y la operación expresamente autorizados. Registrar lo observado, lo no confirmado y cualquier estado incierto antes de reintentar. Ver [Estado de entrega](estado-entrega.md).

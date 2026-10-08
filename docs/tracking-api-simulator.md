@@ -1,117 +1,221 @@
 # Simulador local de Tracking API
 
-El simulador permite probar el frontend en modo `live` sin conectarse al servidor de planta. Implementa las lecturas que consume el HMI, las selecciones globales de Mill Order, Destination e impresora, y la correccion manual por bundle usando unicamente datos ficticios.
+Práctica aislada para aprender el código y verificar HTTP sin tocar PLC, QMOS, SQL ni impresoras. El simulador guarda datos ficticios en memoria. Reiniciarlo pierde los cambios.
 
-## Iniciar el simulador
+La práctica usa API en `127.0.0.1:18085` y frontend en `127.0.0.1:3100`. No usa ni detiene producción en 3000, la instancia manual en 3001 o el backend real en 8085. Si esos puertos de demo están ocupados, elegir otros libres; no matar procesos para liberarlos.
 
-En una terminal:
+## 1. Elegir la versión y una copia separada
 
-```powershell
-pnpm simulator
-```
+Usar una carpeta fuente de capacitación, no el directorio que ejecuta producción. Mantener las terminales del simulador y del frontend en la misma versión del fuente. Consultar [Estado de entrega](estado-entrega.md) antes de atribuir una función a una rama.
 
-El servicio escucha por defecto en `http://127.0.0.1:8085`. Un bundle ficticio con identificador numerico de nueve digitos actualiza su estado cada cinco segundos, avanza por varias zonas y desaparece brevemente al terminar su ciclo. Un bundle verde y otro amarillo permanecen en zonas de comparacion para validar que el identificador completo sea legible en ambos estados.
-
-## Conectar el frontend
-
-Crea o modifica `.env.local`. Este archivo es privado y Git lo ignora.
-
-```env
-NEXT_PUBLIC_PLANT_DATA_MODE=live
-NEXT_PUBLIC_TRACKING_API_URL=/tracking-api
-TRACKING_API_PROXY_TARGET=http://127.0.0.1:8085
-NEXT_PUBLIC_TRACKING_POLL_MS=1000
-NEXT_PUBLIC_TRACKING_STALE_MS=3500
-NEXT_PUBLIC_TRACKING_TIMEOUT_MS=4000
-```
-
-En otra terminal:
-
-```powershell
-pnpm dev
-```
-
-Abre `http://localhost:3000`. Despues de cambiar cualquier variable `NEXT_PUBLIC_*`, reinicia `pnpm dev`.
-
-## Escenarios disponibles
-
-- El bundle movil inicia con `WAITING_QMOS_ID` y `UNMATCHED`.
-- Despues se correlaciona y cambia a `TRACKING` y `MATCHED`.
-- Avanza por `SGRT1A`, `LCH1A`, `CCH1A`, `SGRT2A`, `LCH2A` y `CCH2A`. Las zonas `LCH1A` y `LCH2A` siguen presentes en el mapa y en los datos simulados, aunque Plant Overview y Bay 2 ya no dibujan sus tarjetas.
-- Los identificadores comienzan en `101624001` y cambian en cada ciclo completo.
-- `101623999` permanece activo en `SGRT1B` y `101624998` permanece en estado `WAITING_QMOS_ID / UNMATCHED` en `SGRT2B`.
-- Las tarjetas `CCH1A/B` y `CCH2A/B` muestran hasta cinco identificadores completos y permiten desplazar la lista si hay mas bundles; el contador refleja la ocupacion total. El escenario predeterminado solo coloca el bundle movil en esas zonas.
-- La bascula de Plant Overview y Bay 1 lee `Weight` de los bundles con `CurrentZone` exactamente `SGRT2`. El escenario predeterminado no coloca bundles en `SGRT2`, por lo que la bascula indica que no hay un bundle en esa zona. La interfaz no infiere unidades ni un peso cuando `Weight` es nulo.
-- Termina como `TAGGED_COMPLETE`, desaparece durante un paso y comienza un ciclo nuevo.
-- Un identificador inexistente en `/api/tracking/bundles/{trackingId}` devuelve HTTP 404.
-- El catalogo QMOS contiene tres Mill Orders ficticias, responde como arreglo JSON directo y respeta el parametro `max`.
-- La Mill Order global inicia como `SIM-MO-001` y un cambio queda visible en la siguiente lectura.
-- El Destination global inicia como `1.A.2..` (ID `3773`) y puede cambiarse desde el catalogo simulado.
-- El catalogo contiene cuatro impresoras ficticias. La seleccion global inicia vacia y un `PUT` valido queda visible en `GET /api/tracking/printer` mientras el simulador siga ejecutandose.
-- Un `PrinterId` inexistente devuelve HTTP 400 y conserva la seleccion previa. Al reiniciar el simulador, la seleccion ficticia vuelve a estar vacia; la persistencia entre reinicios corresponde al servicio real.
-- Una correccion aceptada queda visible en `MillOrder1` desde la siguiente lectura del bundle.
-- Detener el simulador con `Ctrl+C` permite probar la desconexion y el estado stale del frontend.
-
-### Demostracion visual opcional de bascula y buffer
-
-Para verificar estas tarjetas sin datos de planta, detén el simulador actual y arranca el escenario opcional en la terminal del simulador:
-
-```powershell
-$env:TRACKING_SIMULATOR_BUFFER_DEMO="true"
-pnpm simulator
-```
-
-Este modo agrega al mapa la zona `SGRT2` y la zona `CCH2B`. Coloca un bundle ficticio `101628207` en `SGRT2` con `Weight: 1875.25` y cinco bundles con `BundleId` de nueve digitos (`101628201` a `101628205`) en `CCH2B`. Agrega ademas un sexto bundle en espera de QMOS: su `BundleId` es nulo y el HMI muestra su `L2Id` de nueve digitos (`101628206`). Asi se pueden ver las cinco filas iniciales, el desplazamiento para la sexta y el estado amarillo. Los demas bundles y su movimiento permanecen como en el escenario predeterminado.
-
-La bascula debe mostrar el identificador y el peso reportado sin unidad; `CCH2B` debe indicar seis bundles y permitir ver todas las filas al desplazarse. Estos son datos ficticios para verificar la interfaz, no una prueba de la bascula ni del Tracking de planta.
-
-Para volver al escenario predeterminado, detén el simulador y elimina la variable antes de iniciarlo otra vez:
-
-```powershell
-Remove-Item Env:TRACKING_SIMULATOR_BUFFER_DEMO -ErrorAction SilentlyContinue
-pnpm simulator
-```
-
-### Demostracion opcional de orden FIFO (v0.42)
-
-En la terminal del simulador, detener la instancia anterior y activar:
-
-```powershell
-$env:TRACKING_SIMULATOR_FIFO_DEMO="true"
-pnpm simulator
-```
-
-El escenario agrega ocho bundles ficticios en `CCH2A`: seis miembros FIFO con `LogicalBufferName` y `QueueSequence`, uno con campos nulos y otro con campos ausentes. La respuesta JSON llega deliberadamente desordenada y los IDs no son consecutivos respecto de la entrada al buffer. Los demas bundles conservan su comportamiento normal; el bundle movil puede sumarse temporalmente a `CCH2A` durante su recorrido.
-
-Los seis miembros con secuencia deben aparecer en este orden relativo tanto en Plant Overview como en Bay 2:
-
-| QueueSequence | Identificador |
+| Versión del script/frontend | Demostración disponible |
 | --- | --- |
-| 5161 | 101637551 |
-| 5162 | 101637550 |
-| 5163 | 101637553 |
-| 5164 | 101637552 |
-| 5165 | 101637554 |
-| 5166 | 101637555 |
+| Base `600d20f` | Movimiento, estados, selecciones globales, corrección legacy de `MillOrder1`, escenario visual de peso/buffer. |
+| FIFO `77f79bf` | Lo anterior más `TRACKING_SIMULATOR_FIFO_DEMO` y orden de tarjetas FIFO. No tiene retiro/reposicionamiento. |
+| Manual `5338300`, checkpoint local separado | Retiro/reposicionamiento y sus pruebas; no contiene automáticamente la extensión FIFO. |
+| **Esta rama `release/integrated-hmi`** | **Reúne FIFO, retiro y reposicionamiento; los antecedentes anteriores permanecen separados como historia.** |
+| Documentos copiados entre versiones | No agregan scripts, flags ni funciones al código de la copia receptora. |
 
-Los bundles `101637559` (campos nulos) y `101637558` (campos ausentes) conservan su lugar de visualizacion y no reciben rango FIFO. La tarjeta muestra un `*` con la explicacion de orden parcial, mantiene el contador completo y permite desplazarse despues de cinco filas. El tooltip de cada miembro FIFO incluye su secuencia. Esta demo no modifica colas ni equipos reales.
-
-Para volver al escenario predeterminado, detener el simulador y ejecutar:
+Para una copia nueva con Node y pnpm disponibles, instalar dependencias según el lockfile:
 
 ```powershell
-Remove-Item Env:TRACKING_SIMULATOR_FIFO_DEMO -ErrorAction SilentlyContinue
+pnpm install --frozen-lockfile
+```
+
+Puede requerir acceso al registro de paquetes. No continuar con una instalación fallida. Esta guía no reconstruye ni despliega el paquete productivo.
+
+Antes de iniciar, comprobar puertos sin alterar procesos:
+
+```powershell
+Get-NetTCPConnection -State Listen -LocalPort 18085,3100 -ErrorAction SilentlyContinue |
+    Select-Object LocalAddress, LocalPort, OwningProcess
+```
+
+Si aparecen listeners, identificar a su responsable y escoger otra pareja de puertos de demo. No usar comandos de parada de servicios ni terminación de procesos.
+
+## 2. Terminal A: API ficticia
+
+Desde la copia de capacitación:
+
+```powershell
+$env:TRACKING_SIMULATOR_HOST = '127.0.0.1'
+$env:TRACKING_SIMULATOR_PORT = '18085'
+$env:TRACKING_SIMULATOR_STEP_MS = '5000'
+$env:TRACKING_SIMULATOR_QMOS_CONNECTED = 'true'
+$env:TRACKING_SIMULATOR_OPC_CONNECTED = 'true'
+$env:TRACKING_SIMULATOR_LOG_REQUESTS = 'false'
+$env:TRACKING_SIMULATOR_BUFFER_DEMO = 'true'
+$env:TRACKING_SIMULATOR_FIFO_DEMO = 'false'
+$env:TRACKING_SIMULATOR_DISABLED_ZONES = ''
 pnpm simulator
 ```
 
-Las regresiones automatizadas usan los archivos fuente del proyecto y procesos de simulacion propios en puertos libres de loopback. No leen `.env.local`, no contactan el servidor de planta y no envian comandos de escritura:
+El script lee estas variables del proceso, no carga automáticamente `.env.local`. El valor predeterminado de su puerto es 8085, por eso se fija explícitamente 18085. En este fuente integrado están disponibles tanto la bandera FIFO como las zonas deshabilitadas de las pruebas manuales. En los antecedentes históricos, cada extensión pertenecía a su rama.
+
+El servidor debe anunciar el escenario `LOCAL_HMI_SIMULATOR`. Si no arranca o el puerto está ocupado, detener la práctica y corregir el destino de demo; no usar un backend real como sustituto.
+
+## 3. Terminal B: frontend de capacitación
+
+Desde la misma copia, en una terminal distinta:
+
+```powershell
+$env:NEXT_PUBLIC_PLANT_DATA_MODE = 'live'
+$env:NEXT_PUBLIC_TRACKING_API_URL = '/tracking-api'
+$env:TRACKING_API_PROXY_TARGET = 'http://127.0.0.1:18085'
+$env:NEXT_PUBLIC_TRACKING_POLL_MS = '1000'
+$env:NEXT_PUBLIC_TRACKING_STALE_MS = '3500'
+$env:NEXT_PUBLIC_TRACKING_TIMEOUT_MS = '4000'
+pnpm dev --hostname 127.0.0.1 --port 3100
+```
+
+Abrir `http://127.0.0.1:3100`. Se usa modo live para probar cliente, proxy, validación y polling contra HTTP ficticio. No es el modo mock interno de la aplicación.
+
+Las variables son de estas terminales; no se modifica la configuración de un servicio ni se sobrescribe un `.env.local`. Al cambiar variables públicas en desarrollo, reiniciar sólo este frontend de demo.
+
+## 4. Puerta de seguridad antes de cualquier escritura
+
+En una tercera terminal, comprobar tanto la API directa como el proxy del frontend. Este bloque hace únicamente GET y se detiene si no identifica el simulador:
+
+```powershell
+$demoBases = @(
+    'http://127.0.0.1:18085',
+    'http://127.0.0.1:3100/tracking-api'
+)
+foreach ($demoBase in $demoBases) {
+    $demoStatus = Invoke-RestMethod -Uri "$demoBase/api/tracking/status" -TimeoutSec 10
+    $demoMap = Invoke-RestMethod -Uri "$demoBase/api/tracking/map" -TimeoutSec 10
+    $demoState = Invoke-RestMethod -Uri "$demoBase/api/tracking/state" -TimeoutSec 10
+    if ($demoStatus.service -ne 'MaterialTrackingServiceSimulator' -or
+        $demoStatus.scenario -ne 'LOCAL_HMI_SIMULATOR' -or
+        $demoStatus.running -ne $true -or
+        $demoMap.ScenarioName -ne 'LOCAL_HMI_SIMULATOR' -or
+        $demoState.ScenarioName -ne 'LOCAL_HMI_SIMULATOR') {
+        throw "Destino de demo no confirmado: $demoBase. No realizar escrituras."
+    }
+    [pscustomobject]@{
+        Base = $demoBase
+        Service = $demoStatus.service
+        Scenario = $demoStatus.scenario
+        ApiVersion = $demoStatus.apiVersion
+        Bundles = @($demoState.Bundles).Count
+    }
+}
+```
+
+También comprobar que la pestaña del navegador es la de 3100 y que Network muestra peticiones a ese mismo origen. Repetir la verificación si se cambia configuración, copia fuente o proceso. Un color verde o un BundleId parecido al ejemplo no identifica por sí solo el destino.
+
+Si la comprobación falla, no hacer PUT/POST desde la interfaz ni por terminal. No hay en esta guía comandos de escritura para producción.
+
+## 5. Recorrido de la demo común
+
+El bundle móvil comienza `WAITING_QMOS_ID / UNMATCHED`, se correlaciona y pasa a `TRACKING / MATCHED`. Recorre SGRT1A, LCH1A, CCH1A, SGRT2A, LCH2A y CCH2A. Los LCH siguen en datos aunque sus tarjetas no se dibujen en Overview/Bay 2.
+
+Los IDs del ciclo empiezan en `101624001`. El bundle `101623999` permanece en SGRT1B; `101624998` muestra el caso amarillo en SGRT2B. Al terminar, el móvil pasa por `TAGGED_COMPLETE`, desaparece brevemente y comienza otro ciclo. Un TrackingId inexistente consultado individualmente devuelve 404.
+
+### Peso y buffer: BUFFER_DEMO
+
+Con la bandera del ejemplo se agregan:
+
+| Zona | Datos de demostración | Resultado esperado |
+| --- | --- | --- |
+| SGRT2 | Bundle `101628207`, `Weight: 1875.25` | Báscula en Overview/Bay 1 con ID y peso, sin inventar unidad. |
+| CCH2B | Cinco BundleId `101628201` a `101628205` | Cinco filas completas inicialmente visibles. |
+| CCH2B | Sexto bundle con BundleId nulo y L2Id `101628206` | Contador de seis, fila amarilla y scroll para ver todas las entradas. |
+
+El escenario predeterminado, sin BUFFER_DEMO, no coloca un bundle en la zona exacta SGRT2: debe indicar ausencia de bundle, no peso cero. SGRT2A y SGRT2B no sustituyen esa zona.
+
+### Selecciones globales
+
+Sólo después de pasar la comprobación anterior, cambiar selecciones ficticias mediante la UI y mostrar el PUT seguido del GET de verificación en Network.
+
+El catálogo tiene tres órdenes. La selección inicial es `SIM-MO-001`; Destination inicia en `3773`, descripción `1.A.2..`. Hay cuatro impresoras ficticias y la selección de impresora inicia vacía. Un ID de impresora inexistente se rechaza sin cambiar la selección.
+
+Los cuerpos usan `millOrder`, `destinationId` y `PrinterId` respectivamente. Guardar orden/destino son dos operaciones, primero destino, no una transacción conjunta. La impresora tiene su propio selector y Refresh.
+
+El simulador no ejecuta QMOS CREATE, PRINT_NEXT ni reglas SQL, ni actualiza retroactivamente los campos fijos de orden/destino de sus bundles al cambiar la selección global. Reiniciarlo pierde selecciones; eso no contradice la persistencia que debe verificar el backend real.
+
+### Fallo y recuperación
+
+Esperar primero una lectura válida. Detener únicamente la Terminal A con Ctrl+C. La UI conserva el último snapshot y pasa por reconexión/datos antiguos; sin snapshot previo puede indicar offline. No debe cambiar a mock.
+
+Reiniciar `pnpm simulator` en esa misma terminal con las variables de demo intactas. Observar recuperación y valores reiniciados. No detener el backend real para demostrar este comportamiento.
+
+## 6. FIFO: práctica incluida en el fuente integrado
+
+Verificar en la copia elegida que existe `lib/tracking-fifo.ts` y que el script reconoce la bandera:
+
+```powershell
+Test-Path -LiteralPath 'lib/tracking-fifo.ts'
+Select-String -LiteralPath 'scripts/tracking-api-simulator.mjs' -Pattern 'TRACKING_SIMULATOR_FIFO_DEMO'
+```
+
+Si falta alguno, esa copia no ofrece la práctica FIFO. No basta con definir una variable que el script ignora.
+
+Detener sólo el simulador de la Terminal A, mantener host/puerto de demo y reiniciarlo:
+
+```powershell
+$env:TRACKING_SIMULATOR_FIFO_DEMO = 'true'
+pnpm simulator
+```
+
+Repetir las comprobaciones de servicio/escenario. El escenario añade ocho entradas fijas a CCH2A, deliberadamente fuera de orden; además puede coincidir allí el bundle móvil.
+
+| BundleId | QueueSequence | Tratamiento |
+| --- | --- | --- |
+| 101637551 | 5161 | Primer integrante válido del FIFO. |
+| 101637550 | 5162 | Segundo integrante válido. |
+| 101637553 | 5163 | Tercer integrante válido. |
+| 101637552 | 5164 | Cuarto integrante válido. |
+| 101637554 | 5165 | Quinto integrante válido. |
+| 101637555 | 5166 | Sexto integrante válido. |
+| 101637559 | nulo | Conserva su posición relativa en los índices no ordenables. |
+| 101637558 | ausente | Conserva su posición en la lista; compatibilidad con DTO antiguo. |
+
+En la tarjeta CCH2A, comparar el orden de los integrantes válidos y recorrer el scroll. Las entradas sin secuencia no se convierten a cero ni se trasladan al final; por eso la lista completa es parcial, no una cola única totalmente ordenada. El asterisco y su ayuda explican esa limitación.
+
+La lista general “Tracked bundles” no se ordena con el helper. Usar Overview/Bay 2 y la tarjeta de CCH2A para la evidencia visual. La zona física nunca cambia por ordenar la presentación.
+
+En esa copia, la regresión automatizada es:
 
 ```powershell
 node scripts/test-fifo-ordering.mjs
+pnpm exec tsc --noEmit --incremental false
 ```
 
-### Endpoints simulados
+El archivo de pruebas no existe en la base `600d20f`. La regresión FIFO cubre helpers, compatibilidad, render y simulador local; no demuestra aceptación de datos FIFO en el backend de planta.
 
-El simulador responde a:
+## 7. Retiro y reposicionamiento: disponibles en esta misma copia
+
+Esta rama incorpora las extensiones de retiro y reposicionamiento de `5338300` junto con la extensión FIFO. Sus pruebas están en `scripts/test-manual-removal.mjs`, `scripts/test-manual-reposition.mjs`, `scripts/test-manual-position.mjs` y `scripts/test-manual-actions-ui.mjs`; revisar cada archivo y sus requisitos antes de ejecutarlo.
+
+El retiro usa `Operation: "REMOVE"`. El reposicionamiento usa `CurrentZone` sin `Operation`; no existe `MOVE`. El comportamiento del simulador no establece qué eventType ni qué reglas industriales debe usar el servicio real.
+
+La capacitación principal puede explicar estos caminos leyendo el código, sin ejecutarlos. Si se acuerda una práctica manual local, usar exclusivamente esta copia de capacitación contra el simulador verificado de 18085, con un bundle ficticio seleccionado explícitamente. No aprovechar una pestaña de 3000/3001 ni reproducir comandos pendientes de planta.
+
+### Regresiones de la versión integrada
+
+Con dependencias instaladas y desde esta carpeta:
+
+```powershell
+node scripts/test-fifo-ordering.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló FIFO; revisar antes de publicar.' }
+node scripts/test-manual-removal.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló retiro; revisar antes de publicar.' }
+node scripts/test-manual-reposition.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló reposicionamiento; revisar antes de publicar.' }
+node scripts/test-manual-position.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló prevalidación manual; revisar antes de publicar.' }
+node scripts/test-integrated-tracking.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló integración FIFO/manual; revisar antes de publicar.' }
+pnpm typecheck
+if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript; no publicar.' }
+```
+
+Los resultados pertenecen a la revisión exacta ensayada. Las pruebas históricas de ramas separadas no acreditan automáticamente la integración: registrar el resultado final. La prueba adicional `test-manual-actions-ui.mjs` necesita navegador local y puede iniciar procesos de prueba; revisar sus parámetros y requisitos antes de ejecutarla.
+
+## 8. Endpoints y límites del simulador
+
+Lecturas disponibles:
 
 ```text
 GET /api/tracking/status
@@ -128,70 +232,18 @@ GET /api/qmos/status
 GET /api/qmos/mill-orders?max=20
 GET /api/qmos/bundle-locations
 GET /api/qmos/printers
-PUT /api/tracking/mill-order
-PUT /api/tracking/destination
-PUT /api/tracking/printer
-POST /api/tracking/correct
 ```
 
-El PUT global acepta unicamente la Mill Order y simula la respuesta sincrona del contrato v0.7:
+Las escrituras simuladas comunes son los tres PUT globales y POST `/api/tracking/correct` legacy con `TrackingId, OperatorId, Reason, MillOrder1`. En esta versión integrada también se simulan REMOVE y reposicionamiento por CurrentZone. No se simula `POST /api/qmos/print`.
 
-```json
-{
-  "millOrder": "SIM-MO-002"
-}
-```
+GET de impresora usa `PrinterId/PrinterName/UpdatedUtc`; la respuesta PUT usa `updated/printerId/printerName/updatedUtc/appliesTo`. El simulador ayuda a observar ese casing, no lo homogeneiza.
 
-El PUT de Destination acepta unicamente un ID existente en el catalogo simulado:
+`getRecentEvents` consulta la ventana que devuelve el servicio. No usar el comportamiento del simulador para suponer que el backend real admite parámetros históricos o filtros por tracking/evento.
 
-```json
-{
-  "destinationId": 3773
-}
-```
+## 9. Opciones y cierre
 
-El PUT de impresora usa `PrinterId` con mayusculas, de acuerdo con el contrato v0.39. Por ejemplo:
+Sólo en la Terminal A, y reiniciando únicamente el simulador, se puede ajustar `TRACKING_SIMULATOR_STEP_MS`, activar `TRACKING_SIMULATOR_LOG_REQUESTS` o simular `TRACKING_SIMULATOR_QMOS_CONNECTED=false` / `TRACKING_SIMULATOR_OPC_CONNECTED=false`. Esos flags representan diagnósticos ficticios, no una desconexión industrial real.
 
-```json
-{
-  "PrinterId": 4
-}
-```
+Para terminar, Ctrl+C en las terminales A y B propias y cerrarlas. No hace falta cambiar configuración persistente ni borrar archivos. Conservar capturas y notas con la versión del fuente, escenario y puertos.
 
-El GET de la seleccion devuelve `PrinterId`, `PrinterName` y `UpdatedUtc`; el PUT exitoso devuelve `updated`, `printerId`, `printerName`, `updatedUtc` y `appliesTo`. La seleccion afecta a las siguientes acciones automaticas `PRINT_NEXT`, salvo que una regla de base de datos tenga un `PrinterId` propio. El comando explicito `POST /api/qmos/print` no cambia y no esta simulado.
-
-El POST requiere estos cuatro datos funcionales; cualquier propiedad adicional se descarta:
-
-```json
-{
-  "TrackingId": "SIM-TRACK-HOLD",
-  "OperatorId": "qa-user",
-  "Reason": "Local UI verification",
-  "MillOrder1": "SIM-MO-003"
-}
-```
-
-## Configuracion opcional
-
-Las variables siguientes afectan solo al proceso del simulador:
-
-```powershell
-$env:TRACKING_SIMULATOR_STEP_MS="3000"
-$env:TRACKING_SIMULATOR_QMOS_CONNECTED="false"
-$env:TRACKING_SIMULATOR_OPC_CONNECTED="false"
-$env:TRACKING_SIMULATOR_LOG_REQUESTS="true"
-pnpm simulator
-```
-
-Para volver a los valores predeterminados en la misma terminal:
-
-```powershell
-Remove-Item Env:TRACKING_SIMULATOR_STEP_MS -ErrorAction SilentlyContinue
-Remove-Item Env:TRACKING_SIMULATOR_QMOS_CONNECTED -ErrorAction SilentlyContinue
-Remove-Item Env:TRACKING_SIMULATOR_OPC_CONNECTED -ErrorAction SilentlyContinue
-Remove-Item Env:TRACKING_SIMULATOR_LOG_REQUESTS -ErrorAction SilentlyContinue
-```
-
-## Limite intencional
-
-Las zonas `SIM_*`, los identificadores y los datos de negocio son ficticios. El simulador valida el contrato HTTP y el comportamiento del frontend, pero no reemplaza las pruebas contra `MaterialTrackingService` ni define el mapeo fisico de las zonas reales.
+La prueba verifica presentación e intercambio HTTP local. No acredita persistencia SQL, PLC, báscula, impresión, reglas de cola ni efectos reales de una corrección. La muestra real v0.42 revisada tenía campos FIFO nulos: sigue pendiente validar el orden con datos lógicos útiles en planta. Ver [Integración API](tracking-api-integration.md) y [Estado de entrega](estado-entrega.md).

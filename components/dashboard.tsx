@@ -97,7 +97,11 @@ export function Dashboard() {
               ) : (
                 <>
                   <GlobalMillOrderPanel tracking={tracking} config={trackingConfig} />
-                  <TrackingBundlesPanel tracking={tracking} />
+                  <TrackingBundlesPanel
+                    tracking={tracking}
+                    config={trackingConfig}
+                    onRefresh={retryTracking}
+                  />
                 </>
               )}
             </div>

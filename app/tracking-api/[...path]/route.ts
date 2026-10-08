@@ -3,12 +3,16 @@ import type {
   GlobalMillOrderUpdateRequestDto,
   GlobalPrinterUpdateRequestDto,
   TrackingCorrectionRequestDto,
+  TrackingRemovalRequestDto,
+  TrackingRepositionRequestDto,
 } from "@/lib/tracking-api/types"
 import {
   isGlobalDestinationUpdateRequestDto,
   isGlobalMillOrderUpdateRequestDto,
   isGlobalPrinterUpdateRequestDto,
   isTrackingCorrectionRequestDto,
+  isTrackingRemovalRequestDto,
+  isTrackingRepositionRequestDto,
 } from "@/lib/tracking-api/validation"
 
 const STATIC_READ_ENDPOINTS = new Set([
@@ -167,15 +171,34 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     return jsonError(400, "A valid JSON request body is required.")
   }
 
-  if (!isTrackingCorrectionRequestDto(body)) {
-    return jsonError(400, "TrackingId, OperatorId, Reason, and MillOrder1 must be non-empty strings.")
-  }
-
-  const sanitizedBody: TrackingCorrectionRequestDto = {
-    TrackingId: body.TrackingId.trim(),
-    OperatorId: body.OperatorId.trim(),
-    Reason: body.Reason.trim(),
-    MillOrder1: body.MillOrder1.trim(),
+  let sanitizedBody: TrackingCorrectionRequestDto | TrackingRemovalRequestDto | TrackingRepositionRequestDto
+  if (isTrackingRemovalRequestDto(body)) {
+    sanitizedBody = {
+      TrackingId: body.TrackingId.trim(),
+      Operation: "REMOVE",
+      OperatorId: body.OperatorId.trim(),
+      Reason: body.Reason.trim(),
+    }
+  } else if (body && typeof body === "object" && "Operation" in body) {
+    return jsonError(400, "Removal requires Operation=REMOVE, TrackingId, OperatorId, and Reason.")
+  } else if (isTrackingRepositionRequestDto(body)) {
+    sanitizedBody = {
+      TrackingId: body.TrackingId.trim(),
+      OperatorId: body.OperatorId.trim(),
+      Reason: body.Reason.trim(),
+      CurrentZone: body.CurrentZone.trim(),
+    }
+  } else if (body && typeof body === "object" && "CurrentZone" in body) {
+    return jsonError(400, "Reposition requires TrackingId, OperatorId, Reason, and CurrentZone without Operation or MillOrder1.")
+  } else if (isTrackingCorrectionRequestDto(body)) {
+    sanitizedBody = {
+      TrackingId: body.TrackingId.trim(),
+      OperatorId: body.OperatorId.trim(),
+      Reason: body.Reason.trim(),
+      MillOrder1: body.MillOrder1.trim(),
+    }
+  } else {
+    return jsonError(400, "Correction requires TrackingId, OperatorId, Reason, and MillOrder1.")
   }
 
   let proxyTarget: URL
