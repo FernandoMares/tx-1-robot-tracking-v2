@@ -2,6 +2,11 @@
 
 # dependencies
 /node_modules
+/.pnpm-store/
+
+# personal presentation notes (keep local, outside source deliveries)
+/docs/guion-presentador.md
+/docs/chuleta-sesion.md
 
 # next.js
 /.next/

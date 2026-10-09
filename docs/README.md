@@ -1,15 +1,22 @@
 # Documentación TX1 — versión integrada
 
-Este fuente reúne **FIFO + retiro REMOVE + reposicionamiento manual**, junto con las selecciones globales, diagramas y peso de SGRT2. Rama: `release/integrated-hmi`. La inclusión de una función no equivale a su aceptación en planta: consultar [estado de entrega](estado-entrega.md).
+Este fuente reúne **FIFO + retiro REMOVE + reposicionamiento manual**, junto con las selecciones globales, diagramas y peso de SGRT2. Rama: `release/integrated-hmi`, código `7fc34e8`. La capacitación se realiza sobre el servidor **3000 → 8085**, sin simulador. La inclusión de una función no equivale a su aceptación en planta: consultar [estado de entrega](estado-entrega.md).
+
+## Empieza aquí
+
+1. [Transferencia técnica](handoff-session.md): arquitectura, archivos y funciones que revisar, con el recorrido de datos de la API real.
+2. [Mapa de código](mapa-codigo.md): estructura, responsabilidades y lugares donde implementar cambios.
+3. [Preguntas técnicas](preguntas-tecnicas.md): respuestas y límites de la implementación.
 
 ## Para mantenimiento y capacitación
 
 | Necesidad | Guía |
 | --- | --- |
+| Localizar carpetas, funciones, imports y consumidores | [Mapa de código](mapa-codigo.md) |
 | Arquitectura, carpetas y recorrido API → tarjeta | [Transferencia técnica](handoff-session.md) |
 | Respuestas específicas y límites del sistema | [Preguntas técnicas](preguntas-tecnicas.md) |
 | Endpoints, casing, DTO y validación | [Integración API](tracking-api-integration.md) |
-| Demostración aislada de FIFO y acciones manuales | [Simulador HTTP](tracking-api-simulator.md) |
+| Regresiones aisladas para desarrollo, fuera de esta capacitación | [Simulador HTTP](tracking-api-simulator.md) |
 | Validar retiro sin confundir Accepted con ejecución | [Commissioning de retiro](manual-bundle-removal-commissioning.md) |
 | Validar corrección de posición registrada | [Commissioning de reposicionamiento](manual-bundle-reposition-commissioning.md) |
 
@@ -19,10 +26,10 @@ Este fuente reúne **FIFO + retiro REMOVE + reposicionamiento manual**, junto co
 | --- | --- |
 | Versiones, evidencia y pendientes reales | [Estado de entrega](estado-entrega.md) |
 | Empaquetador legacy, puerto 3000, cambio de release y rollback | [Despliegue Windows](windows-standalone-deployment.md) |
-| Referencia de servicio del kit separado; helpers no incluidos aquí | [Servicio Windows](windows-service.md) |
+| Identificar proceso/servicio actual y planificar continuidad; sin helpers incluidos | [Servicio Windows](windows-service.md) |
 | Exportar una copia limpia e importarla al repositorio corporativo | [Entrega Git](entrega-git.md) |
 
-Las guías privadas del presentador no forman parte de esta copia compartible. No agregar notas personales, credenciales, paquetes anteriores o perfiles de navegador al producto.
+Mapa de código, manual y referencias son documentación de mantenimiento. El apoyo personal del presentador se conserva localmente, fuera de Git, y no es necesario para seguir estas guías. Al exportar el fuente corporativo, no agregar notas privadas, credenciales, paquetes anteriores o perfiles de navegador.
 
 ## Convenciones
 

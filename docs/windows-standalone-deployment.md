@@ -1,188 +1,211 @@
-# Despliegue Windows y cambio de equipo
+# Windows: identificar, mantener y desplegar el HMI integrado
 
-Antes de usar los ejemplos, revisar `docs/estado-entrega.md` en el paquete fuente aprobado; ese documento no se incluye automáticamente en el runtime standalone. La aceptación del fuente, su correspondencia con el ZIP y las pruebas en el destino se registran allí. Actualizar documentos no actualiza los ZIP existentes. Esta guía distingue dos variantes que no deben confundirse:
+La capacitación se realiza sobre el servidor existente, mediante lectura de código, archivos y respuestas HTTP. No requiere simulador, instalación de dependencias, compilación, arranque de otra instancia ni reinicio. Las operaciones de mantenimiento están separadas al final.
 
-| Característica | Esta rama integrada: empaquetador legacy (heredado de FIFO `77f79bf`) | Preparación de herramientas separada sobre `600d20f` |
+## 1. Referencia de la instalación actual
+
+| Elemento | Referencia comprobada para la sesión |
+| --- | --- |
+| Rama del fuente | `release/integrated-hmi` |
+| Commit integrado | `7fc34e863ed0a9b12e955ae28a224996e84fd011` |
+| Fuente en el servidor | `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8` |
+| Runtime compilado | `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8\dist\tx1-tracking-windows` |
+| HMI activo | Puerto 3000 |
+| Backend local | Puerto 8085; API v0.42 observada |
+| Funciones reunidas | FIFO, REMOVE, reposicionamiento, selecciones globales, diagramas y peso SGRT2 |
+| Servicio Windows | Su identidad/configuración deben inspeccionarse; no se acredita su instalación sólo porque el HMI responda. |
+
+El release integrado ya está publicado y fue puesto en servicio; no debe describirse como una integración pendiente de publicar. La aceptación de cada operación industrial es un asunto diferente: consultar [Estado de entrega](estado-entrega.md).
+
+Estas rutas identifican la instalación actual, no una plantilla para sobrescribirla. La carpeta fuente y su subcarpeta runtime tienen funciones distintas, aunque estén dentro del mismo árbol.
+
+## 2. Fuente, build y runtime
+
+| Lugar | Qué contiene | Qué significa modificarlo |
 | --- | --- | --- |
-| Empaquetador | Sin parámetros propios | Admite `-SourceVersion`, `-PackageName` y `-SkipBuild` |
-| Salidas existentes | Elimina y recrea `dist\tx1-tracking-windows` y su ZIP | Rechaza sobrescribir; requiere otro nombre |
-| `start.cmd` | Siempre fija `HOSTNAME=0.0.0.0` | Respeta HOSTNAME existente; usa `0.0.0.0` si falta |
-| Ayudantes nuevos | No incorpora `service.ps1`, JSON de servicio ni `test-deployment.ps1` | Contiene esos archivos como preparación de un kit |
-| Identificación del ejecutable | RELEASE con commit, asunto, fecha y modo live | Además SourceVersion, origen, BuildId, herramientas y plataforma |
+| Raíz fuente | `app`, `components`, `hooks`, `lib`, scripts, configuración, documentación y lockfile | Editar TypeScript no cambia automáticamente el standalone activo. |
+| `.next` del fuente | Resultado y archivos intermedios del build | Se regeneran al compilar; no son el fuente mantenible. |
+| `dist\tx1-tracking-windows` | `server.js`, dependencias de ejecución, `.next`, `public`, launcher y manifiesto | Es el paquete desde el que se ejecuta producción; no editar ni reconstruir encima mientras está activo. |
+| `dist\tx1-tracking-windows.zip` | Copia distribuible del paquete generado | No cambia al editar documentación o código fuente después del empaquetado. |
 
-El registro histórico sitúa el Front FIFO `77f79bf` en 3000 y Tracking 0.42 en 8085. La nueva rama `release/integrated-hmi` reúne FIFO, REMOVE y reposicionamiento para un único frontend; su publicación y cambio de instancia se registrarán después de ejecutarse. El destino operativo previsto sigue siendo 3000. No se acredita una instalación como servicio. Copiar esta guía no incorpora los helpers Windows del kit separado.
+[next.config.mjs](../next.config.mjs) usa `output: "standalone"`. Node es necesario para ejecutar el servidor y su proxy `/tracking-api`; no basta abrir HTML ni copiar la carpeta a un servidor estático.
 
-El HMI necesita un proceso Node porque `/tracking-api` es un proxy servidor. No funciona copiando HTML a IIS ni abriendo `index.html`. Llevar el ZIP compilado evita instalar pnpm y compilar en planta. Mantener el fuente para futuras modificaciones.
+El operador sólo necesita navegador y acceso al HMI. Para ejecutar el paquete se necesita Node compatible; pnpm, Git y un editor no son requisitos del runtime. Para desarrollar/compilar sí se requieren Node, pnpm y dependencias del proyecto.
 
-## Requisitos por equipo
+La preparación integrada se verificó con Node Windows x64 24.21.0 y pnpm 10.34.5. El fuente declara Next 16.3.0, React 19.2.4 y TypeScript 5.7.3. La versión de Node de una consola puede diferir del ejecutable del proceso activo; inspeccionar ambos antes de concluir qué runtime usa producción. IT debe aprobar las versiones y el sistema operativo.
 
-| Equipo | Instalacion necesaria |
+## 3. Inicio de la sesión: comprobaciones sin cambios
+
+Desde PowerShell en el servidor:
+
+```powershell
+$sourcePath = 'C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8'
+$releasePath = Join-Path $sourcePath 'dist\tx1-tracking-windows'
+if (-not (Test-Path -LiteralPath $sourcePath -PathType Container)) {
+    throw 'No se encontró el fuente esperado; confirmar la ruta antes de continuar.'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $releasePath 'server.js') -PathType Leaf)) {
+    throw 'No se encontró el runtime esperado; no iniciar ni reconstruir para compensarlo.'
+}
+git -C $sourcePath rev-parse HEAD
+git -C $sourcePath branch --show-current
+git --no-optional-locks -C $sourcePath status --short --branch
+Get-Content -LiteralPath (Join-Path $releasePath 'RELEASE.txt')
+Get-Content -LiteralPath (Join-Path $releasePath '.next\BUILD_ID')
+Get-Command node,pnpm,git -ErrorAction SilentlyContinue |
+    Select-Object Name, Source
+```
+
+Comparar HEAD con el commit de referencia y `GitCommit` del manifiesto. `BUILD_ID` identifica esa compilación de Next; no es un commit Git. Un manifiesto no prueba por sí solo que el proceso esté usando esa carpeta ni que el árbol estuviera limpio al compilar. Si hay diferencias, registrarlas antes de atribuirle una función al runtime.
+
+El empaquetador actual registra `BuiltUtc`, `GitCommit`, `GitSubject` y `PlantDataMode`; no genera un inventario criptográfico de todo el fuente ni un manifiesto `SOURCE-RELEASE.txt`. No exigir archivos que esta variante no produce.
+
+### Identificar el proceso que escucha en 3000
+
+```powershell
+$hmiListeners = @(Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue)
+$hmiListeners | Select-Object LocalAddress, LocalPort, OwningProcess
+foreach ($hmiProcessId in @($hmiListeners.OwningProcess | Sort-Object -Unique)) {
+    Get-CimInstance Win32_Process -Filter "ProcessId = $hmiProcessId" |
+        Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine
+}
+```
+
+Contrastar la línea de comando con la carpeta runtime. Si sólo aparece `node server.js`, no se conoce la carpeta de trabajo con ese dato: revisar el launcher o la configuración de arranque identificada. No asumir que cualquier Node del servidor pertenece al HMI.
+
+Para vincular proceso, padres y eventual servicio, usar [Servicio Windows y proceso activo](windows-service.md). Algunas propiedades pueden requerir permisos adicionales; un campo vacío no autoriza a reiniciar ni a terminar procesos. No compartir líneas de comando sin revisar posibles datos sensibles.
+
+### Confirmar HTTP directo y proxy
+
+```powershell
+$backendStatus = Invoke-RestMethod -Uri 'http://127.0.0.1:8085/api/tracking/status' -TimeoutSec 10
+$proxyStatus = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/tracking-api/api/tracking/status' -TimeoutSec 10
+$backendStatus | Select-Object service, running, scenario, apiVersion
+$proxyStatus | Select-Object service, running, scenario, apiVersion
+(Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:3000/' -TimeoutSec 10).StatusCode
+$liveState = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/tracking-api/api/tracking/state' -TimeoutSec 10
+[pscustomobject]@{
+    ScenarioName = $liveState.ScenarioName
+    LastUpdateUtc = $liveState.LastUpdateUtc
+    BundleCount = @($liveState.Bundles).Count
+}
+```
+
+Son GET: no guardan selecciones ni corrigen bundles. El estado puede cambiar entre consultas porque la planta sigue funcionando. No detener el backend para demostrar desconexión y no usar REMOVE, reposicionamiento o cambios globales como prueba de conectividad.
+
+## 4. Configuración: qué se fija al compilar y qué al arrancar
+
+| Ajuste | Momento y alcance |
 | --- | --- |
-| PC de un operador que abre una URL | Navegador aprobado por IT y acceso a la URL del HMI; no requiere Node ni pnpm |
-| Servidor/PC que ejecuta el ZIP | Windows y Node compatibles con la arquitectura del artefacto, acceso HTTP(S) a MaterialTrackingService |
-| Equipo de desarrollo/build | Node, pnpm 10.34.5, fuente/lock; acceso a registro de paquetes y Google Fonts |
-| Arranque como servicio | Lo anterior mas WinSW 2.12.0 y permisos de administrador para registrar el servicio |
-| Backend de Tracking | Instalacion independiente a cargo de su equipo; este ZIP no contiene Tracking, PLC, QMOS ni bases de datos |
+| `NEXT_PUBLIC_PLANT_DATA_MODE` | Build del navegador. El empaquetador fuerza `live`. |
+| `NEXT_PUBLIC_TRACKING_API_URL` | Build; el empaquetador fuerza `/tracking-api`. |
+| Poll/stale/timeout públicos | Build; el empaquetador fija 1000/3500/4000 ms. |
+| `TRACKING_API_PROXY_TARGET` | Entorno del proceso Node; destino privado del proxy. |
+| `PORT` | Puerto de escucha al arrancar Node. |
+| `HOSTNAME` | Dirección de escucha al arrancar; el launcher actual la sobrescribe. |
 
-Referencias observadas en la preparación local: Next.js `16.3.0`, Node Windows x64 `24.21.0` y pnpm `10.34.5`. El `package.json` de Next instalado exige Node `>=20.9.0`; ese mínimo técnico no certifica soporte vigente ni compatibilidad con cualquier Windows. IT debe aprobar runtime y sistema del destino. Un kit previo contiene Node portable; verificar el manifiesto y checksum del artefacto concreto antes de afirmar que está incluido en otra entrega.
+Modificar `NEXT_PUBLIC_*` de una consola no reconfigura JavaScript que ya fue compilado. Cambiar el destino privado del backend no exige otro build, pero sí aplicar el nuevo entorno y reiniciar el proceso correcto en una ventana acordada. Consultar `$env:TRACKING_API_PROXY_TARGET` en una consola nueva sólo muestra el entorno de esa consola, no el de Node ya iniciado.
 
-El ayudante preparado acepta el wrapper `WinSW.NET461.exe` versión `2.12.0`, comprobando sus metadatos. Esta variante usa .NET Framework: verificar sus requisitos, instalación y políticas con IT. El script no instala Node, WinSW ni componentes de Windows.
+El [start.cmd real](../deployment/windows/start.cmd):
 
-El empaquetador mejorado admite Windows x64 o arm64, pero su ayudante `test-deployment.ps1` verifica específicamente Windows/Node x64. Una entrega arm64 necesita su propia validación; no extrapolar el resultado de x64.
+- Cambia a su propia carpeta y ejecuta `node server.js` usando Node del PATH.
+- Usa `http://localhost:8085` si falta `TRACKING_API_PROXY_TARGET`.
+- Usa 3000 si falta `PORT`.
+- Fija siempre `HOSTNAME=0.0.0.0`; definir loopback antes de ejecutar ese script no lo limita.
+- No instala un servicio ni implementa reinicio automático.
 
-## Preparar la carpeta
+`localhost` corresponde al servidor donde corre Node. El navegador usa el mismo origen del HMI; no necesita llegar directamente al 8085. IT controla acceso de red, firewall, autenticación y HTTPS. La allowlist del proxy no sustituye esos controles.
 
-Extraer el ZIP standalone en una carpeta nueva, local y permanente, por ejemplo:
+## 5. Leer los scripts sin ejecutarlos
 
-```text
-C:\Nucor\Tracking\releases\600d20f-session\tx1-tracking-windows\
-```
-
-Conservar toda su estructura: `server.js`, `node_modules`, `.next`, `public` y herramientas. `node_modules` y `.next` son necesarios en el ejecutable aunque no se entreguen en el ZIP fuente. No instalar dependencias dentro del standalone.
-
-Comparar primero el SHA-256 con el manifiesto aprobado y revisar `RELEASE.txt` dentro del ejecutable. El nombre del archivo no identifica su contenido:
-
-```powershell
-Get-FileHash -LiteralPath 'C:\Entrega\PAQUETE_APROBADO.zip' -Algorithm SHA256
-```
-
-Un hash correcto de un ZIP antiguo acredita ese ZIP antiguo, no que contenga FIFO o los últimos documentos. Un `GitCommit` del empaquetador anterior tampoco certifica por sí solo que el árbol estuviera limpio durante la compilación. Para transferir fuente, consultar `docs/entrega-git.md` en el paquete fuente aprobado; no buscarlo como archivo del runtime.
-
-Si se usa Node portable, extraer el ZIP de prerequisites en `C:\Nucor\Tools`. Para esta consola:
+En la capacitación, abrir estos archivos con el editor o `Get-Content`:
 
 ```powershell
-$env:Path = 'C:\Nucor\Tools\node-v24.21.0-win-x64;' + $env:Path
-node --version
+Get-Content -LiteralPath (Join-Path $sourcePath 'package.json')
+Get-Content -LiteralPath (Join-Path $sourcePath 'next.config.mjs')
+Get-Content -LiteralPath (Join-Path $sourcePath 'scripts\package-windows-standalone.ps1')
+Get-Content -LiteralPath (Join-Path $sourcePath 'deployment\windows\start.cmd')
+Get-ChildItem -LiteralPath (Join-Path $sourcePath 'deployment\windows') |
+    Select-Object Name
 ```
 
-Para el servicio configurar `NodePath` absoluto; no depende del PATH de la sesion RDP. Si IT instala Node en `C:\Program Files\nodejs`, usar esa ruta.
+`pnpm dev` es desarrollo; `pnpm build` ejecuta `next build`; `pnpm start` corresponde a `next start`, no al launcher del standalone. El paquete Windows se ejecuta con su `server.js`; no instalar dependencias dentro de él.
 
-## Configuracion de la red
+`pnpm package:windows` invoca PowerShell y [package-windows-standalone.ps1](../scripts/package-windows-standalone.ps1). El script:
 
-| Topologia | `TRACKING_API_PROXY_TARGET` en el proceso HMI |
-| --- | --- |
-| HMI y Tracking en la misma maquina | `http://localhost:8085` |
-| HMI y Tracking en maquinas diferentes | `http://HOST_TRACKING:8085` |
+1. Fija temporalmente los ajustes públicos live y ejecuta un build nuevo.
+2. Elimina sus salidas anteriores y recrea la carpeta fija `dist\tx1-tracking-windows`.
+3. Copia el standalone, archivos estáticos y public; materializa dependencias trazadas de pnpm.
+4. Copia únicamente `start.cmd` y `README.txt` como herramientas Windows.
+5. Escribe RELEASE.txt, verifica algunos archivos necesarios y crea de nuevo `dist\tx1-tracking-windows.zip`.
 
-El navegador siempre usa `/tracking-api` en el host HMI. Los operadores usan `http://HOST_HMI:3000` o el DNS/HTTPS corporativo. `localhost` en la PC de un operador apunta a esa PC. RDP no conecta automaticamente los dos procesos.
+No tiene parámetros propios `-SourceVersion`, `-PackageName` o `-SkipBuild`. Tampoco incorpora `service.ps1`, JSON de servicio ni `test-deployment.ps1`. Esas herramientas pertenecían a una preparación separada, no a este release.
 
-IT debe permitir el puerto HMI desde las estaciones autorizadas y la salida del HMI hacia Tracking. No es necesario abrir 8085 a todos los navegadores. El paquete no modifica firewall. Si se exige HTTPS/autenticacion, configurar el reverse proxy/certificado corporativo y controlar el acceso a los comandos globales; no hay login/roles propio en esta version.
+**No ejecutar el empaquetador en la carpeta fuente actual del servidor:** su salida coincide con el runtime activo. Incluso un build exitoso podría terminar borrando/recreando archivos de la instancia en uso.
 
-## Comprobaciones y arranque manual
+## 6. Mantenimiento futuro: build en una copia separada
 
-Los comandos son ejemplos para el equipo autorizado; no se ejecutan por estar documentados. Desde la carpeta extraída, comprobar Node, Tracking y el puerto antes de arrancar:
+Esta sección no forma parte de la práctica sobre producción. Requiere cambio aprobado, versión identificada, copia fuente de build separada y responsable. La instalación de paquetes/build puede requerir acceso al registro y a fuentes web; no afirmar que es offline sólo porque el runtime use una API interna.
 
-```powershell
-node --version
-curl.exe -i http://HOST_TRACKING:8085/api/tracking/status
-Get-NetTCPConnection -State Listen -LocalPort 3000,3001 -ErrorAction SilentlyContinue |
-  Select-Object LocalAddress, LocalPort, OwningProcess
-$env:TRACKING_API_PROXY_TARGET = 'http://HOST_TRACKING:8085'
-$env:HOSTNAME = '127.0.0.1'
-$env:PORT = '3001'
-node server.js
-```
-
-Sustituir HOST_TRACKING por el valor real y elegir un puerto libre aprobado. La consulta solo identifica un conflicto: no termina procesos. El ejemplo usa loopback/3001 para probar sin sustituir el Front en 3000. Para estaciones remotas, IT debe aprobar la dirección de escucha; `0.0.0.0` expone todas las interfaces IPv4. No terminar todos los procesos Node ni reiniciar Tracking para liberar un puerto.
-
-También puede usarse `start.cmd`, teniendo presente que el lanzador FIFO sobrescribe siempre HOSTNAME con `0.0.0.0`; el mejorado respeta el valor existente. Mantener abierta la consola para arranque manual y usar Ctrl+C para detener ese proceso. El servicio utilizará su propia ruta absoluta de Node y configuración.
-
-Desde otra consola, ajustando host y puerto al proceso real:
+Ejemplo para una copia ya preparada en una ruta nueva. Sustituir NUEVA_VERSION por la referencia aprobada; no copiar la ruta del release activo:
 
 ```powershell
-curl.exe -i http://localhost:3001/
-curl.exe -i http://localhost:3001/tracking-api/api/tracking/status
-curl.exe -i http://localhost:3001/tracking-api/api/tracking/state
-```
-
-Solo si el paquete aprobado incluye el ayudante mejorado:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\test-deployment.ps1 -ApiTarget 'http://HOST_TRACKING:8085' -HmiUrl 'http://localhost:3001'
-```
-
-El diagnóstico solo hace GET y comprueba HTTP/JSON, archivos y Node. Admite también `-ReleasePath`, `-NodePath` y `-TimeoutSeconds`. No certifica todos los campos DTO, persistencia, PLC, impresión ni recuperación del servicio. Complementarlo con la interfaz: Live API, selecciones leídas, números completos y estados/peso/buffers. En FIFO revisar QueueSequence y los miembros sin orden conocido. Probar desde otra estación confirma su ruta de red.
-
-No guardar Mill Order, Destination o impresora para probar conectividad. Las escrituras en producción requieren una prueba de puesta en marcha explícitamente autorizada.
-
-## Servicio permanente
-
-Seguir [Servicio de Windows](windows-service.md) solo cuando se haya aprobado un kit que incluya sus ayudantes. Esta rama integrada no los incorpora. Completar rutas, API, dirección de escucha y puerto según esa guía. Prepare genera configuración sin registrar nada; Install y Start son acciones explícitas en una consola administradora del destino. Su presencia en el fuente no significa que un servicio ya esté instalado o probado.
-
-WinSW proporciona el protocolo de servicio, logs y recuperacion. No usar `sc create` directamente contra `node.exe`: Node por si solo no implementa un servicio Windows. No dejar dos instancias en el mismo puerto. Verificar arranque tras cerrar RDP y, en una ventana aprobada, despues de reiniciar Windows. Reinicio automatico por salida del proceso no detecta toda posible aplicacion colgada.
-
-## Generar un paquete nuevo desde el fuente
-
-Primero identificar el script disponible. En esta rama integrada, igual que en FIFO `77f79bf`, `pnpm package:windows` no acepta parámetros propios y elimina/recrea sus dos salidas fijas. Usarlo solo en una copia de build aislada, sin un despliegue activo ni un artefacto que deba conservarse en esas rutas. Su identificación Git automática no garantiza procedencia en una exportación sin Git: podría no obtener metadatos o detectar un repositorio padre. Registrar y revisar el origen por separado.
-
-### Empaquetado disponible en esta rama integrada
-
-Desde un checkout aislado del commit integrado final, con salidas anteriores respaldadas y sin un proceso ejecutándose desde esas salidas:
-
-```powershell
+$activeSourcePath = 'C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8'
+$buildSourcePath = 'C:\Users\ven.f.garciamares\Projects\tx1-integrated-build-NUEVA_VERSION'
+if (-not (Test-Path -LiteralPath $buildSourcePath -PathType Container)) {
+    throw 'Preparar primero una copia fuente independiente y aprobada.'
+}
+$resolvedBuildSource = (Resolve-Path -LiteralPath $buildSourcePath).Path
+$activeSourcePrefix = $activeSourcePath.TrimEnd('\') + '\'
+if ($resolvedBuildSource.TrimEnd('\') -eq $activeSourcePath.TrimEnd('\') -or
+    $resolvedBuildSource.StartsWith($activeSourcePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'No compilar sobre el fuente que contiene el runtime activo.'
+}
+foreach ($outputName in @('dist\tx1-tracking-windows','dist\tx1-tracking-windows.zip')) {
+    if (Test-Path -LiteralPath (Join-Path $resolvedBuildSource $outputName)) {
+        throw 'Esta copia ya tiene salidas. Conservarlas y elegir una copia de build nueva.'
+    }
+}
+Set-Location -LiteralPath $resolvedBuildSource
+git rev-parse HEAD
+git --no-optional-locks status --short --branch
+# Revisar la versión y el estado antes de continuar.
 pnpm install --frozen-lockfile
-if ($LASTEXITCODE -ne 0) { throw 'Falló la instalación; no continuar.' }
+if ($LASTEXITCODE -ne 0) { throw 'Falló la instalación.' }
 pnpm typecheck
-if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript; no empaquetar.' }
-git status --short --branch
-git log -1 --oneline
-# Confirmar que el commit es el release aprobado y que el árbol no tiene cambios.
+if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript.' }
 pnpm package:windows
 if ($LASTEXITCODE -ne 0) { throw 'Falló el empaquetado; no desplegar.' }
 Get-Content -LiteralPath '.\dist\tx1-tracking-windows\RELEASE.txt'
+Get-FileHash -LiteralPath '.\dist\tx1-tracking-windows.zip' -Algorithm SHA256
 ```
 
-Completar también las regresiones FIFO/manuales descritas en [Simulador](tracking-api-simulator.md). Este script conserva sus rutas fijas; no pasarle `-SourceVersion` ni `-PackageName`. Si hay cambios locales o un merge pendiente, terminar la identificación/revisión antes de generar el release final. Conservar el runtime anterior y su configuración antes de sustituir la instancia en 3000.
+La guardia evita la ruta conocida y salidas ya existentes; no reemplaza verificar que la copia no sea un enlace a un despliegue ni que ningún proceso esté ejecutándose desde ella. Registrar pruebas y herramientas del build. Las regresiones automatizadas se ejecutan en un entorno de desarrollo separado; no son una actividad de la capacitación en el servidor activo.
 
-### Referencia histórica: empaquetador mejorado no incluido
+Un hash calculado identifica el ZIP producido; para validar una transferencia se compara contra un hash aprobado recibido por otro canal. RELEASE.txt no garantiza por sí solo un árbol limpio ni una procedencia correcta en una exportación sin Git. Revisar que el paquete no incluya secretos y probarlo fuera del runtime activo.
 
-Los ejemplos siguientes corresponden únicamente al empaquetador mejorado de la preparación separada; **no son comandos disponibles en esta rama integrada**. No ejecutar estos parámetros sin disponer de aquel script.
+## 7. Cambio de versión y rollback: ventana planificada
 
-En Windows x64, en una copia de fuente con Node/pnpm:
+Antes del cambio, identificar el dueño del listener 3000, el mecanismo de arranque, ejecutable Node, carpeta release y configuración. Conservar el paquete anterior completo y su configuración. No sobrescribirlo ni detener todos los procesos Node.
 
-```powershell
-pnpm install --frozen-lockfile
-if ($LASTEXITCODE -ne 0) { throw 'Falló la instalación; no continuar.' }
-pnpm typecheck
-if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript; no empaquetar.' }
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows-standalone.ps1 -SourceVersion 'IDENTIFICADOR_APROBADO' -PackageName 'tx1-tracking-windows-NUEVA_VERSION'
-if ($LASTEXITCODE -ne 0) { throw 'Falló el empaquetado; no desplegar.' }
-```
+Preparar el candidato en otra carpeta; acordar cómo verificarlo sin competir por 3000 ni enviar escrituras a planta. Sólo durante la ventana autorizada, detener la instancia HMI identificada e iniciar la versión aprobada por el mecanismo real de ese servidor. Si existe un servicio, usar su procedimiento aprobado; esta entrega no proporciona un helper para instalarlo.
 
-En esta variante, `-SourceVersion` es obligatorio en una copia sin Git. Sin ese parámetro, exige que el proyecto sea su propio repositorio y esté limpio antes de leer el commit. Un identificador explícito es una declaración de quien empaqueta, no una certificación independiente del contenido. Para otra versión o una salida nueva:
+Validar la página, status/state por proxy, versión esperada y acceso de los operadores. Si falla, recuperar el runtime y configuración previos mediante el mismo mecanismo. No reiniciar MaterialTrackingService, PLC ni Windows para resolver a ciegas un fallo del frontend.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package-windows-standalone.ps1 -SourceVersion 'VERSION_APROBADA' -PackageName 'tx1-tracking-windows-NUEVA'
-```
+Un rollback del HMI no revierte selecciones ni correcciones que Tracking ya haya aceptado.
 
-Usar un identificador real de fuente aprobado. La preparación sobre `600d20f` no debe presentarse como un nuevo commit ni como el commit FIFO. Este empaquetador rechaza sobrescribir salidas existentes: conservar la anterior y elegir otro nombre. `-SkipBuild` compara SourceVersion, BuildId y ajustes públicos con `.next/windows-package-build.json`; no calcula un hash completo del fuente. Si cambió el código desde el build, reconstruir sin ese switch.
+## 8. Diagnóstico de mantenimiento
 
-El build incorpora modo live, `/tracking-api`, polling 1000 ms, stale 3500 ms y timeout 4000 ms. Modificar `NEXT_PUBLIC_*` exige un nuevo build. Cambiar `TRACKING_API_PROXY_TARGET`, PORT o HOSTNAME requiere configurar/reiniciar el proceso, sin reconstruir. El empaquetador mejorado excluye `.env*` y verifica que sus dependencias se resuelvan dentro del paquete, sin enlaces al repositorio original. El antiguo no realiza esas mismas comprobaciones: inspeccionar y probar su ZIP concreto, sin asumir exclusiones por el nombre del archivo.
-
-## Actualizacion y rollback
-
-1. Verificar checksum, procedencia y RELEASE.txt del artefacto aprobado; extraer en otra carpeta.
-2. Probar con otro puerto y lecturas GET, sin modificar selecciones de planta.
-3. Anotar carpeta/version activa y conservar su configuracion.
-4. Detener solo la instancia HMI acordada. Si utiliza el ayudante WinSW aprobado, cambiar ReleasePath en el JSON, ejecutar Prepare y arrancar según la guía. Con arranque manual, iniciar la nueva carpeta con la configuración registrada.
-5. Validar GET, UI y acceso desde otra PC; registrar resultado.
-6. Si falla, detener la nueva instancia y recuperar carpeta/configuración anterior; con WinSW repetir Prepare y Start. Conservar la versión anterior.
-
-Este rollback restaura el frontend; no revierte selecciones globales guardadas en Tracking.
-
-## Diagnostico rapido
-
-| Sintoma | Revisar |
+| Síntoma | Comprobación inicial |
 | --- | --- |
-| `node` no encontrado | Instalacion/PATH o NodePath absoluto |
-| `EADDRINUSE` | Otra instancia en el mismo puerto; identificar antes de parar |
-| HTTP 502 en `/tracking-api` | Conectividad HMI->Tracking, host, puerto, backend |
-| HTTP 503 de configuracion | TRACKING_API_PROXY_TARGET del proceso real |
-| Respuesta incompatible | JSON y DTO; un 200 solo no valida formato |
-| Live no aparece | Build live, bootstrap status/capabilities/map, state y proxy |
-| Sin peso | Bundle en SGRT2 exacto y Weight; no SGRT2A/B |
-| Falla como servicio pero no manual | Permisos a Node/release/logs/cache, rutas y logs de WinSW |
-| Falla en otra PC | Windows/arquitectura/Node, ZIP completo, antivirus, dependencias nativas |
-| Se para al cerrar RDP | Se dejo arranque manual; comprobar servicio |
+| `EADDRINUSE` | Identificar listener/PID; no arrancar una segunda instancia en 3000. |
+| HTTP 502 | Destino del proxy, conectividad servidor HMI → Tracking y estado del backend. |
+| HTTP 503 de configuración | Entorno del proceso real, no sólo el de la consola actual. |
+| HTTP 200 con error de datos | JSON, casing, DTO y escenario; el código de estado no valida el contrato completo. |
+| Código editado sin cambio en pantalla | Distinguir fuente de paquete compilado y proceso activo. No reconstruir en caliente. |
+| “node no encontrado” | Node del PATH del launcher; para otro mecanismo, ruta absoluta configurada. |
+| Se desconoce persistencia tras RDP/reinicio | Inspeccionar dueño/servicio y programar una prueba; no cerrar la sesión para demostrarlo. |
+| Sin FIFO visible | Campos LogicalBufferName/QueueSequence y tarjeta de zona; null puede ser válido. |
+| Comando manual pendiente | 202 no es finalización; consultar estado/auditoría sin repetir automáticamente. |
 
-No reiniciar backend/PLC ni cambiar endpoints a ciegas para corregir un problema del Front.
+Más contexto: [Integración API](tracking-api-integration.md), [Proceso/servicio](windows-service.md), [Entrega Git](entrega-git.md) y [Estado de entrega](estado-entrega.md).

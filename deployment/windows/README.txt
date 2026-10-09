@@ -1,83 +1,124 @@
-TX1 TRACKING HMI - INTEGRATED WINDOWS STANDALONE
+TX1 TRACKING HMI — WINDOWS STANDALONE INTEGRADO
 ================================================
 
-SCOPE
------
-The integrated source combines FIFO buffer ordering, manual REMOVE and manual
-repositioning, global Mill Order / Destination / Printer selection, diagrams
-and SGRT2 weight. Read RELEASE.txt to identify the actual packaged Git commit.
-A successful build or HTTP 200 is not commissioning approval.
-
-This package contains server.js, .next, public and runtime dependencies.
-Keep its complete structure. It is not the TypeScript source repository.
-Node is required; pnpm, Git and an editor are not required to run this ZIP.
-Tracking / QMOS / PLC services are separate and are not installed by this ZIP.
-
-REQUIREMENTS AND START
-----------------------
-Use compatible Windows/Node approved by IT and network access to Tracking.
-Previously tested tools: Windows x64, Node 24.21.0, pnpm 10.34.5 for build.
-Validate the exact release on the destination machine.
-
-Extract into a new release folder, preserve the previous release and settings,
-and coordinate the change of the existing HMI instance on port 3000.
-Never stop all Node processes or stop the Tracking API to free an HMI port.
-
-From the approved extracted release, only after the chosen port is free:
-
-  $env:TRACKING_API_PROXY_TARGET = 'http://localhost:8085'
-  $env:PORT = '3000'
-  .\start.cmd
-
-localhost refers to THIS HMI server. Change the API host only to the approved
-Tracking destination. This example connects to a real local service, not an
-isolated simulator. Keep the console open during manual operation.
-
-LAUNCHER / PACKAGER LIMITATIONS
--------------------------------
-This release keeps the legacy launcher: start.cmd always sets HOSTNAME=0.0.0.0.
-Setting HOSTNAME before that script does not restrict its listener. For an
-approved loopback-only test, set HOSTNAME and invoke node server.js directly.
-
-The source packager uses pnpm package:windows and fixed output paths. It can
-replace existing outputs. Build only in an isolated checkout with no active
-deployment or sole backup in those paths. The extended -SourceVersion and
--PackageName options from a separate handoff kit are NOT supported here.
-
-service.ps1, service-settings.example.json and test-deployment.ps1 from that
-separate kit are NOT included. Extracting this ZIP does not install a service.
-Unattended operation requires an IT-approved wrapper/service configuration and
-destination tests. Node alone does not implement a Windows service protocol.
-
-VALIDATION
-----------
-Read-only health URLs with the example configuration:
-
-  http://localhost:3000/
-  http://localhost:3000/tracking-api/api/tracking/status
-  http://localhost:8085/api/tracking/status
-
-Check the expected scenario, live data, current release and UI. FIFO requires
-LogicalBufferName and QueueSequence; null fields do not confirm real FIFO order.
-The generic Tracked bundles list is not the FIFO ordering view; use zone cards.
-
-MANUAL ACTIONS
---------------
-REMOVE and Reposition are available in Tracked bundles, but must only be used
-with explicit authorization for the selected bundle and operation.
-OperatorId is audit text, not authentication. A 202/accepted response is not a
-completed action. The UI observes a fresh state and does not automatically
-retry POST. If uncertain, consult state and backend audit before repeating.
-Manual tracking corrections can affect L2/PLC occupancy and automation.
-
-SECURITY / HANDOFF
+ALCANCE E IDENTIDAD
 ------------------
-The proxy allowlist is not login, roles or TLS. Coordinate network access,
-authorization and telemetry policy with IT. Do not put secrets in NEXT_PUBLIC
-variables. Changing public build variables requires rebuilding; changing the
-private API target requires restarting the correct process with new settings.
+El frontend integrado reúne FIFO, REMOVE, reposicionamiento, selección global
+de Mill Order / Destination / impresora, diagramas y peso SGRT2.
 
-Source documentation contains API, simulator, deployment, commissioning,
-version status and Git transfer guides. It is a separate deliverable.
-Rollback restores the frontend, not backend selections or corrections already
-accepted. Do not label historical ZIPs as integrated merely by renaming them.
+La instalación de referencia de la capacitación usa:
+  Rama: release/integrated-hmi
+  Commit: 7fc34e863ed0a9b12e955ae28a224996e84fd011
+  Fuente:
+    C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8
+  Runtime:
+    C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8\dist\tx1-tracking-windows
+  HMI: puerto 3000
+  Backend local: puerto 8085, API v0.42 observada
+
+El integrado ya fue publicado y puesto en servicio. Para identificar ESTE
+paquete concreto, leer su RELEASE.txt y .next\BUILD_ID: una guía copiada o un
+nombre de carpeta no acreditan la procedencia de otra compilación.
+
+Actualizar este README en el fuente no actualiza un ZIP ni un runtime
+previamente generados. La documentación completa pertenece al fuente.
+
+CAPACITACIÓN SOBRE EL SERVIDOR REAL
+----------------------------------
+La sesión es de lectura de código y diagnóstico sobre la instancia existente.
+No requiere simulador, pnpm install, build, otra instancia, reinicio ni cambios
+en Git. No ejecutar start.cmd si el HMI ya está funcionando.
+
+Comprobaciones PowerShell de sólo lectura, desde el servidor:
+
+  Get-Content -LiteralPath 'C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8\dist\tx1-tracking-windows\RELEASE.txt'
+  Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue |
+      Select-Object LocalAddress, LocalPort, OwningProcess
+  Invoke-RestMethod -Uri 'http://127.0.0.1:8085/api/tracking/status' -TimeoutSec 10
+  Invoke-RestMethod -Uri 'http://127.0.0.1:3000/tracking-api/api/tracking/status' -TimeoutSec 10
+
+Identificar PID, ejecutable y mecanismo de arranque antes de cualquier cambio.
+No cerrar la consola/RDP ni detener el backend para demostrar recuperación.
+No usar cambios de selección o correcciones de bundles como prueba de conexión.
+
+FUENTE Y PAQUETE COMPILADO
+-------------------------
+El runtime contiene server.js, node_modules, .next y public. Conservar toda su
+estructura. No es el repositorio TypeScript y no instalar dependencias dentro.
+Node es necesario; pnpm, Git y editor no son requisitos para ejecutar este ZIP.
+Tracking, QMOS, PLC y bases de datos son sistemas separados.
+
+La preparación integrada se verificó con Node Windows x64 24.21.0 y pnpm
+10.34.5 para build. IT debe aprobar las herramientas del destino. El Node del
+PATH de una consola puede no ser el ejecutable que usa el proceso activo.
+
+ARRANQUE Y CONFIGURACIÓN
+-----------------------
+Durante una ventana autorizada, un arranque manual usa start.cmd desde el
+release aprobado, únicamente cuando el puerto acordado esté libre y se haya
+identificado la instancia anterior. El script ejecuta node server.js.
+
+El launcher:
+  - cambia a su propia carpeta;
+  - usa Node del PATH;
+  - usa TRACKING_API_PROXY_TARGET=http://localhost:8085 si falta la variable;
+  - usa PORT=3000 si falta la variable;
+  - SIEMPRE fija HOSTNAME=0.0.0.0;
+  - no registra servicios ni implementa recuperación automática.
+
+Definir HOSTNAME antes de start.cmd no restringe su escucha. Un mecanismo
+aprobado que necesite otra dirección debe configurar el entorno y ejecutar
+Node directamente, con sus rutas verificadas. No cambiarlo durante la sesión.
+
+localhost representa este servidor HMI. La URL del navegador y el destino
+privado del backend son distintos. No poner credenciales en la URL.
+
+NEXT_PUBLIC_* se incorpora al build. Cambiar esas variables después no modifica
+el JavaScript compilado. El destino privado del proxy se configura al ejecutar;
+cambiarlo requiere aplicar el entorno y reiniciar el proceso correcto en una
+ventana acordada, no necesariamente reconstruir.
+
+ADVERTENCIA DEL EMPAQUETADOR
+---------------------------
+pnpm package:windows ejecuta un build nuevo live y ELIMINA/RECREA sus salidas:
+  dist\tx1-tracking-windows
+  dist\tx1-tracking-windows.zip
+
+En el fuente actual del servidor esa carpeta es el runtime activo. NO ejecutar
+el empaquetador allí durante operación o capacitación. Usar una copia de build
+separada, conservar el paquete anterior y planificar el cambio.
+
+Este empaquetador no acepta -SourceVersion, -PackageName ni -SkipBuild.
+Sólo copia start.cmd y README.txt como herramientas Windows. NO incluye
+service.ps1, service-settings.example.json ni test-deployment.ps1.
+
+Una respuesta HTTP no acredita instalación como servicio ni continuidad tras
+cerrar sesión/reiniciar. Si se requiere operación desatendida, IT debe aprobar
+el mecanismo, cuenta, permisos, logs y pruebas. Node por sí solo no implementa
+el protocolo de servicio Windows. No registrar ni reiniciar servicios para
+demostrar conceptos durante la capacitación.
+
+OPERACIÓN Y SEGURIDAD
+--------------------
+FIFO se presenta en tarjetas de zona según LogicalBufferName/QueueSequence,
+no ordena el listado general Tracked bundles ni modifica CurrentZone.
+Campos FIFO nulos no acreditan orden real ni demuestran por sí solos un fallo.
+
+REMOVE y Reposition están disponibles, pero su uso requiere autorización para
+el bundle y operación concretos. OperatorId es texto de auditoría, no login.
+202/accepted significa aceptación, no finalización. Si el resultado es incierto,
+consultar estado/auditoría; no repetir automáticamente el comando.
+
+El proxy limita rutas, pero no aporta autenticación, roles o TLS. Coordinar
+acceso, firewall y telemetría con IT. Un rollback del frontend no revierte
+selecciones ni correcciones que Tracking ya haya aceptado.
+
+GIT Y DOCUMENTACIÓN
+------------------
+La publicación del integrado no equivale a transferencia al Git corporativo:
+URL y acceso corporativos siguen pendientes. No efectuar push automático.
+
+En el fuente: docs/windows-standalone-deployment.md, docs/windows-service.md,
+docs/entrega-git.md, docs/tracking-api-integration.md y docs/estado-entrega.md.
+Durante la sesión, inspeccionar la instalación; construir, desplegar o cambiar
+infraestructura son actividades separadas y planificadas.

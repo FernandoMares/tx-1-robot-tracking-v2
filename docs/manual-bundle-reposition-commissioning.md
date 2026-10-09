@@ -1,6 +1,6 @@
 # Reposicionamiento manual: preparación y prueba del release integrado
 
-Esta función forma parte de `release/integrated-hmi`, junto con FIFO y REMOVE. Registrar el commit integrado final y el release activo antes de probar; inclusión del código no acredita commissioning.
+Esta función forma parte de `release/integrated-hmi`, código `7fc34e8`, junto con FIFO y REMOVE. El fuente del servidor es `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`; HMI 3000 contra Tracking 8085. Verificar el release activo antes de probar; inclusión del código no acredita commissioning de Reposition.
 
 Base contractual: apartado 7 del HMI API Contract v0.39, Manual Bundle Removal
 Appendix. Esta funcion reconcilia la posicion registrada de un bundle; no ordena
@@ -39,7 +39,9 @@ El apendice proporciona el ejemplo del comando pero no define estas reglas:
 No interpretar que capabilities anuncie `/api/tracking/correct` como certificacion
 de todas estas reglas. El backend debe validar la operacion en el momento de aplicarla.
 
-## Pruebas locales
+## Regresiones de desarrollo — fuera de la capacitación del servidor
+
+Este bloque documenta verificaciones del código en una copia de desarrollo. No se ejecuta durante el training ni sobre la carpeta cuyo runtime está atendiendo producción. La capacitación actual usa código y respuestas del servidor real; ver [recorrido técnico](handoff-session.md).
 
 ```powershell
 node scripts/test-manual-removal.mjs
@@ -69,9 +71,9 @@ mientras esa misma carpeta `.next/standalone` este sirviendo otra instancia.
 Verifica cancelacion, dialogo prolongado, cambios durante la confirmacion,
 payload, acuse pendiente, bloqueo al cerrar/reabrir, retiro y respuesta incierta.
 
-## Una prueba autorizada en QA
+## Una prueba coordinada en el servidor
 
-Puede usarse el release integrado en 3000 una vez completado su despliegue aprobado, o una copia aislada contra el simulador para capacitación. El [procedimiento de retiro](manual-bundle-removal-commissioning.md) explica las precauciones y verificaciones. Cualquier frontend que apunte a la misma API afecta ese backend, independientemente de su puerto. La aprobación de despliegue no sustituye autorizar el bundle/origen/destino concretos.
+La sesión utiliza el release integrado en 3000 con la API real, sin levantar simulador. El [procedimiento de retiro](manual-bundle-removal-commissioning.md) explica las precauciones y verificaciones. La aprobación de despliegue no sustituye autorizar el bundle/origen/destino concretos. No usar el caso ya retirado `TRK-0000103919` como candidato de otra operación: el backend lo reportó REMOVED, y esa condición aún no está tratada completamente por los guards del Front.
 
 1. Registrar commit realmente compilado, version API, escenario, hora y operador.
 2. Con el responsable, elegir TrackingId, origen y destino compatibles con la

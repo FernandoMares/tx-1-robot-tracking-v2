@@ -1,8 +1,10 @@
 # Simulador local de Tracking API
 
+**Referencia de desarrollo, fuera del training del servidor.** La sesión actual de source code usa la integrada `7fc34e8` en 3000 con Tracking real en 8085; no se ejecutan estos pasos durante la capacitación. Empezar por [Transferencia técnica](handoff-session.md) y [Mapa de código](mapa-codigo.md). Se conserva esta referencia para futuras regresiones aisladas, no como sustituto de la evidencia en planta.
+
 Práctica aislada para aprender el código y verificar HTTP sin tocar PLC, QMOS, SQL ni impresoras. El simulador guarda datos ficticios en memoria. Reiniciarlo pierde los cambios.
 
-La práctica usa API en `127.0.0.1:18085` y frontend en `127.0.0.1:3100`. No usa ni detiene producción en 3000, la instancia manual en 3001 o el backend real en 8085. Si esos puertos de demo están ocupados, elegir otros libres; no matar procesos para liberarlos.
+La práctica aislada de desarrollo usa API en `127.0.0.1:18085` y frontend en `127.0.0.1:3100`. No usa ni detiene producción en 3000, otras instancias o el backend real en 8085. Si esos puertos están ocupados, elegir otros libres; no matar procesos para liberarlos. Estos puertos no forman parte del recorrido de capacitación en servidor.
 
 ## 1. Elegir la versión y una copia separada
 

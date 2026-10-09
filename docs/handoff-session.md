@@ -1,163 +1,304 @@
-# Transferencia técnica del HMI TX1
+# Training de código fuente: HMI TX1 integrado
 
-Esta guía permite explicar el código, seguir un dato desde la API hasta la pantalla y delimitar qué está validado. Para el inventario de versiones y evidencias, consultar [Estado de entrega](estado-entrega.md). Esta copia contiene documentación compartible del producto; no incluye apuntes privados del presentador.
+Esta sesión se realiza **en el servidor, leyendo el fuente y observando el frontend existente en el puerto 3000 contra Tracking en 8085**. No requiere levantar otra instancia, usar un simulador, compilar, detener procesos ni ejecutar comandos industriales. El objetivo es que otro desarrollador pueda seguir el código, diagnosticar un dato y saber dónde implementar un cambio.
 
-## 1. Qué código se está explicando
+La referencia del recorrido es el commit **`7fc34e8`**, `feat(hmi): unify FIFO and manual bundle actions`, de `release/integrated-hmi`. Incluye selección global de Mill Order/Destination/Printer, peso de SGRT2, layout, FIFO, REMOVE y reposicionamiento en una misma base. Integrado no significa que todas las condiciones reales estén aceptadas: la confirmación de REMOVE tiene el pendiente concreto descrito en la sección 10.
 
-**Esta carpeta corresponde a `release/integrated-hmi`**: integra FIFO de `77f79bf` y las acciones manuales de `5338300` en el mismo frontend. El commit final, publicación y despliegue integrados deben registrarse al completarse; esta guía no los da por realizados. Las referencias siguientes explican su procedencia histórica.
+## 1. Preparación en el servidor: abrir la carpeta correcta
 
-| Referencia | Alcance que se puede afirmar |
-| --- | --- |
-| Base `600d20f` | Lectura de Tracking, diagramas, listado de bundles y selección global de Mill Order, Destination e impresora. No tiene acciones manuales en el panel. |
-| FIFO `77f79bf` | Añade presentación FIFO a las tarjetas de zonas. Es la versión publicada y reportada en ejecución en el puerto 3000. No incorpora retiro ni reposicionamiento manual. |
-| Manual `5338300` | Rama separada con retiro `REMOVE` y reposicionamiento; este checkpoint es local. La referencia remota conocida de esa rama es `ce3c8a9`, anterior al checkpoint. No confundirla con la versión FIFO desplegada. |
-| Preparación de entrega en la raíz | Documentación, empaquetado y helpers de Windows adicionales. Su presencia en la raíz no significa que estén en el commit o ZIP FIFO. |
-
-Esta guía se comparte entre las copias fuente; no agrega funciones por sí misma. Confirmar la versión del fuente, del paquete compilado y del proceso en ejecución por separado. No describir una rama como desplegada sólo porque existe en el equipo del desarrollador.
-
-## 2. Objetivo, material y agenda
-
-El mantenedor debe poder localizar una función, explicar su contrato, reproducir una prueba aislada y reconocer cuándo necesita al responsable del backend o de infraestructura.
-
-Llevar el fuente de la versión elegida, el paquete standalone identificado, requisitos de Node/WinSW cuando correspondan, checksums y evidencia de pruebas. Un ZIP fuente y un ZIP ejecutable son entregables diferentes. Usar una copia separada para la capacitación.
-
-Agenda sugerida de 90 minutos:
-
-1. Versiones, alcance y límites de la evidencia: 10 minutos.
-2. Recorrido del dato y lectura de código: 25 minutos.
-3. Simulador aislado, Network y fallos de comunicación: 20 minutos.
-4. FIFO y acciones manuales, integrados pero con contratos distintos: 10 minutos.
-5. Empaquetado, servicio, diagnóstico, rollback y Git: 15 minutos.
-6. Preguntas y pendientes de commissioning: 10 minutos.
-
-Para una sesión de 60 minutos, dejar el detalle de despliegue y las [preguntas técnicas](preguntas-tecnicas.md) como consulta posterior.
-
-## 3. Datos que confirmar con el equipo
-
-| Dato | Decisión del entorno |
-| --- | --- |
-| Servidor HMI | Host/IP, Windows x64 y ruta permanente. |
-| MaterialTrackingService | Host/IP y puerto; el valor habitual es 8085, no una obligación del protocolo. |
-| URL del operador | DNS/IP, HTTP o HTTPS y acceso aprobado por IT. |
-| Puerto del HMI | La instancia actual usa 3000. La capacitación usa 3100 en loopback; no desplazar producción. |
-| Node | Ruta absoluta y versión aprobada para el paquete. |
-| Servicio Windows | Nombre único, cuenta, permisos y dueño del proceso. El helper del kit de entrega admite LocalService; otra cuenta requiere revisión. |
-| Red | Acceso desde operadores, salida del servidor HMI al backend, firewall y TLS. |
-| Git | Repositorio corporativo, mantenedor, ramas y autenticación. |
-| Pruebas operativas | Responsable, ventana, bundle y valores expresamente autorizados. |
-
-Cambiar sólo el host del backend o el puerto de escucha no exige reconstruir el frontend; sí requiere aplicar la configuración al proceso correcto y reiniciarlo de forma coordinada. Cambiar variables `NEXT_PUBLIC_*` de una compilación requiere otro build.
-
-## 4. Arquitectura y recorrido de una lectura
+Abrir en el editor esta carpeta de **fuente**, no la carpeta compilada:
 
 ```text
-Navegador → Next.js /tracking-api → MaterialTrackingService
-                                         → QMOS / DB / PLC / impresión
+C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8
 ```
 
-El navegador recibe la aplicación y hace peticiones de mismo origen. El proxy de Next.js limita rutas y métodos; el servicio de Tracking es el dueño del estado y de las reglas industriales. El HMI no se conecta directamente a SQL ni al PLC.
+El paquete de ejecución está debajo de ella:
 
-`localhost` en `TRACKING_API_PROXY_TARGET` significa el equipo donde corre Node. RDP no crea un túnel y el navegador del operador no necesita llegar directamente al puerto del backend cuando se usa el proxy.
+```text
+dist\tx1-tracking-windows
+```
 
-Seguir un ejemplo: un bundle llega con `CurrentZone: "CCH2A"`. El cliente valida el JSON; el hook conserva la lectura; `groupTrackingBundlesByZone` lo agrupa por esa zona; el diagrama pasa el grupo a `TrackingZoneSlot`. La interfaz no deduce una zona a partir de flechas, un número de bundle o una secuencia FIFO.
+Con el explorador de archivos del editor deben verse `app`, `components`, `hooks`, `lib` y `scripts`. Si sólo se ve `server.js`, `.next` y `node_modules`, se abrió el runtime: volver al directorio fuente. `server.js` y los chunks compilados no son el punto de entrada que se mantiene a mano.
 
-## 5. Recorrido del código, con responsabilidades reales
+En una PowerShell **adicional**, estos comandos sólo consultan:
 
-| Archivo o símbolo | Qué mostrar y qué no hace |
-| --- | --- |
-| [app/page.tsx](../app/page.tsx), [Dashboard](../components/dashboard.tsx) | Entrada y selección de vistas. Dashboard comparte el estado de planta; cambiar de vista no crea una fuente de verdad distinta. |
-| [usePlantState](../hooks/use-plant-state.ts) | Integra mock/live, agrupa bundles y expone datos a las vistas. Las variaciones ficticias de mock no se usan como sustituto de una API live caída. |
-| [useTrackingApi](../hooks/use-tracking-api.ts) | Bootstrap, polling, cancelación, recuperación y antigüedad del snapshot. |
-| [TrackingApiClient](../lib/tracking-api/client.ts) | Métodos HTTP, timeout, errores y validación de cada respuesta. No reintenta automáticamente escrituras. |
-| [Tipos](../lib/tracking-api/types.ts), [validadores](../lib/tracking-api/validation.ts), [parseApiDate](../lib/tracking-api/date.ts) | TypeScript describe el contrato; los validadores comprueban el JSON real. Las fechas aceptan ISO y el formato .NET `/Date(...)/`. |
-| [Configuración](../lib/tracking-api/config.ts), [.env.example](../.env.example) | Modo de datos, URL pública, intervalos y destino privado del proxy. No incluir secretos en variables públicas. |
-| [Route Handler](../app/tracking-api/%5B...path%5D/route.ts) | Allowlist por método, validación de cuerpos y reenvío al backend. No es un sistema de autenticación. |
-| [groupTrackingBundlesByZone y catálogo](../lib/tracking-zone-layout.ts) | Agrupa por `CurrentZone` y valida el mapa frente al layout conocido. No genera automáticamente la geometría de una zona nueva. |
-| [Overview](../components/plant/main-schematic.tsx), [componentes de planta](../components/plant) | Ubicación visual de los equipos. El dibujo y sus animaciones no son mediciones de sensores. |
-| [TrackingZoneSlot](../components/plant/tracking-zone-slot.tsx) | Identidad visible, color, contador y scroll. En FIFO incorpora el helper de orden lógico. |
-| [ScaleWeightReadout](../components/plant/scale-weight-readout.tsx) | Muestra el peso reportado para la zona exacta `SGRT2`, no `SGRT2A/B`. |
-| [TrackingBundlesPanel](../components/tracking-bundles-panel.tsx) | En esta versión integrada: listado, búsqueda, REMOVE, Reposition y verificación posterior. El listado general no se ordena por FIFO. |
-| [GlobalMillOrderPanel](../components/mill-order-selection-panel.tsx) | Catálogos, selecciones globales, confirmaciones, PUT y GET de verificación. Incluye el selector independiente de impresora. |
-| [Simulador](../scripts/tracking-api-simulator.mjs) | Backend ficticio en memoria para comprobar el intercambio HTTP. No representa persistencia ni efectos en planta. |
-| [Empaquetador](../scripts/package-windows-standalone.ps1), [archivos Windows](../deployment/windows) | Creación y arranque del standalone. Revisar las diferencias del kit de entrega antes de explicar helpers que el ZIP desplegado no contiene. |
+```powershell
+Set-Location 'C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8'
+git status --short --branch
+git log -1 --oneline
+Get-Content -LiteralPath '.\dist\tx1-tracking-windows\RELEASE.txt'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/tracking-api/api/tracking/status' -TimeoutSec 10 | ConvertTo-Json -Depth 5
+```
 
-### Leer el polling sin confundirlo con las selecciones
+Esperar `7fc34e8` en el fuente y su hash completo correspondiente en `RELEASE.txt`; si no coinciden, declarar qué copia se está leyendo antes de continuar. El archivo de release identifica el paquete, pero por sí solo no prueba qué proceso posee 3000. La versión `apiVersion` del GET pertenece al backend, no al commit del frontend.
 
-Al iniciar en live, `useTrackingApi` consulta en secuencia `status → capabilities → map → state`. Verifica que el servicio esté ejecutándose y que los escenarios sean compatibles. Después consulta normalmente sólo `state`.
+Abrir el navegador del servidor en `http://127.0.0.1:3000/`. Mantener otra pestaña de editor con búsqueda de símbolos. No ejecutar `start.cmd` sobre un puerto ya ocupado; no modificar archivos ni guardar cambios durante este recorrido.
 
-El siguiente ciclo se programa después de terminar el anterior: 1000 ms configurados no significan exactamente una petición por segundo si la red tarda. El bucle no solapa sus propias solicitudes. Tras fallos usa espera creciente con variación y tope de 30 segundos; vuelve a cargar metadatos al recuperarse. Al desmontar, cancela la petición pendiente y el temporizador.
+## 2. Resultado esperado y orden del recorrido
 
-Con una lectura previa conserva el último snapshot y muestra `reconnecting` o `stale`; sin lectura previa puede mostrar `offline`. `Received` mide recepción local exitosa; `State changed` usa `LastUpdateUtc` del backend. Un estado sin cambios puede recibirse correctamente muchas veces.
+Al terminar, el mantenedor debería explicar de dónde sale una tarjeta, por qué puede verse información anterior durante una desconexión, cómo se valida un JSON, cómo se diferencia una selección global de una acción manual y dónde haría cada cambio.
 
-Los catálogos y selecciones globales tienen ciclos separados: se cargan al montar el panel y con sus controles Refresh, además del GET posterior a guardar. El selector de impresora tiene su propio Refresh y se vuelve a cargar al abrirlo. No existe polling continuo de todas las selecciones; otra estación puede cambiarlas sin que el panel las vea inmediatamente.
+| Bloque | Archivos que se abren | Lo que debe quedar demostrado |
+| --- | --- | --- |
+| Entrada y componentes, 10 min | `app/page.tsx`, `components/dashboard.tsx`, `components/app-header.tsx` | Las cinco pestañas comparten un Dashboard y un estado de Tracking. |
+| Lectura y contrato, 20 min | `hooks/use-tracking-api.ts`, `lib/tracking-api/client.ts`, `types.ts`, `validation.ts`, proxy | Seguir una petición real desde el navegador hasta su validación y regreso a React. |
+| Dato a dibujo, 15 min | `hooks/use-plant-state.ts`, `lib/tracking-zone-layout.ts`, `main-schematic.tsx`, `tracking-zone-slot.tsx` | Mostrar exactamente por qué un bundle aparece en CCH2A. |
+| FIFO, peso y layout, 10 min | `lib/tracking-fifo.ts`, `scale-weight-readout.tsx`, diagramas | Separar posición, orden lógico, valor reportado y coordenadas de pantalla. |
+| Selecciones y comandos, 20 min | `mill-order-selection-panel.tsx`, `tracking-bundles-panel.tsx`, `manual-position.ts` | Recorrer handlers sin enviarlos; explicar confirmación, preflight y resultado. |
+| Mantenimiento, 10 min | `package.json`, `next.config.mjs`, empaquetador, mapa de código | Saber qué se recompila, qué se configura y qué no se debe editar en runtime. |
 
-## 6. Escrituras globales: explicación, no demostración productiva
+Si el tiempo es menor, priorizar una lectura completa de `state` y un comando completo en código. No sustituirlos por una lista de carpetas. [Mapa de código y recetas de cambio](mapa-codigo.md) contiene el detalle de consulta posterior.
 
-Consultar el detalle en [Integración API](tracking-api-integration.md). El casing forma parte del contrato:
+## 3. Primer recorrido: cómo se construye esta pantalla
 
-| Operación | Cuerpo |
-| --- | --- |
-| PUT `/api/tracking/mill-order` | `{ "millOrder": "..." }` |
-| PUT `/api/tracking/destination` | `{ "destinationId": 3773 }` |
-| PUT `/api/tracking/printer` | `{ "PrinterId": 4 }` |
+### 3.1 `app/page.tsx` → `Dashboard`
 
-Los valores son ilustrativos. En capacitación, escribir únicamente después de verificar que frontend y proxy apuntan al simulador local.
+Abrir [app/page.tsx](../app/page.tsx). `Page` devuelve `<Dashboard />`. No consulta Tracking ni calcula el layout. Es la entrada App Router para `/`.
 
-`handleSubmit` guarda primero Destination si cambió, después Mill Order si cambió y finalmente lee ambos. Son dos operaciones, no una transacción atómica. Si falla la segunda, la primera puede haber quedado aplicada. El manejo de error vuelve a consultar, pero no deshace automáticamente el cambio.
+Abrir [components/dashboard.tsx](../components/dashboard.tsx), buscar `export function Dashboard` y luego `usePlantState`. Aquí se obtiene una sola estructura con `tracking`, `trackingConfig`, `bundlesByZone`, `retryTracking` y el estado visual. Buscar `useState<PlantView>`: la pestaña seleccionada es estado local React, inicialmente `overview`.
 
-`handlePrinterSubmit` actualiza la impresora, valida la respuesta y consulta el valor activo. Seleccionar una impresora no es un comando de impresión. Persistencia SQL, `PRINT_NEXT`, precedencia de reglas y efecto en QMOS corresponden al backend y necesitan commissioning propio.
+Buscar las condiciones `view ===` y seguir sus componentes:
 
-Capabilities habilita los controles de Mill Order/Destination según las operaciones anunciadas; la impresora consulta sus endpoints directamente. Ninguna de estas comprobaciones autentica al operador ni implementa un bloqueo entre estaciones.
+- `overview` → `PlantMap` → `MainSchematic`.
+- `stackers` → `StackersSchematic`.
+- `bundler` → `BundlerSchematic`.
+- `bay-1` → `BayOneSchematic`.
+- `bay-2` → `BayTwoSchematic`.
 
-## 7. FIFO integrado: qué demuestra y qué no
+Son cinco vistas dentro de `/`, no cinco rutas de Next. Al cambiar una pestaña se cambia el diagrama renderizado, no la fuente de datos del Dashboard. `AppHeader` recibe `view` y `onViewChange`; el callback comunica la elección hacia el componente que es dueño de ese estado.
 
-Desde `77f79bf` y también en esta versión integrada, `lib/tracking-fifo.ts` implementa `getFifoMembership` y `orderBundlesByLogicalFifo`. Se aplica dentro de las tarjetas de zona, después de agrupar por `CurrentZone`; no mueve bundles de zona y no ordena el listado general “Tracked bundles”.
+### 3.2 Dónde corre cada parte
 
-Los campos `LogicalBufferName` y `QueueSequence` pueden faltar o ser nulos. Para ordenar, el helper requiere un nombre no vacío y una secuencia numérica entera segura. Agrupa por el nombre lógico exacto, ordena cada grupo por secuencia ascendente y reutiliza sólo las posiciones que ese grupo ya ocupaba en la lista. Las entradas sin datos suficientes mantienen su lugar. No se comparan secuencias entre buffers distintos.
+`app/page.tsx` y `app/layout.tsx` son Server Components por defecto. `Dashboard` tiene `"use client"`: necesita estado, efectos e interacciones. Sus imports forman parte del árbol cliente, aunque algunos componentes hijos no repitan esa directiva.
 
-En empates conserva el orden recibido y marca la condición incompleta; no inventa desempates por ID. La tarjeta muestra un asterisco/ayuda cuando hay integrantes FIFO y datos incompletos o secuencias duplicadas. El contador sigue siendo el total de bundles, no el tamaño de una cola global ni una posición mecánica.
+Esto no significa que un Client Component nunca se renderice en el servidor: Next puede producir su HTML inicial; la hidratación y los efectos lo vuelven interactivo en el navegador. En este proyecto, la consulta periódica a Tracking ocurre desde el efecto de `useTrackingApi` después del montaje. El Route Handler de `/tracking-api` corre en el proceso Node del servidor y no se incorpora al JavaScript del navegador.
 
-Evidencia de planta pendiente: una lectura directa del backend v0.42 del bundle `101637697`, `TrackingId: TRK-0000103919`, en `CurrentZone: CCH2A`, devolvió ambos campos FIFO nulos. Eso no demuestra un fallo del proxy ni una aceptación FIFO exitosa. Estar físicamente en CCH2A no prueba pertenencia a una cola lógica activa. Se necesita una muestra confirmada con valores FIFO para contrastar API y tarjeta.
+### 3.3 Props frente a estado
 
-## 8. Acciones manuales incluidas en esta versión integrada
+Usar `bundlesByZone` como ejemplo: `Dashboard` lo pasa como prop; el diagrama selecciona una zona; `TrackingZoneSlot` recibe su lista. Ninguna tarjeta es dueña del snapshot global. El cambio de React state en el hook provoca un nuevo render de los consumidores. `useMemo` evita volver a calcular ciertas derivaciones si no cambiaron sus dependencias; no persiste datos en una base.
 
-El checkpoint `5338300` aporta a esta rama los métodos `removeBundle` y `repositionBundle` de `TrackingApiClient`, los validadores, el proxy y el panel manual. `lib/tracking-api/manual-position.ts` está incluido en este mismo fuente, junto con FIFO. No es necesario cambiar de rama para explicar o probar localmente esos caminos.
+## 4. Segundo recorrido: una petición `state` de extremo a extremo
 
-El retiro envía `TrackingId, Operation: "REMOVE", OperatorId, Reason`. El reposicionamiento envía `TrackingId, OperatorId, Reason, CurrentZone`, sin `Operation`. No existe una operación inventada `MOVE`, ni un botón `RETIRE` implementado.
+Abrir F12 → Network → Fetch/XHR y filtrar `tracking/state`. Seleccionar una lectura reciente y revisar **Headers** y **Response**. Mostrar la URL real:
 
-El panel vuelve a leer servicio, capacidades, mapa y, al final, estado después de la confirmación nativa. Revalida identidad, escenario, origen y destino. Mantiene un bloqueo local compartido entre ambas acciones, incluso al cerrar el detalle. Luego observa lecturas iniciadas después de la respuesta: ausencia para retiro, zona destino para reposicionamiento. Durante unos 60 segundos verifica cada dos segundos entre lecturas; si no obtiene evidencia, ofrece volver a comprobar mediante GET, no repetir automáticamente el POST.
+```text
+Navegador: http://127.0.0.1:3000/tracking-api/api/tracking/state
+                         │
+                         ▼
+Next Route Handler: app/tracking-api/[...path]/route.ts
+                         │ TRACKING_API_PROXY_TARGET
+                         ▼
+Backend: http://localhost:8085/api/tracking/state
+```
 
-HTTP 202 y `accepted: true` sólo acreditan aceptación del comando. En una prueba histórica de retiro de `TRK-0000100822`, el evento aceptado fue `134331`, de tipo `MANUAL_CORRECTION`; el bundle permaneció en estado y el evento no apareció en la ventana consultada de eventos recientes. Resultado: pendiente/no confirmado, no retiro exitoso. La ausencia en una ventana reciente tampoco prueba que nunca se haya registrado.
+La repetición `/tracking-api/api/` es intencional: `/tracking-api` es la base pública del frontend, `/api/tracking/state` es el path del contrato backend. Si el navegador se abre desde otra PC, `127.0.0.1` no es el servidor: allí se usa el host/IP del HMI. El `localhost` privado del proxy se resuelve donde corre Node.
 
-Explicar estos caminos mediante el código. No usarlos como demostración sobre bundles productivos ni deducir reglas de capacidad/rutas que corresponden al backend.
+### 4.1 Configuración y método del cliente
 
-## 9. Demostración aislada y lectura de Network
+Abrir [lib/tracking-api/config.ts](../lib/tracking-api/config.ts), buscar `getTrackingApiConfig`. La configuración pública determina modo, base URL e intervalos. Los valores `NEXT_PUBLIC_*` se incorporan al build; no cambia un bundle ya compilado por editar un `.env` después. El destino privado `TRACKING_API_PROXY_TARGET` lo lee el servidor.
 
-Seguir [Simulador local](tracking-api-simulator.md): API ficticia en `127.0.0.1:18085` y frontend de capacitación en `127.0.0.1:3100`. Mantener intactos 3000, 3001 y 8085.
+Abrir [lib/tracking-api/client.ts](../lib/tracking-api/client.ts), buscar `getState`, después `private get` y `private async request`. El recorrido es:
 
-Antes de cualquier escritura, mostrar el estado del simulador tanto directamente como a través del proxy: servicio `MaterialTrackingServiceSimulator`, escenario `LOCAL_HMI_SIMULATOR` y estado/mapa con el mismo escenario.
+1. `getState` selecciona `/api/tracking/state` y `isTrackingStateDto`.
+2. `request` construye la URL, el `AbortController`, el timeout y las cabeceras.
+3. `fetch` utiliza `cache: "no-store"` y `credentials: "omit"`.
+4. `readResponseBody` lee y trata de parsear el cuerpo.
+5. HTTP fallido produce `ApiError` con status y body. Una respuesta HTTP exitosa con JSON incompatible también falla, mediante `invalid-json` o `invalid-payload`.
+6. Sólo un resultado aceptado por el validador vuelve al hook como `TrackingStateDto`.
 
-Mostrar:
+No hay reintento automático del POST dentro del cliente. El polling GET y el tratamiento de incertidumbre de comandos se implementan más arriba.
 
-1. Bundle móvil, estado amarillo y prioridad del identificador visible.
-2. Peso de SGRT2 y seis filas del buffer con `BUFFER_DEMO`.
-3. Datos desordenados de `FIFO_DEMO` y orden parcial de la tarjeta.
-4. GET continuo de estado frente a GET/PUT explícitos de selecciones.
-5. Caída y recuperación deteniendo sólo el simulador de la capacitación.
-6. Solo en el simulador confirmado: retiro y reposicionamiento de un bundle ficticio, con GET posterior; usar los procedimientos de commissioning incluidos.
+### 4.2 Proxy: qué añade y qué no añade
 
-La demo es modo live contra HTTP ficticio. No acredita sensores, impresión, QMOS CREATE, SQL, reglas industriales ni aceptación FIFO en planta.
+Abrir [app/tracking-api/[...path]/route.ts](../app/tracking-api/%5B...path%5D/route.ts), buscar `GET`, `STATIC_READ_ENDPOINTS` e `isAllowedReadEndpoint`. El handler espera `context.params`, reconstruye el path y comprueba una allowlist. `getProxyTarget` valida la URL privada. Reenvía el GET al backend y devuelve su cuerpo y status con `cache-control: no-store`.
 
-## 10. Operación, entrega y cierre
+El proxy GET no convierte por sí solo el JSON en `TrackingStateDto`: esa comprobación ocurre en el cliente. Por eso un GET puede verse como HTTP 200 en Network y aun así generar “incompatible response shape” en la aplicación.
 
-Usar [Despliegue Windows](windows-standalone-deployment.md), [Servicio Windows](windows-service.md) y [Entrega Git](entrega-git.md) para los procedimientos vigentes. No instalar, reiniciar, publicar ni cambiar de versión sólo para explicar un concepto durante la sesión.
+Para escrituras, buscar `POST` y `PUT`: además de restringir rutas, comprueban el cuerpo y reconstruyen únicamente los campos permitidos. No son un proxy abierto para todos los comandos de la API. La allowlist limita superficie, pero **no es autenticación ni autorización por usuario**.
 
-Esta rama mantiene el empaquetador legacy y no incluye `test-deployment.ps1`, `service.ps1` ni el JSON del servicio. Esos helpers pertenecen al kit de preparación separado; la guía del servicio se conserva únicamente como referencia condicionada a disponer del kit aprobado. Su presencia no acredita que el servicio Windows esté instalado o probado.
+### 4.3 Tipado no equivale a validación
 
-El Tracking interno no necesita internet para sus consultas una vez compilado el paquete. Instalar dependencias y compilar fuentes web sí puede requerir red. La base incluye Vercel Analytics en producción; el standalone no instala ese servicio y puede aparecer una solicitud no soportada a `/_vercel/insights/script.js`. No confundirla con una falla de `/tracking-api` ni asumir que se verificó una política de cero conexiones externas.
+Abrir [lib/tracking-api/types.ts](../lib/tracking-api/types.ts): `TrackingStateDto` tiene `ScenarioName`, `LastUpdateUtc` y `Bundles`; cada elemento es `TrackedBundleDto`. Luego abrir [validation.ts](../lib/tracking-api/validation.ts) y comparar `isTrackingStateDto` con `isTrackedBundleDto`.
 
-Registrar equipo, fecha, commit/paquete, URL del backend, versión reportada, responsable y resultado. Mantener la versión anterior disponible para rollback. Separar lecturas de diagnóstico de pruebas de escritura expresamente autorizadas.
+La interfaz TypeScript ayuda durante programación; no existe como comprobación automática del JSON recibido. El validador es el código que corre de verdad. Un campo adicional no necesariamente rompe compatibilidad; un campo requerido ausente o de tipo distinto sí puede invalidar la lectura completa. Los campos FIFO están modelados como opcionales y anulables para compatibilidad.
 
-Queda por validar, según el entorno: permisos de servicio, firewall desde otra estación, cierre de RDP, reinicio planificado, recuperación, valores reales de SGRT2, muestras FIFO utilizables y persistencia/efecto de selecciones globales. No reiniciar el backend o el equipo ni modificar selecciones para “ver qué pasa”.
+El contrato conserva casing real: `running` en status, `ScenarioName`/`Bundles` en state. No normalizar todas las propiedades a minúsculas. `parseApiDate`, en `lib/tracking-api/date.ts`, convierte ISO o `/Date(...)/` y trata fechas inválidas/sentinela como ausencia.
 
-Para repaso y preguntas de seguimiento: [Preguntas técnicas](preguntas-tecnicas.md). Para saber qué se puede afirmar hoy: [Estado de entrega](estado-entrega.md).
+## 5. Tercer recorrido: por qué se actualiza y cuándo se pone stale
+
+Abrir [hooks/use-tracking-api.ts](../hooks/use-tracking-api.ts), localizar `useTrackingApi`, el primer `useEffect` y su función interna `run`.
+
+Primera carga: `getStatus` → `getCapabilities` → `getMap` → `getState`, en secuencia. Comprueba `running` y coherencia de escenarios mediante `assertScenarioMatches`. Con bootstrap completado, las iteraciones normales piden sólo `state`.
+
+En `commitState`, `setTracking` conserva la estructura de runtime y reemplaza el snapshot, registra recepción local y parsea `state.LastUpdateUtc`. Mostrar en [runtime.ts](../lib/tracking-api/runtime.ts) la diferencia entre DTO recibido y `TrackingRuntimeState`, que además lleva conexión, errores y metadatos.
+
+El siguiente `setTimeout(run, nextDelay)` se programa al terminar la lectura anterior: el intervalo no es un reloj exacto de 1 Hz. El bucle no solapa sus propias peticiones. Las selecciones y la verificación de comandos sí pueden hacer sus GET independientes.
+
+En `catch` observar que no se borran los bundles previamente recibidos. Con snapshot previo se muestra reconexión o dato antiguo; sin él puede mostrarse offline. `retryDelay` aplica backoff y jitter con **tope de espera de 30 segundos**, no una ventana total tras la que se deje de reintentar. Los errores reinician el bootstrap.
+
+El segundo efecto controla antigüedad incluso durante una petición pendiente. Valores predeterminados: polling 1000 ms, stale 3500 ms, timeout configurado 4000 ms. Son configurables; no afirmar que el entorno activo usa esos valores sin comprobarlo.
+
+En pantalla, **Received** indica recepción local exitosa y **State changed** la fecha reportada por backend. Un estado sin cambios puede seguir llegando fresco. `TrackingConnectionBanner` y `TrackingSyncBadge` consumen este runtime; no hacen otra lectura de Tracking.
+
+El cleanup aborta la petición pendiente y cancela el temporizador. No detengan el backend ni cambien la conexión durante el training para demostrarlo: recorrer el `catch` en código es suficiente.
+
+## 6. Cuarto recorrido: de un bundle real a una tarjeta
+
+En una respuesta Network reciente, seleccionar un bundle con `CurrentZone` conocido, por ejemplo CCH2A si está ocupado. No asumir que un ID histórico sigue en esa zona. Copiar visualmente `TrackingId`, `BundleId`, `CurrentZone`, `Status`, `CorrelationStatus`, `LogicalBufferName` y `QueueSequence`.
+
+Abrir [hooks/use-plant-state.ts](../hooks/use-plant-state.ts), buscar `bundlePlacement`. `groupTrackingBundlesByZone` recibe `tracking.trackingState?.Bundles ?? []`. Abrir su implementación en [lib/tracking-zone-layout.ts](../lib/tracking-zone-layout.ts):
+
+- `CurrentZone` conocido → `byZone[CurrentZone]`.
+- Zona ausente → `withoutZone`.
+- Nombre fuera del catálogo visual → `unknownZone`.
+
+`OccupiedZones` no decide en qué tarjeta dibujar el bundle. Se usa como evidencia adicional en preflight manual. La UI tampoco calcula la posición por flechas, `RouteName`, `TagNumber` o números consecutivos.
+
+Volver a `Dashboard`, seguir `bundlesByZone` hasta `MainSchematic`, su helper `Zone` y finalmente [TrackingZoneSlot](../components/plant/tracking-zone-slot.tsx). Allí se calculan contador, orden de filas, color y texto. La identidad visible prioriza `BundleId`, después `L2Id` y finalmente `TrackingId`. Las acciones usan `TrackingId`, no necesariamente el número mostrado.
+
+Una tarjeta ocupada se ve ámbar si algún bundle está `WAITING_QMOS_ID` o `UNMATCHED`; si no, verde. No concluir que un color equivale a alarma física del PLC. `hasSnapshot=false` representa espera de datos, distinto de snapshot válido con cero bundles.
+
+**Detalle importante del estado actual:** ni `groupTrackingBundlesByZone` ni el listado general eliminan un registro porque su `Status` sea `REMOVED`. El KPI “Active tracked bundles” usa `Bundles.length`. Si backend conserva registros terminales dentro de esa colección, pueden seguir en el listado/contador aunque ya no ocupen una tarjeta. Es una diferencia semántica que debe revisarse, no ocultarse durante la explicación.
+
+## 7. FIFO, báscula y geometría: tres cambios distintos
+
+### FIFO
+
+Abrir [lib/tracking-fifo.ts](../lib/tracking-fifo.ts), `getFifoMembership` y `orderBundlesByLogicalFifo`; después volver a su llamada en `TrackingZoneSlot`.
+
+El helper exige nombre lógico no vacío y `QueueSequence` numérica entera segura. Agrupa por el nombre lógico exacto, ordena cada grupo de menor a mayor secuencia y escribe ese grupo en los índices que ya ocupaba. No reubica registros sin membresía válida, no compara secuencias de buffers diferentes, no usa el número de bundle como desempate y no modifica el array recibido.
+
+En empate conserva el orden recibido y marca secuencias duplicadas. Datos incompletos junto con miembros válidos producen indicación parcial en la tarjeta. Si ambos campos son nulos, no inventa orden FIFO. **FIFO se aplica dentro de las tarjetas, no al listado general Tracked bundles.**
+
+Para verificarlo en vivo se necesita una respuesta con al menos dos miembros válidos del mismo buffer y sus secuencias. Si hoy son nulos, sólo puede explicarse el código y documentar que falta esa evidencia de backend. No sustituirla por un orden visual de IDs.
+
+### Báscula
+
+Abrir `ScaleContext` en [main-schematic.tsx](../components/plant/main-schematic.tsx). Pasa `bundlesByZone.SGRT2` a [ScaleWeightReadout](../components/plant/scale-weight-readout.tsx). Bay 1 reutiliza el mismo componente. No es SGRT2A ni SGRT2B.
+
+Mostrar la diferencia entre sin snapshot, zona vacía y bundle con `Weight: null`. Cero es un número válido, no dato ausente. El frontend muestra `Weight` reportado; no adquiere la señal de la báscula, no convierte unidades y no las inventa si el contrato no las proporciona. Si hay varios bundles en SGRT2, el componente lista sus lecturas por identidad, no suma sus pesos.
+
+### Layout
+
+En `MainSchematic`, `MAIN_SCHEMATIC_WIDTH=1480`, `MAIN_SCHEMATIC_HEIGHT=760` y `BUNDLER_ROW_TOP=250` gobiernan el lienzo y la fila del Bundler. `MachineOutline`, `HorizontalSequence`, `VerticalSection` y `FlowArrow` son helpers de dibujo, no reglas de Tracking.
+
+Las LCH se omiten de los diagramas de operador, pero permanecen en el catálogo y pueden aparecer como destino manual si `/map` las habilita. CCH muestra cinco filas visibles con scroll, no una capacidad operativa máxima de cinco. `compactVisibleRows` controla presentación; `Capacity` pertenece al contrato del mapa.
+
+`PlantMap` y `SchematicScreen` ajustan escala mediante `ResizeObserver`; cada diagrama mantiene coordenadas propias. “Motion” controla indicación visual, no pausa el polling ni maquinaria. `ROBOT_2_UNKNOWN` expresa falta de telemetría del robot, no confirma que esté detenido.
+
+## 8. Quinto recorrido: selección global de producción e impresora
+
+Abrir [components/mill-order-selection-panel.tsx](../components/mill-order-selection-panel.tsx). Aunque el nombre del archivo sea Mill Order, exporta `GlobalMillOrderPanel` y contiene también Destination y Printer.
+
+Buscar `createTrackingApiClient`, los efectos de carga, `readyToUpdate`, `handleSubmit` y `handlePrinterSubmit`. Diferenciar dos tipos de estado: catálogo/selección activa leídos del backend y borrador elegido por el operador. Elegir una opción todavía no envía PUT.
+
+El efecto de producción carga en paralelo catálogo de órdenes, orden activa, catálogo de destinos y destino activo. La impresora tiene una carga separada. No se refrescan todos los catálogos cada segundo junto con `state`; hay controles Refresh y lecturas posteriores al guardado.
+
+Seguir `handleSubmit` sin pulsar el botón en vivo:
+
+1. Comprueba valores elegidos, capacidades, estado live y ausencia de envío en curso.
+2. Solicita confirmación.
+3. Si cambió Destination, llama `updateGlobalDestination` con `{ destinationId }`.
+4. Si cambió Mill Order, llama `updateGlobalMillOrder` con `{ millOrder }`.
+5. Consulta ambas selecciones y comprueba que el backend reporta los valores esperados.
+6. Si algo falla, intenta releer el estado activo y avisa de posible aplicación parcial.
+
+Son dos escrituras separadas, **no una transacción atómica**. No hay rollback automático si se guardó la primera y falló la segunda.
+
+`handlePrinterSubmit` manda `{ PrinterId }`, comprueba la respuesta y vuelve a consultar la impresora activa. Casing distinto es parte del contrato. Seleccionar impresora no imprime una etiqueta. La aplicación posterior a CREATE/PRINT_NEXT y la persistencia real son responsabilidad del servicio, no de `useState` ni del navegador.
+
+## 9. Sexto recorrido: REMOVE y reposicionamiento en código
+
+Abrir [components/tracking-bundles-panel.tsx](../components/tracking-bundles-panel.tsx). Encontrar `selectBundle`, `handleCommand`, `commandLocked`, `CommandStatus` y el efecto de verificación. No ejecutar una operación industrial como parte de esta explicación.
+
+El panel conserva qué bundle se eligió y la acción (`remove` o `reposition`). El formulario pide Operator ID y Reason. Son strings no vacíos tras `trim`; la validación actual no restringe Operator ID a números ni comprueba una identidad corporativa. Esos datos acompañan el comando para auditoría; no equivalen a login.
+
+Los dos payloads comparten endpoint pero no semántica:
+
+```json
+{"TrackingId":"<tracking-id>","Operation":"REMOVE","OperatorId":"<operador>","Reason":"<motivo>"}
+```
+
+```json
+{"TrackingId":"<tracking-id>","OperatorId":"<operador>","Reason":"<motivo>","CurrentZone":"<zona-destino>"}
+```
+
+Ambos usan `POST /api/tracking/correct`. Reposition no envía `Operation: "MOVE"`. Cambia una posición reportada de Tracking; no debe presentarse como orden de mover físicamente material con motores.
+
+### Confirmación y preflight
+
+`commandLocked` es un ref que se activa antes de la confirmación para evitar doble envío local. Tras confirmar, se consultan status, capabilities y map en paralelo; después se consulta state. `manualPreflightProblem`, en [manual-position.ts](../lib/tracking-api/manual-position.ts), revalida el servicio, la capacidad de corrección, los escenarios, la identidad única y la posición frente a lo que se mostró al operador.
+
+Para reposicionar también compara el destino habilitado, sus metadatos y ocupación reportada. `getRepositionZones` deriva opciones de `/map`; `reportedZoneOccupants` considera `CurrentZone` y, si existe como array, `OccupiedZones`. Esto detecta cambios de contexto, pero no sustituye interlocks, reglas industriales ni una comprobación física. No elimina la posibilidad de un cambio en backend entre el último GET y el POST.
+
+Si falla el preflight, no se envía el comando. Si pasó, `removeBundle` o `repositionBundle` validan y sanitizan el payload; el proxy vuelve a validarlo. La respuesta se comprueba con `isTrackingCommandAcceptedDto` y se contrasta su `trackingId`.
+
+### Aceptación y verificación son pasos diferentes
+
+Después de `accepted: true`, el panel pasa a `pending`, informa `eventId` y pide nuevas lecturas. La verificación propia consulta state aproximadamente cada dos segundos entre lecturas durante una ventana de 60 segundos. El código actual espera ausencia del ID para retiro o una única coincidencia en destino para reposición.
+
+Un timeout, error de red o ciertos errores posteriores al envío pueden dejar `uncertain`: el comando pudo llegar. Se conserva el bloqueo y se ofrece volver a verificar con GET, **no reenviar automáticamente el POST**. El bloqueo pertenece a esta instancia montada del panel: no es global entre PCs ni persiste tras recargar toda la página.
+
+## 10. Caso real para enseñar diagnóstico: REMOVE aceptado, UI pendiente
+
+La evidencia reportada para esta versión incluye el evento **154605**, `TrackingId: TRK-0000103919`, bundle **101637697**. Una consulta directa de state posterior mostró el registro conservado con:
+
+```json
+{
+  "TrackingId": "TRK-0000103919",
+  "BundleId": "101637697",
+  "Status": "REMOVED",
+  "CurrentZone": null,
+  "OccupiedZones": []
+}
+```
+
+Es un extracto de evidencia, no una respuesta completa ni garantía de que siga igual al abrir la sesión. Para entender el resultado abrir `manualOutcomeObserved` en `lib/tracking-api/manual-position.ts`. La rama de remove devuelve:
+
+```ts
+matches.length === 0
+```
+
+Si backend mantiene el registro terminal, la longitud sigue siendo uno. Por eso la UI no confirma retiro aunque el servicio ya reporte `REMOVED` y sin zonas. **Esa condición aún no está corregida en `7fc34e8`.** No afirmar que el backend nunca procesó el comando, ni que la UI ya comprobó la desocupación física del PLC.
+
+El ajuste posterior deberá acordar el criterio de estado terminal del contrato y añadir casos para ausencia, registro REMOVED, duplicados, estados intermedios y escenarios incoherentes. También debe revisarse si listado, KPI y elegibilidad de acciones deben excluir terminales. No modificar la condición a ciegas ni volver a enviar REMOVE sólo porque aparece pending.
+
+Una consulta de lectura para inspeccionar ese caso, si procede en la sesión:
+
+```powershell
+& {
+    $ErrorActionPreference = 'Stop'
+    $snapshot = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/tracking-api/api/tracking/state' -TimeoutSec 10
+    if (-not ($snapshot.Bundles -is [array])) { throw 'No llegó el arreglo Bundles esperado.' }
+    $snapshot.Bundles |
+        Where-Object { $_.TrackingId -eq 'TRK-0000103919' } |
+        Select-Object TrackingId, BundleId, Status, CurrentZone, OccupiedZones, LogicalBufferName, QueueSequence |
+        ConvertTo-Json -Depth 6
+}
+```
+
+No ver filas significa que el filtro no encontró el ID en esa lectura; no prueba por sí solo la cadena de efectos del comando ni su autoría. El endpoint de eventos recientes ofrece una ventana limitada, no necesariamente una auditoría histórica completa.
+
+## 11. Cómo continuar un cambio después del training
+
+El código se mantiene en `app/components/hooks/lib`, se verifica y luego se vuelve a empaquetar. El paquete standalone no se actualiza solo porque se edite un `.tsx` en el fuente. `next.config.mjs` usa `output: "standalone"`; `scripts/package-windows-standalone.ps1` construye el paquete y `deployment/windows/start.cmd` ejecuta `node server.js`.
+
+En esta sesión no se corre el empaquetador: modifica archivos de build y release. No se edita `.next`, no se reemplaza la carpeta del proceso en uso y no se mata todo `node.exe`. El procedimiento de despliegue debe identificar versión, proceso y rollback por separado.
+
+Para un cambio visual, empezar en el diagrama/componente. Para un campo nuevo de API, seguir `types → validation → client → consumidor`; si agrega endpoint, también el proxy. Para un comportamiento manual, cubrir `manual-position.ts`, panel, cliente, proxy y pruebas. Las recetas concretas están en [mapa-codigo.md](mapa-codigo.md).
+
+Pruebas automatizadas existentes se pueden explicar leyendo `scripts/test-fifo-ordering.mjs`, `test-manual-position.mjs`, `test-manual-removal.mjs`, `test-manual-reposition.mjs`, `test-integrated-tracking.mjs` y `test-manual-actions-ui.mjs`. No ejecutarlas contra planta ni convertir esta capacitación en una sesión de pruebas operativas. Un resultado local previo no constituye aceptación del comportamiento actual del backend.
+
+## 12. Cierre técnico: comprobar que sí se transfirió conocimiento
+
+Pedir al mantenedor que localice, sin ayuda:
+
+1. La llamada que obtiene `state` y el validador que puede rechazar un HTTP 200.
+2. El lugar donde `CurrentZone` se convierte en `bundlesByZone`.
+3. El componente que decide el peso de SGRT2 y la altura visible de CCH.
+4. El algoritmo que ordena FIFO sin usar BundleId.
+5. El handler que guarda Destination antes de Mill Order y el riesgo de aplicación parcial.
+6. La diferencia entre `removeBundle`, `repositionBundle` y `manualOutcomeObserved`.
+7. La condición exacta que explica el pending del registro REMOVED conservado.
+
+Si puede explicar ese recorrido, conoce la arquitectura útil para mantener el proyecto; no sólo sus carpetas. Separar al cerrar lo demostrado por lectura/código de las validaciones operativas pendientes y de cualquier cambio que se acuerde implementar después.

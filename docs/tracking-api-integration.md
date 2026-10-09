@@ -4,13 +4,14 @@ Referencia para mantener el cliente HTTP, el proxy y la presentación de datos. 
 
 ## Alcance integrado y procedencia
 
-**Versión actual de este fuente: `release/integrated-hmi`.** Incluye lectura FIFO, selección global, retiro REMOVE y reposicionamiento juntos. El commit final y el despliegue deben registrarse tras completarlos; las filas siguientes son referencias históricas, no limitaciones funcionales de esta rama.
+**Versión actual: `release/integrated-hmi`, commit `7fc34e8`, publicado y desplegado.** Incluye lectura FIFO, selección global, retiro REMOVE y reposicionamiento juntos. En el servidor, el fuente está en `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`, HMI en **3000** y Tracking en **8085**. La capacitación usa ese código y ese entorno real; no requiere levantar otro frontend ni un simulador. Las filas siguientes explican la procedencia de los cambios, no limitaciones funcionales de esta rama.
 
 | Fuente | Funciones incluidas |
 | --- | --- |
+| Integrado `7fc34e8`, release actual en 3000 | Reúne la base funcional, FIFO, REMOVE, reposicionamiento y regresiones combinadas. |
 | Base `600d20f` | Lecturas de Tracking; selecciones globales de Mill Order, Destination e impresora; cliente técnico de corrección `MillOrder1`. |
-| FIFO `77f79bf`, publicado y reportado en 3000 | Base más campos opcionales FIFO y orden de tarjetas de zona. No incluye UI de retiro ni reposicionamiento. |
-| Manual `5338300`, checkpoint local separado | Añade `REMOVE` y reposicionamiento por `CurrentZone`. Su remoto conocido `ce3c8a9` no contiene necesariamente el checkpoint local completo. |
+| FIFO histórico `77f79bf`, que precedió al integrado en 3000 | Base más campos opcionales FIFO y orden de tarjetas de zona. No incluye UI de retiro ni reposicionamiento. |
+| Manual `5338300`, antecedente incorporado al integrado | Añade `REMOVE` y reposicionamiento por `CurrentZone`. El release manual histórico `ce3c8a9` sólo incorporaba REMOVE. |
 | Kit de entrega preparado en la raíz | Documentación y mejoras de empaquetado/servicio que no deben atribuirse automáticamente al commit FIFO. |
 
 La versión de backend reportada actualmente es v0.42. El HMI conserva `apiVersion` como dato diagnóstico: no compara rígidamente contra un número. La compatibilidad real depende de capacidades, campos y validadores.
@@ -32,7 +33,7 @@ La ruta de mismo origen evita que el navegador tenga que alcanzar directamente e
 | `NEXT_PUBLIC_TRACKING_STALE_MS` | `3500` | Antigüedad local permitida desde la última lectura exitosa. |
 | `NEXT_PUBLIC_TRACKING_TIMEOUT_MS` | `4000` | Timeout de la solicitud del cliente. |
 
-Ver [config.ts](../lib/tracking-api/config.ts) y [.env.example](../.env.example). No sobrescribir un `.env.local` existente sin revisarlo. En una copia nueva se puede crearlo desde el ejemplo; para la capacitación es preferible usar variables sólo en las terminales de la demo.
+Ver [config.ts](../lib/tracking-api/config.ts) y [.env.example](../.env.example). No sobrescribir un `.env.local` existente sin revisarlo. En la capacitación se explica la configuración vigente sin modificar variables ni reiniciar el proceso que atiende 3000. Crear otro entorno desde el ejemplo es una tarea de desarrollo independiente.
 
 Las variables `NEXT_PUBLIC_*` se incorporan al build y son visibles para el navegador: no son un lugar para secretos. Cambiarlas en un paquete productivo requiere reconstruirlo. `TRACKING_API_PROXY_TARGET` se lee en el servidor durante la ejecución; cambiarlo requiere actualizar el entorno del proceso y reiniciarlo, no otro build. En desarrollo, reiniciar después de modificar configuración.
 
@@ -71,6 +72,8 @@ Las rutas de esta tabla son las del backend. En el navegador se antepone `/track
 [useTrackingApi](../hooks/use-tracking-api.ts) consulta inicialmente `status → capabilities → map → state`, comprueba servicio activo y coherencia de escenario. Después consulta normalmente sólo estado. Al fallar vuelve al bootstrap, con backoff exponencial, variación y tope de 30 segundos.
 
 El temporizador se programa al terminar cada ciclo; ese bucle no solapa sus propias peticiones. Los GET independientes del panel de selecciones o del flujo manual incluido pueden coincidir con el polling: no existe un bloqueo global de todas las lecturas HTTP.
+
+Además de los usos de la tabla, `TrackingBundlesPanel.handleCommand` lee **status, capabilities y map**, luego **state**, después de aceptar la confirmación y antes de un comando manual. No es el ciclo de arranque de otra aplicación: es el preflight explícito de esa acción.
 
 `lastSuccessfulPollAt` corresponde a recepción local; `sourceUpdatedAt` deriva de `LastUpdateUtc`. De ahí la diferencia entre Received y State changed. Que el servicio responda no acredita conexión real con PLC o QMOS.
 
@@ -135,7 +138,7 @@ El helper `lib/tracking-fifo.ts`, `orderBundlesByLogicalFifo`, opera sobre la li
 
 ### Evidencia de QA y diagnóstico de sólo lectura
 
-La consulta directa al backend v0.42 para `BundleId: 101637697`, `TrackingId: TRK-0000103919`, `CurrentZone: CCH2A` devolvió `LogicalBufferName: null` y `QueueSequence: null`. No se confirmó aceptación FIFO en planta con esa muestra. Los nulos pueden ser válidos fuera de una cola lógica; la zona física por sí sola no demuestra membresía FIFO.
+La consulta histórica directa al backend v0.42 para `BundleId: 101637697`, `TrackingId: TRK-0000103919`, cuando estaba en `CurrentZone: CCH2A`, devolvió ambos campos FIFO nulos. No se confirmó aceptación FIFO con esa muestra. **Ese mismo bundle fue retirado en la prueba posterior y ahora se reportó REMOVED sin zona; no usarlo como si aún fuera una muestra activa en CCH2A.** Los nulos pueden ser válidos fuera de una cola lógica; la zona física por sí sola no demuestra membresía FIFO.
 
 Para un servidor cuyo backend sea local en 8085 y cuyo HMI esté en 3000, este diagnóstico sólo lee. Si la topología es otra, sustituir los destinos por los ya confirmados; no apuntar a un servicio desconocido.
 
@@ -156,12 +159,14 @@ foreach ($sample in @(
         [pscustomobject]@{
             Source = $sample.Source
             TrackingId = $bundle.TrackingId
+            Status = $bundle.Status
             CurrentZone = $bundle.CurrentZone
+            OccupiedZones = $bundle.OccupiedZones
             HasLogicalBufferName = $names -contains 'LogicalBufferName'
             LogicalBufferName = $bundle.LogicalBufferName
             HasQueueSequence = $names -contains 'QueueSequence'
             QueueSequence = $bundle.QueueSequence
-        } | ConvertTo-Json
+        } | ConvertTo-Json -Depth 10
     }
 }
 ```
@@ -180,9 +185,41 @@ El `correctBundle` legacy permanece disponible con `TrackingId, OperatorId, Reas
 
 No se implementó `RETIRE` en la UI ni se inventó `MOVE`. El reposicionamiento representa una corrección declarada del estado: no ordena por sí mismo mover maquinaria. El backend conserva las reglas reales de capacidad, rutas y operación.
 
-El panel manual revalida después de la confirmación con metadatos y estado nuevos, compara bundle/escenario/origen/destino y bloquea comandos duplicados localmente. La verificación posterior empieza con un GET nuevo después de la respuesta; no considera suficiente un snapshot anterior. Observa ausencia del TrackingId para retiro o presencia única en el destino para reposicionamiento. Si no hay evidencia en la ventana de verificación, permite nueva lectura, no reenvío automático.
+El panel manual revalida después de la confirmación con metadatos y estado nuevos, compara bundle/escenario/origen/destino y bloquea comandos duplicados localmente. La verificación posterior empieza con un GET nuevo después de la respuesta; no considera suficiente un snapshot anterior. **La implementación actual exige ausencia del TrackingId para retiro** o presencia única en el destino para reposicionamiento. No reconoce `Status: REMOVED` retenido como finalización; ver el caso real siguiente. Si no hay evidencia según ese criterio en la ventana de verificación, permite nueva lectura, no reenvío automático.
 
-Una respuesta 202 con `accepted: true` sólo confirma aceptación/encolado. El tipo de evento del ACK no se presupone `MANUAL_REMOVE`. La prueba de retiro de `TRK-0000100822` recibió evento `134331`, `MANUAL_CORRECTION`; el bundle siguió presente y el evento no se encontró en la ventana reciente consultada. Fue un resultado pendiente, no un retiro acreditado. `getRecentEvents` no implementa búsqueda histórica completa ni filtros inventados para encontrarlo.
+Una respuesta 202 con `accepted: true` sólo confirma aceptación/encolado. El tipo de evento del ACK no se presupone `MANUAL_REMOVE`. La prueba anterior de `TRK-0000100822` recibió evento `134331`, `MANUAL_CORRECTION`; el bundle siguió `WAITING_QMOS_ID` y el evento no se encontró en la ventana reciente consultada. Ese caso permanece separado del retiro más reciente. `getRecentEvents` no implementa búsqueda histórica completa ni filtros inventados para encontrarlo.
+
+### REMOVE real: ACK 154605 y representación final por acordar
+
+En el integrado `7fc34e8`, `TRK-0000103919` / bundle `101637697` recibió HTTP **202 Accepted**, Date **Thu, 08 Oct 2026 02:11:48 GMT**, con `accepted: true`, `eventId: 154605`, `eventType: MANUAL_CORRECTION`. La lectura directa posterior de `/state` en 8085 conservó el objeto con:
+
+```json
+{
+  "TrackingId": "TRK-0000103919",
+  "BundleId": "101637697",
+  "Status": "REMOVED",
+  "CurrentZone": null,
+  "OccupiedZones": [],
+  "LogicalBufferName": null,
+  "QueueSequence": null
+}
+```
+
+El panel muestra ese Status y sigue pendiente porque `manualOutcomeObserved` busca `matches.length === 0` para REMOVE. El contrato define retirada del tracking activo y preservación del historial; no define expresamente si `/state` debe conservar un registro terminal. Está pendiente confirmar con backend esta semántica antes de modificar el criterio de éxito, los conteos y la disponibilidad de acciones sobre retirados. No se aplicó aún un cambio de código para ello.
+
+La lista `TrackingBundlesPanel` y `KpiCards` usan actualmente el arreglo recibido sin excluir por Status. Por tanto, un REMOVED retenido sigue en el listado y en el contador denominado activo. El mapa agrupa por CurrentZone: al quedar null ya no lo ubica en CCH2A. Es una diferencia verificable entre **ocupación visual, registro recibido y estado terminal**, no una prueba de que el PLC haya quedado limpio.
+
+### Rastro del clic y evidencia disponible
+
+Para explicar el flujo en el código, abrir estos símbolos en este orden:
+
+1. `components/tracking-bundles-panel.tsx` → `handleCommand`: captura selección, confirma, preflight, despacho y ACK.
+2. `lib/tracking-api/manual-position.ts` → `manualPreflightProblem`: comprueba estado y posición frescos; `manualOutcomeObserved`: criterio de resultado observado.
+3. `lib/tracking-api/client.ts` → `removeBundle` → `post` → `request`: cuerpo JSON exacto, fetch, timeout y validación del ACK.
+4. `app/tracking-api/[...path]/route.ts` → `POST`: allowlist, validación/sanitización y reenvío al servicio.
+5. Volver al efecto de verificación del panel → `client.getState`: GETs posteriores, pending/success/uncertain y comprobación sin reenvío.
+
+No hay una bitácora persistente de acciones propia del HMI: los mensajes/eventId se mantienen en React y el proxy no los almacena. Para la prueba coordinada se usa F12 → Network, **Preserve log**, y se conserva **Headers** (URL, método, HTTP, Date), **Payload** y **Response**. Preview es otra representación de Response, no evidencia adicional indispensable. No repetir el POST desde DevTools. La auditoría formal y los efectos PLC deben confirmarse en el backend con el evento 154605.
 
 `OperatorId` es texto aportado por el cliente, no identidad autenticada. Los bloqueos de UI no sustituyen autorización, auditoría ni idempotencia del backend.
 
@@ -194,7 +231,7 @@ Procedimientos detallados: [retiro manual](manual-bundle-removal-commissioning.m
 
 ## Proxy y superficie permitida
 
-El [Route Handler](../app/tracking-api/%5B...path%5D/route.ts) permite los GET enumerados, los tres PUT globales y el POST de corrección según la versión. Rutas/métodos fuera de la allowlist reciben 404. Las escrituras requieren JSON y validan/sanitizan los campos; el query `max` de órdenes admite un único entero de 1 a 100.
+El [Route Handler](../app/tracking-api/%5B...path%5D/route.ts) permite los GET enumerados, los tres PUT globales y los tres cuerpos de corrección descritos arriba. Rutas/métodos fuera de la allowlist reciben 404. Las escrituras requieren JSON y validan/sanitizan los campos; el query `max` de órdenes admite un único entero de 1 a 100.
 
 El proxy transmite la respuesta del backend sin seleccionar propiedades del estado. En particular, no elimina los campos FIFO del JSON recibido. Devuelve errores del backend; problemas de configuración o conexión del proxy pueden producir 503 o 502.
 
@@ -204,6 +241,6 @@ Siguen fuera de alcance del proxy: reset, escritura OPC, inyección de eventos y
 
 Primero, sin escrituras: comprobar versión y escenario, estado directo/proxy, catálogos, selecciones activas, peso/zonas, lectura continua y señales de frescura. Para FIFO, exigir una muestra con datos lógicos válidos y contrastar tarjeta, no sólo listado general.
 
-En el simulador aislado: confirmar escrituras globales por GET, rechazo de impresora inexistente, desconexión/recuperación y escenarios visuales. No trasladar esos resultados a persistencia o sensores reales.
+Para la capacitación actual en servidor: recorrer código y peticiones GET reales, y usar la evidencia ya capturada de comandos. No crear escrituras únicamente para mostrar un botón, ni parar el servicio para enseñar una falla. Las regresiones aisladas previas respaldan el desarrollo; no sustituyen la validación industrial ni necesitan repetirse como demo de esta sesión.
 
 En commissioning autorizado: coordinar valores/bundle, responsable y ventana; verificar efectos futuros y persistencia del backend, posibles reglas de prioridad y resultados manuales con el bundle y la operación expresamente autorizados. Registrar lo observado, lo no confirmado y cualquier estado incierto antes de reintentar. Ver [Estado de entrega](estado-entrega.md).

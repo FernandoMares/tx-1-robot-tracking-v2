@@ -1,6 +1,8 @@
 # Preguntas técnicas para la transferencia TX1
 
-Respuestas basadas en el código revisado, no en funciones supuestas del backend. Esta carpeta `release/integrated-hmi` reúne FIFO y las operaciones manuales. “Base” (`600d20f`), “FIFO” (`77f79bf`) y “manual” (`5338300`) identifican la procedencia histórica de sus cambios. El despliegue integrado no se da por realizado ni se acredita una prueba de planta por combinar el código.
+Respuestas basadas en el **integrado `7fc34e8`, rama `release/integrated-hmi`, publicado y desplegado**: FIFO y operaciones manuales conviven en el HMI de 3000, con Tracking en 8085. La sesión se realiza sobre el servidor real y el fuente `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`; no se basa en una demo de simulador. “Base” (`600d20f`), “FIFO” (`77f79bf`) y “manual” (`5338300`) identifican antecedentes históricos, no ramas que deban intercambiarse durante el training.
+
+Las respuestas cortas están escritas para decirse en la sesión. Cuando pidan demostrar algo, abrir el archivo enlazado y buscar el símbolo indicado con Ctrl+F. Una explicación del código no sustituye la validación de efectos PLC/auditoría; el caso real REMOVE del evento 154605 permite mostrar esa diferencia con evidencia.
 
 Para ampliar: [Recorrido del código](handoff-session.md), [Integración API](tracking-api-integration.md), [Simulador](tracking-api-simulator.md) y [Estado de entrega](estado-entrega.md).
 
@@ -52,6 +54,8 @@ Las variables `NEXT_PUBLIC_*` quedan incorporadas al frontend compilado. Cambiar
 
 [useTrackingApi](../hooks/use-tracking-api.ts) realiza `status → capabilities → map → state`. Comprueba servicio activo y escenarios compatibles. Tras completar el bootstrap consulta normalmente sólo `state`; después de fallos vuelve a cargar los metadatos.
 
+Para enseñarlo: buscar `const run` y `if (!bootstrapped)`; después `commitState`. Ahí se ve dónde se guarda el snapshot válido y se actualizan las marcas de tiempo, sin abrir una base de datos.
+
 ### 12. ¿“Polling de 1000 ms” significa exactamente una petición por segundo?
 
 No. El temporizador se programa después de completar el ciclo, por lo que se suma la duración de la petición. El bucle no solapa sus propias solicitudes. Los GET de selecciones, diagnósticos o verificación manual son flujos independientes y pueden coincidir.
@@ -71,6 +75,8 @@ TypeScript no valida JSON recibido en ejecución. [validation.ts](../lib/trackin
 ### 16. ¿Cómo se distinguen error HTTP, timeout y respuesta incompatible?
 
 [TrackingApiClient](../lib/tracking-api/client.ts) genera categorías de error para HTTP, red, timeout, cancelación, JSON inválido y payload incompatible. Un 200 con HTML no es un estado válido. Un timeout de escritura tampoco demuestra rechazo: el servidor pudo aplicarla antes de perderse la respuesta.
+
+Para mostrarlo: buscar `private async request`, después `response.ok`, `validate(body)` y `timedOut`. La interpretación final del error visible está en el hook o en el panel que hizo la operación; no todo error del frontend equivale a un HTTP 500 del backend.
 
 ### 17. ¿Por qué no se bloquea por apiVersion diferente?
 
@@ -93,6 +99,8 @@ No. [GlobalMillOrderPanel](../components/mill-order-selection-panel.tsx) tiene c
 ### 21. ¿Guardar orden y destino es una sola transacción?
 
 No. `handleSubmit` guarda Destination primero si cambió, después Mill Order si cambió y finalmente lee ambos. Ante fallo intenta recuperar los valores activos y advierte posibles cambios parciales. No implementa rollback ni exclusión multiusuario; coordinar operaciones entre estaciones.
+
+Abrir `components/mill-order-selection-panel.tsx` y buscar `handleSubmit` y `refreshActiveValuesAfterFailure`. Para impresora, buscar `handlePrinterSubmit`: es otro flujo con PUT y GET de comprobación propios.
 
 ### 22. ¿Cambiar una selección reescribe bundles existentes o imprime?
 
@@ -144,7 +152,7 @@ No. En la muestra directa revisada, el bundle `101637697 / TRK-0000103919` estab
 
 ### 33. ¿Qué versión tiene retiro y reposicionamiento?
 
-Esta rama `release/integrated-hmi` incluye ambos, heredados de `5338300`, junto con FIFO de `77f79bf`. Las ramas históricas separadas no se convierten por ello en el release integrado. Para desplegar, usar el commit final de esta rama y comprobar `RELEASE.txt`; disponibilidad del código no equivale a aceptación operativa.
+El integrado **`7fc34e8`**, que corre en 3000, incluye ambos junto con FIFO. No hay que abrir un puerto QA para encontrar el botón ni cambiar entre ramas. Abrir `TrackingBundlesPanel`: las dos acciones están en cada tarjeta del listado. Si se ve un panel sin ellas, primero verificar versión/URL/build; una capability faltante deshabilita los controles, no agrega la función a un build antiguo.
 
 ### 34. ¿REMOVE, RETIRE y reposicionamiento son lo mismo?
 
@@ -156,15 +164,17 @@ En el panel manual incluido, tras la confirmación nativa vuelve a leer estado d
 
 ### 36. ¿HTTP 202 o accepted:true significa “retirado”?
 
-No: significa aceptado/encolado. El panel verifica mediante lecturas iniciadas después de la respuesta: ausencia para retiro, presencia única en destino para reposicionamiento. En la prueba de `TRK-0000100822`, el ACK del evento `134331` fue `MANUAL_CORRECTION`, el bundle siguió presente y no se encontró el evento en la ventana reciente. Resultado pendiente, no éxito. La ventana reciente no es una auditoría histórica completa.
+No: significa aceptado/encolado. En la prueba más reciente, evento **154605** para `TRK-0000103919`, además del 202 se observó después **Status REMOVED, CurrentZone null y OccupiedZones vacío** directamente en 8085. Son dos evidencias distintas. La HMI todavía exige ausencia total del TrackingId para cerrar REMOVE, por eso quedó pendiente al conservarse el registro. Falta confirmar con backend esa retención y los efectos PLC/auditoría, no demostrar otra vez que el POST sí se envió.
+
+El evento anterior `134331`, de otro TrackingId (`TRK-0000100822`), quedó `WAITING_QMOS_ID` y no apareció en la ventana reciente consultada. No mezclar ambos resultados. La ventana reciente no es una auditoría histórica completa.
 
 ### 37. ¿Qué se hace si un comando manual queda incierto?
 
 No reenvía automáticamente POST. El panel mantiene el bloqueo y verifica mediante GET durante una ventana de unos 60 segundos, con esperas de dos segundos entre lecturas; después ofrece comprobar nuevamente sólo por lectura. Un resultado observado en estado tampoco prueba movimiento físico ni explica por sí solo toda la auditoría. Coordinar con backend antes de repetir, resetear o intentar otra operación.
 
-### 38. ¿Cómo hago una capacitación sin tocar producción?
+### 38. ¿Cómo hacemos la capacitación en el servidor real sin alterar la operación?
 
-Seguir [Simulador](tracking-api-simulator.md) en una copia separada: API 127.0.0.1:18085 y frontend 127.0.0.1:3100. Antes de cualquier escritura, comprobar directa y vía proxy el servicio MaterialTrackingServiceSimulator y escenario LOCAL_HMI_SIMULATOR en status/map/state. No detener listeners de 3000/3001/8085. Este fuente integrado incluye las pruebas FIFO y manuales; ejecutarlas localmente no modifica el backend de planta.
+Abrir el fuente de `tx1-integrated-release-7fc34e8`, el HMI `127.0.0.1:3000` y Network. Seguir peticiones GET reales de status/state y catálogos; navegar por las vistas no requiere cambiar selecciones. Para explicar un comando, recorrer `handleCommand` y mostrar la captura del evento 154605. No levantar un simulador, parar servicios, hacer pull/build ni confirmar escrituras sólo para enseñar el recorrido. Una nueva prueba de REMOVE se coordina con el responsable, un bundle concreto y un horario; no se presupone por estar en una sesión de código.
 
 ### 39. ¿Qué reviso antes de modificar una zona, un DTO o un comando?
 
@@ -172,4 +182,50 @@ Localizar el contrato y versión, leer la guía Next pertinente, comprobar tipos
 
 ### 40. ¿Qué debe quedar registrado al entregar y qué sigue pendiente?
 
-Commit del fuente, identidad del paquete/build, configuración sin secretos, responsable, resultados y limitaciones de pruebas. Esta versión integrada mantiene el empaquetador legacy y no incluye los helpers de servicio del kit histórico. No confundir el código integrado, el ZIP generado y el proceso que realmente está corriendo. La aceptación FIFO real y el retiro histórico siguen no confirmados; persistencia, reglas, servicio Windows y recuperación requieren su propia evidencia según el entorno. Ver [Entrega Git](entrega-git.md), [Despliegue](windows-standalone-deployment.md) y [Estado de entrega](estado-entrega.md).
+Commit del fuente (`7fc34e8`), identidad del paquete/build, configuración sin secretos, responsable, resultados y límites de pruebas. Esta versión mantiene el empaquetador legacy y no incluye los helpers de servicio del kit histórico. El integrado ya fue publicado y desplegado; no describirlo como una integración futura. Queda confirmar FIFO con secuencias reales, semántica del REMOVED retenido y evidencia PLC/auditoría. Servicio Windows, recuperación, persistencia y reglas necesitan su propia prueba. Ver [Entrega Git](entrega-git.md), [Despliegue](windows-standalone-deployment.md) y [Estado de entrega](estado-entrega.md).
+
+## Preguntas sobre la prueba real y dónde demostrar cada respuesta
+
+### 41. ¿La HMI guarda un log de quién pulsó Remove y a qué hora?
+
+No tiene una bitácora persistente propia de acciones. Envía `OperatorId` y `Reason` al backend y muestra el `eventId` recibido en memoria. Para demostrarlo, abrir `TrackingBundlesPanel`: `commandMessage` se guarda con `useState`; después abrir `POST` del proxy: reenvía la petición/respuesta, no las escribe a un archivo. La auditoría formal pertenece a L2/backend. Network sirve para capturar esta prueba, pero hay que haberlo abierto y guardar la evidencia; no reconstruye automáticamente una prueba pasada.
+
+### 42. ¿Qué captura concreta le entrego al responsable del backend?
+
+De la fila POST `correct` en Network: **Headers** con URL/método/HTTP/Date; **Payload** con los cuatro campos reales; **Response** con ACK/eventId o error. Añadir una lectura posterior de state filtrada por TrackingId. No hace falta duplicar Response con Preview. Para el caso actual: `TRK-0000103919`, bundle `101637697`, evento `154605`, HTTP 202, Date `Thu, 08 Oct 2026 02:11:48 GMT`. El Date es la marca reportada en la respuesta, no una certificación de la hora exacta del clic o del cambio PLC.
+
+### 43. ¿Por qué sale REMOVED / Unknown zone y al mismo tiempo “pendiente”?
+
+Porque hoy se usan dos criterios diferentes. El listado presenta el Status recibido y convierte una zona nula en “Unknown zone”. El verificador `manualOutcomeObserved` exige `matches.length === 0` para REMOVE: si el backend conserva el registro como REMOVED, nunca cumple esa condición. Abrir [manual-position.ts](../lib/tracking-api/manual-position.ts) y después [tracking-bundles-panel.tsx](../components/tracking-bundles-panel.tsx), buscando `manualOutcomeObserved`, `bundle.Status` y `Unknown zone`. No es que el frontend invente REMOVED ni que faltara enviar la solicitud.
+
+### 44. ¿Entonces sólo cambiamos el if a Status REMOVED y ya quedó?
+
+Primero confirmar con backend qué significa el estado final y qué condiciones de ocupación/membresía deben acompañarlo. El contrato indica retiro del tracking activo y conservación de histórico, pero no define aquí la representación del histórico en `/state`. Si se confirma retención, hay que alinear resultado observado, lista/conteo de activos y acciones permitidas sobre retirados, con pruebas de estado inconsistente, duplicados y escenarios distintos. **Ese ajuste aún no está implementado.** No basta ocultar la tarjeta ni mostrar éxito basándose en el 202.
+
+### 45. ¿El contador de activos ya excluye los retirados?
+
+No. En `components/kpi-cards.tsx`, `KpiCards` usa `liveBundles.length`; el panel también cuenta todo `state.Bundles`. Buscar esas expresiones. El mapa es diferente: `groupTrackingBundlesByZone` agrupa por CurrentZone, de modo que un REMOVED con zona nula no ocupa CCH2A visualmente, pero sigue en lista y contador. Es parte de la misma semántica por acordar, no evidencia de que el bundle continúe físicamente en la mesa.
+
+### 46. ¿Puedo refrescar la página y volver a enviar para que quite el pendiente?
+
+No como método de diagnóstico. Recargar borra el bloqueo local, pero no revierte ni cancela el comando aceptado por el backend. Actualmente no hay un filtro específico que impida seleccionar un registro retenido sólo por Status REMOVED después de recargar. Usar **Check state again (read only)** y consultar backend con el eventId; no repetir POST, cambiar a RETIRE o hacer RESET para forzar el resultado visual.
+
+### 47. ¿Dónde puedo seguir un dato desde la API hasta una tarjeta?
+
+Abrir estos archivos y símbolos en orden; no hace falta modificar código ni poner breakpoints que pausen el polling:
+
+| Paso | Archivo | Símbolo o texto para buscar | Qué demuestra |
+| --- | --- | --- | --- |
+| Solicitud de estado | `lib/tracking-api/client.ts` | `getState`, `private async request` | Endpoint, validación y JSON recibido. |
+| Ruta del servidor HMI | `app/tracking-api/[...path]/route.ts` | `GET`, `getProxyTarget`, `upstream.arrayBuffer` | Destino privado y paso del cuerpo sin eliminar campos FIFO. |
+| Guardado del snapshot | `hooks/use-tracking-api.ts` | `commitState`, `const run` | Estado aceptado y marcas de tiempo locales/backend. |
+| Preparación para las vistas | `hooks/use-plant-state.ts` | `groupTrackingBundlesByZone` | Agrupación compartida del snapshot. |
+| Ubicación | `lib/tracking-zone-layout.ts` | `groupTrackingBundlesByZone` | CurrentZone decide la agrupación, no el índice del arreglo. |
+| Presentación de la tarjeta | `components/plant/tracking-zone-slot.tsx` | `TrackingZoneSlot`, `orderBundlesByLogicalFifo` | Contenido, contador, estados y orden. |
+| Regla FIFO visual | `lib/tracking-fifo.ts` | `getFifoMembership`, `orderBundlesByLogicalFifo` | Secuencia lógica, grupos independientes y datos parciales. |
+
+Para peso, terminar en `components/plant/scale-weight-readout.tsx`, `ScaleWeightReadout`: ver `bundle.Weight == null`. Para un bundle seleccionado y REMOVE, seguir el recorrido de [Integración API](tracking-api-integration.md) desde `handleCommand` hasta el POST y el GET posterior.
+
+### 48. ¿Qué respondo si durante la sesión la API no entrega un valor o falla una llamada?
+
+“Vamos a distinguir qué respondió el servicio y qué hace la pantalla con esa respuesta. No voy a completar el dato ni cambiar producción para que la demo se vea de cierta forma.” Mostrar Network, escenario, HTTP y campo exacto; conservar evidencia del caso. Continuar con el código y la captura disponible si falla la conexión. No diagnosticar PLC sólo con un 200 de status, ni presentar datos históricos como si fueran la posición actual. Registrar la pregunta pendiente y el responsable que puede confirmarla.

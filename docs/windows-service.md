@@ -1,185 +1,112 @@
-# Servicio de Windows para TX1 Tracking HMI
+# Windows: proceso activo, servicio y continuidad
 
-Esta guía describe el ayudante `service.ps1` preparado en la raíz sobre
-`600d20f`. **Esta rama integrada y su empaquetador legacy no incorporan el ayudante**, al igual que el antecedente FIFO `77f79bf`: disponer de esta
-guía no significa disponer del script ni tener un servicio instalado.
-La selección de un kit que incluya el ayudante y su aceptación en el destino
-se registran en `docs/estado-entrega.md` del paquete fuente aprobado; ese
-documento no se incluye automáticamente en el runtime standalone. No se afirma una
-instalación real, prueba de reinicio ni recuperación de un servicio en planta.
+La primera tarea en el servidor es identificar cómo está ejecutándose el HMI, no instalar un servicio nuevo.
 
-La preparación de archivos no registra ni inicia servicios. El registro y la
-puesta en marcha se hacen en el servidor autorizado, después de acordar con
-IT el destino de la API, la cuenta, los permisos y la red. El servidor ejecuta
-Node; las estaciones cliente solo necesitan navegador y acceso a su URL.
+La referencia actual es `release/integrated-hmi`, commit `7fc34e863ed0a9b12e955ae28a224996e84fd011`. El fuente está en `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8` y el runtime en su subcarpeta `dist\tx1-tracking-windows`. El frontend integrado opera en 3000 y consulta al backend local 8085; se observó API v0.42.
 
-La preparación documentada utiliza Windows x64, Windows PowerShell 5.1, Node
-compatible con el release y `WinSW.NET461.exe` versión 2.12.0. Este último
-requiere .NET Framework; IT debe comprobar compatibilidad y requisitos del
-binario con el sistema destino. La versión observada en un kit previo no
-garantiza soporte vigente ni que ese binario esté incluido en otro paquete.
-El script usa archivos locales y no descarga ni instala Node ni WinSW.
-Conservar binarios, licencias y sumas de verificación del conjunto aprobado.
+Que la página esté disponible no demuestra que exista un servicio Windows, arranque automático o recuperación tras reiniciar. Esos puntos deben comprobarse y registrarse en [Estado de entrega](estado-entrega.md).
 
-## Configurar una vez
+## 1. Qué incluye realmente este release
 
-Extraiga cada release en su propia carpeta. Mantenga el directorio permanente
-del servicio separado de los releases y de los perfiles de usuario:
+[deployment/windows](../deployment/windows) contiene `start.cmd` y `README.txt`. El empaquetador copia esos dos archivos al runtime; no entrega `service.ps1`, `service-settings.example.json` ni `test-deployment.ps1`.
 
-```text
-C:\Nucor\Tracking\
-  service-settings.json
-  service\                  # wrapper, XML, registro propio, logs y backups
-  tools\WinSW.NET461.exe
-  releases\600d20f-session\tx1-tracking-windows\
-```
+Las instrucciones históricas de un helper WinSW preparado por separado no son aplicables por el hecho de que esta guía exista. No buscarlo en el runtime ni copiar comandos Install/Prepare de otra variante sin evaluar e incorporar expresamente ese kit.
 
-Solo si están incluidos en el kit aprobado, copie `service-settings.example.json` como
-`C:\Nucor\Tracking\service-settings.json` y ajuste todos los campos. El nombre
-`600d20f-session` es un ejemplo: use la carpeta realmente entregada y revise
-su `RELEASE.txt`. Las rutas deben ser absolutas y locales. `NodePath` debe
-apuntar a `node.exe`; `WinSWPath` al wrapper original 2.12.0. `ServiceDirectory`
-debe ser una carpeta nueva o vacia en su primera preparacion.
+El launcher actual ejecuta Node en primer plano y no registra servicios. Node por sí solo no implementa el protocolo de un servicio Windows: no basta registrar `node.exe` directamente con `sc create`. Un wrapper, tarea programada u otro mecanismo requiere su propia configuración y autorización.
 
-`ApiUrl` es la base HTTP de MaterialTrackingService vista desde el servidor
-del Front, por ejemplo `http://localhost:8085`, sin agregar
-`/api/tracking/status`. No agregue credenciales, contrasenas, tokens, query ni
-fragmentos al JSON o a la URL. `localhost` solo aplica si ambos procesos viven
-en el mismo servidor. `BindHost: "0.0.0.0"` escucha IPv4 en sus interfaces;
-IT debe limitar el acceso al puerto elegido a la red autorizada.
+## 2. Inspección durante la capacitación: sólo lectura
 
-Los comandos son ejemplos para una ventana de instalación autorizada, no
-acciones ejecutadas al leer esta guía. En Windows PowerShell 5.1, desde la
-carpeta que realmente contiene el ayudante aprobado:
+No ejecutar Stop/Start/Restart, cerrar la consola que mantiene Node, terminar procesos, cambiar ACL ni reiniciar Windows para explicar cómo funciona.
+
+### Listener y proceso
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Prepare
+$hmiListeners = @(Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue)
+$hmiListeners | Select-Object LocalAddress, LocalPort, OwningProcess
+foreach ($hmiProcessId in @($hmiListeners.OwningProcess | Sort-Object -Unique)) {
+    Get-CimInstance Win32_Process -Filter "ProcessId = $hmiProcessId" |
+        Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine
+}
 ```
 
-`Prepare` es tambien la accion predeterminada. Genera
-`service\TX1TrackingHMI.exe`, `service\TX1TrackingHMI.xml` y un registro de
-propiedad con hashes. No requiere elevacion si la carpeta permite escribir a
-su usuario. El XML usa rutas absolutas, `NODE_ENV=production`, el destino API,
-host y puerto elegidos. No inicia Node. No modifica permisos.
+Si no hay listener, documentar el resultado y avisar al responsable; no iniciar otra copia automáticamente. Si hay varios registros del mismo PID, pueden representar distintas direcciones de escucha y no necesariamente varias instancias.
 
-El wrapper ejecuta directamente el `node.exe` y `server.js` configurados;
-no pasa por `start.cmd`. Por eso `BindHost` determina HOSTNAME en el servicio
-y no depende de que el lanzador manual antiguo lo fuerce a `0.0.0.0`.
-No registrar `node.exe` directamente con `sc create`: Node no implementa por
-sí solo el protocolo de servicio Windows. WinSW proporciona esa integración.
+`ExecutablePath` identifica el binario real. El `node --version` de una consola nueva puede corresponder a otro Node del PATH. `CommandLine` puede contener la ruta del server.js; si sólo tiene un nombre relativo, no basta para conocer la carpeta de trabajo.
 
-No edite a mano el XML o el ejecutable preparado. El asistente rechaza archivos
-alterados, IDs pertenecientes a otro servicio, cuentas diferentes de LocalService,
-rutas de configuracion distintas y cambios mientras el servicio esta activo.
-El directorio del servicio no admite junctions, symlinks, perfiles de usuario,
-carpetas de sistema ni raices amplias. Conserve su archivo `.tx1-service.json`.
+### Padres del proceso y posible servicio
 
-## Permisos que debe preparar IT
-
-El servicio usa la cuenta integrada **LocalService**, SID `S-1-5-19`, sin
-contrasena. Sus permisos sobre archivos deben quedar asi:
-
-| Destino | LocalService | Administradores de despliegue |
-| --- | --- | --- |
-| Directorios padres de las rutas utilizadas | Recorrido y lectura necesarios para llegar a los archivos | Administracion segun IT |
-| Carpeta completa del release, incluidos `server.js`, `.next` y `node_modules` | Lectura y ejecucion | Modificar para desplegar |
-| `node.exe` y los archivos necesarios de su instalacion | Lectura y ejecucion | Administracion segun IT |
-| Directorio del servicio, wrapper, XML y registro de propiedad | Lectura y ejecucion | Modificar |
-| `service\logs` | Modificar, heredable a archivos y subdirectorios | Modificar |
-| `<release>\.next\cache` | Modificar, heredable a archivos y subdirectorios | Modificar |
-
-Usuarios sin funciones de despliegue no deben poder modificar el release,
-Node, el wrapper, XML ni JSON. El asistente no elimina permisos heredados ni
-cambia ACL de carpetas padre, perfiles, discos, Node o el release completo.
-IT debe revisar la herencia y los permisos existentes antes de instalar.
-
-Estos comandos de ejemplo modifican ACL: IT debe revisar y sustituir las rutas
-antes de usarlos. Agregan lectura al release exacto y al directorio de Node;
-no sustituyen la revisión de permisos heredados, junctions ni cuentas existentes:
+El proceso del servicio puede ser el wrapper padre de Node, no Node mismo. El siguiente bloque consulta hasta seis niveles de padres y busca coincidencias por PID, sin modificar nada:
 
 ```powershell
-icacls.exe 'C:\Nucor\Tracking\releases\600d20f-session\tx1-tracking-windows' /grant '*S-1-5-19:(OI)(CI)RX' /T
-icacls.exe 'C:\Program Files\nodejs' /grant '*S-1-5-19:(OI)(CI)RX'
+$services = @(Get-CimInstance Win32_Service)
+foreach ($hmiProcessId in @($hmiListeners.OwningProcess | Sort-Object -Unique)) {
+    $currentProcessId = [int]$hmiProcessId
+    $visitedProcessIds = @()
+    for ($depth = 0; $depth -lt 6 -and $currentProcessId -gt 0; $depth++) {
+        if ($visitedProcessIds -contains $currentProcessId) { break }
+        $visitedProcessIds += $currentProcessId
+        $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $currentProcessId"
+        if ($null -eq $processInfo) { break }
+        $processInfo | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine
+        $services | Where-Object { $_.ProcessId -eq $currentProcessId } |
+            Select-Object Name, DisplayName, State, StartMode, StartName, ProcessId, PathName
+        $currentProcessId = [int]$processInfo.ParentProcessId
+    }
+}
 ```
 
-El servidor debe permitir salida de LocalService hacia la API. LocalService
-no aporta credenciales de dominio a una API remota; una API que exige Windows
-Authentication requiere un diseno de cuenta/autenticacion aprobado por IT y
-no esta cubierta por esta configuracion. No cambie a LocalSystem para evitar
-resolver permisos. Esta version del asistente admite solamente LocalService.
+No usar `$PID` como variable propia: PowerShell la reserva. Un padre puede haber terminado y su PID puede reutilizarse; una cadena incompleta o sin coincidencias no demuestra por sí sola que no exista automatización. También puede haber una tarea programada u otro supervisor que deba identificar el equipo de IT.
 
-## Registrar e iniciar en el servidor
+La lectura de ciertos campos depende de permisos. Una respuesta vacía no justifica elevar privilegios o reiniciar sin coordinación. Revisar las líneas de comando antes de compartir capturas: podrían contener información interna o credenciales de otras herramientas.
 
-En una consola **Windows PowerShell como administrador**, desde el release:
+### Salud del frontend y del backend
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Install -GrantLocalServicePermissions
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Start
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Status
+Invoke-RestMethod -Uri 'http://127.0.0.1:8085/api/tracking/status' -TimeoutSec 10 |
+    Select-Object service, running, scenario, apiVersion
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/tracking-api/api/tracking/status' -TimeoutSec 10 |
+    Select-Object service, running, scenario, apiVersion
+(Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:3000/' -TimeoutSec 10).StatusCode
 ```
 
-`Install -GrantLocalServicePermissions` agrega lectura/ejecucion a la carpeta
-propia del servicio y Modificar solamente a sus logs y al cache del release.
-Crea esas dos carpetas si faltan. Si IT ya configuro estos permisos, omita el
-switch. `Install` registra el servicio y lo deja detenido. Si el mismo servicio
-ya existe, verifica su identidad y no reemplaza su registro. `Start` exige
-que el JSON coincida con el XML generado por `Prepare`.
+`Running` de un servicio sólo informa sobre ese servicio. Un HTTP 200 sólo acredita esa respuesta; no garantiza datos frescos, PLC conectado, QMOS operativo ni efectos de comandos. Contrastar con la interfaz y [Integración API](tracking-api-integration.md), sin guardar selecciones para “probar”.
 
-El XML generado configura inicio automático diferido y acciones de reinicio
-a los 10, 30 y 60 segundos. También configura rotación por tamaño de salida y
-errores, umbral 10 MiB y ocho archivos históricos. Revisar `service\logs` y
-el Visor de eventos si falla. Son ajustes solicitados al wrapper: su operación
-real y la recuperación tras un fallo deben verificarse en el destino.
-No detectan por sí solos toda aplicación colgada o una API backend inaccesible.
-El estado `Running` solo confirma el proceso del servicio; verifique tambien:
+## 3. Qué registrar antes de cambiar algo
 
-```powershell
-curl.exe -i http://localhost:8085/api/tracking/status
-curl.exe -i http://localhost:3000/
-curl.exe -i http://localhost:3000/tracking-api/api/tracking/status
-```
+| Dato | Evidencia requerida |
+| --- | --- |
+| Instancia | Listener 3000, PID y ejecutable Node. |
+| Fuente/runtime | Commit del fuente, RELEASE.txt/BUILD_ID y carpeta realmente usada. |
+| Arranque | Consola, wrapper, tarea o servicio identificado; no inferido. |
+| Configuración | Destino API, puerto y dirección de escucha del proceso; no sólo variables de la sesión actual. |
+| Servicio, si existe | Nombre exacto, cuenta, ruta/configuración, modo de inicio y responsable. |
+| Recuperación | Política configurada, logs y evidencia de pruebas; no asumir que toda falla se detecta. |
+| Rollback | Carpeta/configuración anterior y responsable autorizado para restaurarlas. |
 
-Cambie host/puerto segun el JSON. Desde una estacion autorizada abra
-`http://IP_DEL_SERVIDOR:3000` y compruebe datos live, las zonas reportadas por
-el backend y las selecciones acordadas de Mill Order, Destination e impresora.
-Estas comprobaciones son lecturas. Guardar selecciones o ejecutar comandos
-en producción requiere una prueba de puesta en marcha explícitamente autorizada.
-Confirme arranque automatico despues de un reinicio
-del servidor durante la ventana de puesta en marcha. El asistente no crea
-reglas de firewall ni instala certificados.
+Si Node se inició manualmente, la continuidad al cerrar sesión depende del mecanismo y de las políticas de Windows. No cerrar RDP ni reiniciar el equipo durante la capacitación para comprobarlo. Programar esa prueba con el responsable operativo.
 
-## Actualizacion y rollback
+## 4. Si se decide formalizar un servicio
 
-Conserve el release anterior. Prepare la siguiente version en otra carpeta y
-valide sus permisos. Mantenga iguales `ServiceId` y `ServiceDirectory`:
+Es un cambio de infraestructura separado, no un paso automático de esta entrega. IT debe elegir y aprobar wrapper/mecanismo, versión, cuenta, permisos, logs, recuperación, acceso de red y ventana. No hay un comando de instalación válido incluido en este release.
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Stop
-# Edite ReleasePath en service-settings.json para apuntar al release nuevo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Prepare
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Install -GrantLocalServicePermissions
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Start
-```
+Consideraciones de diseño:
 
-`Prepare` conserva una copia de los archivos anteriores en `service\backups`
-antes de actualizar un servicio detenido. Si falla la comprobacion HTTP o
-funcional, ejecute `Stop`, restaure en el JSON `ReleasePath` y cualquier otro
-valor anterior, repita `Prepare` y `Start`. No elimine el release anterior.
-Puede detener o consultar el servicio aunque el release ya no sea accesible.
-Para cambiar ID, cuenta o directorio del servicio, planifique una baja y alta;
-no reutilice registros desconocidos ni copie archivos sobre un servicio activo.
+- Usar rutas absolutas del Node aprobado y del `server.js` del release; no depender del PATH o del perfil interactivo del presentador.
+- Definir `TRACKING_API_PROXY_TARGET`, `PORT` y `HOSTNAME` en el mecanismo de arranque. Ejecutar directamente Node permite controlar HOSTNAME; el start.cmd actual fuerza 0.0.0.0.
+- Revisar la ubicación permanente del runtime: actualmente está dentro del perfil de un usuario. Una cuenta de servicio no hereda automáticamente los permisos de ese usuario.
+- Otorgar sólo los permisos necesarios: lectura/ejecución para binarios y release, escritura en logs y cachés que el mecanismo requiera; proteger código y configuración de modificaciones no autorizadas.
+- No cambiar a LocalSystem para sortear permisos. Elegir la cuenta según la política y autenticación necesarias hacia el backend.
+- Definir rotación de logs y respuesta ante salida del proceso; eso no detecta por sí solo una aplicación colgada o un backend inaccesible.
+- Aprobar firewall, TLS y autenticación. El frontend no instala certificados, reglas de firewall ni un sistema de roles.
 
-Detener solamente el servicio identificado por este JSON, nunca todos los
-procesos Node del servidor. Un rollback del Front no deshace selecciones o
-comandos ya aceptados por Tracking.
+Una prueba de servicio debe incluir salud HTTP, acceso desde una estación autorizada y recuperación/cierre de sesión/reinicio únicamente en la ventana aprobada. Registrar lo que se probó realmente.
 
-Para retirar solo el registro, sin borrar archivos ni permisos:
+## 5. Actualización y rollback
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Stop
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 -SettingsPath C:\Nucor\Tracking\service-settings.json -Action Uninstall
-```
+Seguir [Despliegue Windows](windows-standalone-deployment.md). No ejecutar `pnpm package:windows` en el fuente actual del servidor: recrea el runtime que está dentro de ese árbol.
 
-Referencias de WinSW 2.12.0:
-[configuracion XML](https://github.com/winsw/winsw/blob/v2.12.0/doc/xmlConfigFile.md) y
-[rotacion y errores](https://github.com/winsw/winsw/blob/v2.12.0/doc/loggingAndErrorReporting.md).
+Preparar y verificar la nueva versión en una carpeta distinta. En la ventana acordada, actuar únicamente sobre la instancia o servicio identificado. Conservar el release previo y su configuración; si falla, recuperar ambos usando el mecanismo real de arranque.
+
+No ejecutar paradas por nombre genérico como “todos los node”. No alterar el backend 8085 para resolver un conflicto del frontend 3000. El rollback del frontend no deshace selecciones ni correcciones ya aceptadas por Tracking.
+
+Para la capacitación basta explicar este procedimiento y mostrar evidencia existente. No instalar, registrar ni reiniciar servicios como demostración.

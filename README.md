@@ -4,9 +4,11 @@ Frontend de seguimiento de bundles para Texas 1 / Nucor. **Esta rama reúne FIFO
 
 ## Versión y alcance
 
-Rama: `release/integrated-hmi`. Procedencia: FIFO `77f79bf` + operaciones manuales `5338300`, sobre la base común `600d20f`.
+Rama: `release/integrated-hmi`. Código integrado: **`7fc34e863ed0a9b12e955ae28a224996e84fd011`**. Procedencia: FIFO `77f79bf` + operaciones manuales `5338300`, sobre la base común `600d20f`.
 
-Las pruebas locales de integración ya se completaron: FIFO 8/8, retiro 4/4, reposicionamiento 4/4, prevalidación 7/7, casos combinados 2/2, TypeScript, build live y siete comprobaciones de navegador real contra simulador local. El commit final, la publicación y el despliegue deben registrarse al completarse. El destino operativo previsto es el **mismo puerto 3000**; incorporar código no reemplaza por sí mismo la aplicación que ya está corriendo. La última evidencia de servidor corresponde al release FIFO anterior y API 0.42.
+El release integrado se publicó y se está probando en el servidor sobre el **mismo puerto 3000**, contra Tracking 8085/API 0.42. Las verificaciones locales previas fueron FIFO 8/8, retiro 4/4, reposicionamiento 4/4, prevalidación 7/7, integración 2/2, TypeScript, build live y siete comprobaciones de navegador. No equivalen a aceptación física de planta.
+
+**Hallazgo de campo actual:** el evento REMOVE **154605** recibió 202; el estado posterior conserva el bundle `TRK-0000103919` como `REMOVED`, sin zona ni posiciones ocupadas. La HMI sigue pendiente porque `manualOutcomeObserved` solo confirma ausencia completa del registro. La confirmación, la lista y el conteo necesitan conciliar esa semántica con backend; **ese ajuste no está implementado en 7fc34e8**. Ver [evidencia y pendientes](docs/estado-entrega.md).
 
 | Incluido en este fuente | Comportamiento |
 | --- | --- |
@@ -22,16 +24,29 @@ No se agrega un comando `MOVE`, botón `RETIRE`, reset global, escritura OPC ni 
 
 ## Por dónde empezar
 
+- **Capacitación sobre el servidor:** [arquitectura y recorrido técnico del código](docs/handoff-session.md).
+- **Ubicar código:** [mapa por carpetas, archivos y funciones](docs/mapa-codigo.md).
 - [Índice de documentación](docs/README.md).
 - [Transferencia técnica del código](docs/handoff-session.md).
 - [API y contratos](docs/tracking-api-integration.md).
 - [Preguntas técnicas](docs/preguntas-tecnicas.md).
-- [Demo y regresiones aisladas](docs/tracking-api-simulator.md).
+- [Regresiones aisladas, referencia de desarrollo fuera de la sesión](docs/tracking-api-simulator.md).
 - [Estado de versiones y pruebas pendientes](docs/estado-entrega.md).
 - [Commissioning de retiro](docs/manual-bundle-removal-commissioning.md) y [reposicionamiento](docs/manual-bundle-reposition-commissioning.md).
 - [Despliegue Windows](docs/windows-standalone-deployment.md) y [entrega a Git](docs/entrega-git.md).
 
-Esta copia no incluye guion privado, notas personales ni credenciales. La guía de [servicio Windows](docs/windows-service.md) es referencia a un kit separado: **sus helpers no forman parte de esta rama**.
+Mapa, manual y referencias de API son documentación para quienes mantienen el fuente. El guion y la chuleta personales se conservan localmente y están excluidos de Git; no son necesarios para consultar esta documentación. Revisar qué documentos se entregan al cliente antes de exportar: las guías no contienen credenciales, pero no debe agregarse toda la carpeta de trabajo indiscriminadamente. **Los helpers de servicio de otro kit no forman parte de esta rama**.
+
+## Abrir el proyecto en el servidor para el training
+
+```text
+Fuente: C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8
+Runtime: esa carpeta\dist\tx1-tracking-windows
+HMI: http://127.0.0.1:3000
+Tracking: http://localhost:8085
+```
+
+Abrir el **fuente**, no los archivos compilados del runtime. Comprobar `git log -1 --oneline`, `git status` y `RELEASE.txt`; no arrancar otra HMI ni recompilar para explicar el código. La guía de capacitación usa el servidor y respuestas reales, **sin simulador**. Las escrituras por botones se prueban únicamente con valores/bundle acordados con operación.
 
 ## Arquitectura
 
@@ -45,7 +60,7 @@ Cada navegador tiene su polling de estado; los paneles de selección y verificac
 
 `CurrentZone` determina la tarjeta. FIFO solo ordena integrantes del mismo buffer lógico dentro de esa tarjeta, sin moverlos de zona. El listado general **Tracked bundles** no se ordena por FIFO.
 
-## Desarrollo y demo segura
+## Desarrollo en otra copia — no es el procedimiento de la sesión
 
 Versiones de referencia ensayadas anteriormente: Node Windows x64 **24.21.0**, pnpm **10.34.5**, Next **16.3.0**, React **19.2.4**, TypeScript **5.7.3**. El lockfile fija la resolución; `package.json` aún no declara `engines` ni `packageManager`. Next instalado exige Node >=20.9.0, mínimo técnico que no acredita soporte vigente.
 
@@ -62,7 +77,7 @@ if (-not (Test-Path -LiteralPath '.env.local')) {
 pnpm dev
 ```
 
-El ejemplo de entorno usa mock; no consulta planta. Para probar contratos y botones, seguir [Simulador](docs/tracking-api-simulator.md): backend ficticio en loopback 18085 y HMI de demostración 3100. Confirmar escenario tanto directo como por proxy antes de cualquier PUT/POST. Otro puerto de frontend conectado al mismo backend real **no aísla** el efecto.
+El ejemplo de entorno usa mock; no consulta planta. Es un modo disponible para desarrollo, no el utilizado en esta capacitación. La referencia de regresiones aisladas se conserva para mantenimiento, pero el [recorrido técnico](docs/handoff-session.md) sigue la aplicación real de 3000. Otro puerto de frontend conectado al mismo backend real no aísla sus efectos.
 
 Instalar dependencias requiere registros de paquetes; el build con `next/font/google` puede necesitar descargar fuentes. Después las fuentes se sirven desde la compilación.
 
@@ -76,14 +91,14 @@ Instalar dependencias requiere registros de paquetes; el build con `next/font/go
 | `NEXT_PUBLIC_TRACKING_POLL_MS` | Espera normal posterior a la solicitud: referencia 1000 ms |
 | `NEXT_PUBLIC_TRACKING_STALE_MS` | Sin recepción válida: referencia 3500 ms |
 | `NEXT_PUBLIC_TRACKING_TIMEOUT_MS` | Timeout del HMI: referencia 4000 ms |
-| `PORT` | Puerto de ejecución; operativo previsto 3000 |
+| `PORT` | Puerto de ejecución; operativo 3000 |
 | `HOSTNAME` | Bind de Node; este `start.cmd` legacy siempre lo fija a 0.0.0.0 |
 
 `localhost` en el target es el servidor HMI, no cada estación. Cambiar variables públicas requiere rebuild; cambiar target/puerto requiere aplicar entorno y reiniciar el proceso correcto. No guardar secretos en variables públicas ni entregar `.env.local`.
 
 ## Pruebas antes de publicar
 
-Desde la raíz de esta copia, con dependencias instaladas:
+En una copia preparada para desarrollo, con dependencias instaladas; no ejecutar este bloque sobre el release activo durante el training:
 
 ```powershell
 node scripts/test-fifo-ordering.mjs
@@ -126,12 +141,12 @@ Este ejemplo apunta al Tracking de esa máquina, **no a una demo aislada**. Mant
 
 - Allowlist no es autenticación: no hay login, roles ni terminación TLS propios.
 - `OperatorId` es texto de auditoría, no identidad autenticada ni necesariamente numérica.
-- HTTP 202/accepted confirma recepción, no ejecución. El panel observa ausencia del bundle o zona destino mediante GET nuevo; no reintenta POST automáticamente.
+- HTTP 202/accepted confirma recepción, no ejecución. El panel observa ausencia del bundle o zona destino mediante GET nuevo; no reintenta POST automáticamente. La ausencia exigida no reconoce todavía el estado REMOVED retenido observado en servidor.
 - El bloqueo manual es local al panel montado, no una transacción con PLC ni bloqueo multiusuario; no sobrevive a recargar la página.
 - Mill Order y Destination usan dos PUT independientes, no una transacción atómica.
 - Seleccionar impresora no imprime; persistencia, reglas y operación corresponden al backend.
 - El caso FIFO real revisado devolvió membresía/secuencia null. Se necesita una muestra válida antes de aceptar el orden en planta.
-- El retiro histórico obtuvo 202/evento134331, pero su resultado no quedó confirmado; no repetir ese comando para forzar una respuesta.
+- El evento reciente154605 sí tiene evidencia de estado REMOVED y huella reportada vacía, aunque la UI sigue pendiente; no demuestra por sí solo limpieza PLC. El evento anterior134331 correspondía a otro bundle y no quedó confirmado. No repetir ninguno para forzar una respuesta.
 - El layout conserva Analytics en producción; revisión de telemetría y red según política de IT.
 - Combinar las funciones no cierra esos pendientes; registrar prueba, responsable y resultado en [Estado de entrega](docs/estado-entrega.md).
 
