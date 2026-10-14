@@ -217,13 +217,15 @@ node scripts/test-tracking-reset-state.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló verificación de reset; revisar antes de publicar.' }
 node scripts/test-bundler-layout.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló layout Bundler/Overview; revisar antes de publicar.' }
+node scripts/test-stacker-layout.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló layout Stacker o preservación de Stackers; revisar antes de publicar.' }
 pnpm typecheck
 if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript; no publicar.' }
 ```
 
 Los resultados pertenecen a la revisión exacta ensayada. Las pruebas históricas de ramas separadas no acreditan automáticamente la integración: registrar el resultado final. La prueba adicional `test-manual-actions-ui.mjs` necesita navegador local y puede iniciar procesos de prueba; revisar sus parámetros y requisitos antes de ejecutarla.
 
-Para verificar únicamente la navegación/layout Bundler frente a Overview, usar `node scripts/test-manual-actions-ui.mjs --layout-only` después del build live requerido por el runner. Crea su propio servidor/API loopback, bloquea solicitudes distintas de GET y guarda capturas desktop y de desplazamiento horizontal; no usa el backend de planta.
+Para verificar únicamente la navegación/layout de Bundler y Stacker frente a Overview y preservar Stackers, usar `node scripts/test-manual-actions-ui.mjs --layout-only` después del build live requerido por el runner. Stacker (singular, 13 zonas) y Stackers (plural, 14 zonas) son pestañas independientes. Crea su propio servidor/API loopback, bloquea solicitudes distintas de GET y guarda capturas desktop y de desplazamiento horizontal; no usa el backend de planta.
 
 ## 8. Endpoints y límites del simulador
 

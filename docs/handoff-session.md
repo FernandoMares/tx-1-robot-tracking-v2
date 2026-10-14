@@ -61,6 +61,7 @@ Buscar las condiciones `view ===` y seguir sus componentes:
 
 - `overview` → `PlantMap` → `MainSchematic`.
 - `stackers` → `StackersSchematic`.
+- `stacker` → `StackerSchematic`: pestaña nueva en singular; no sustituye `stackers`.
 - `bundler` → `BundlerSchematic`.
 - `bay-1` → `BayOneSchematic`.
 - `bay-2` → `BayTwoSchematic`.
@@ -183,6 +184,8 @@ Mostrar la diferencia entre sin snapshot, zona vacía y bundle con `Weight: null
 En `MainSchematic`, `MAIN_SCHEMATIC_WIDTH=1480`, `MAIN_SCHEMATIC_HEIGHT=760` y `BUNDLER_ROW_TOP=250` gobiernan el lienzo y la fila del Bundler. `MachineOutline`, `HorizontalSequence`, `VerticalSection` y `FlowArrow` son helpers de dibujo, no reglas de Tracking.
 
 Cambio local del 13 de octubre: la pestaña Bundler ahora reutiliza ese mismo componente con `variant="bundler"`. Omite únicamente ERT1A/B, ERT2C/D, STRT1/2, LFRT1/2/3 y sus flechas; mantiene báscula SGRT2, NCCT, ambas secciones y Robot 2. El desplazamiento horizontal común recorta el espacio sobrante, no cambia `CurrentZone`. La variante por defecto del Overview permanece completa. No atribuir este cambio al paquete desplegado `7fc34e8`.
+
+Después del checkpoint `90c849c` se añadió **Stacker**, en singular, como una pestaña adicional. `StackerSchematic` usa `variant="stacker"` para conservar ERT, STRT, LFRT, SGRT1/2, NCCT1/2 y báscula, sin Bundler/RTOUT, RTTY, IMRT ni secciones Bay 2. El desplazamiento vertical común elimina espacio vacío sin alterar relaciones entre tarjetas. **Stackers**, en plural, sigue llamando al componente anterior sin cambios. Ambas leen el mismo agrupamiento `bundlesByZone` del dashboard; no se agrega otro polling ni endpoint.
 
 Las LCH se omiten de los diagramas de operador, pero permanecen en el catálogo y pueden aparecer como destino manual si `/map` las habilita. CCH muestra cinco filas visibles con scroll, no una capacidad operativa máxima de cinco. `compactVisibleRows` controla presentación; `Capacity` pertenece al contrato del mapa.
 

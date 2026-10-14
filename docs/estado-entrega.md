@@ -26,6 +26,14 @@ Validación del 13 de octubre: **58/58 regresiones** (las 50 anteriores más 8 d
 
 **Pendientes para el mensaje posterior a Andrés/David:** confirmar cómo permitirá backend ocultar/omitir `OperatorId` en fase 1 y hacer opcional `Reason`/Comments (v0.39 exige ambos para REMOVE). Siguen visibles y obligatorios en el código; no se inventa identidad ni motivo. También sigue pendiente la prueba coordinada del reset real; no se ha enviado ningún mensaje externo ni comando de planta como parte de este cambio de layout.
 
+### Pestaña Stacker adicional, posterior al checkpoint 90c849c
+
+El checkpoint Bundler/REMOVED/reset y documentación quedó guardado y publicado como **`90c849c`** en `release/integrated-hmi`. Sobre esa base, este nuevo checkpoint de fuente añade **Stacker**, en singular, como pestaña nueva; **Stackers**, en plural, mantiene intacto su componente anterior y sus 14 zonas, incluido IMRT1. El identificador del nuevo checkpoint se consulta con `git log -1 --oneline`. El cambio Stacker sigue pendiente de empaquetado, despliegue y validación en planta; guardar/publicar Git no modifica la instancia instalada.
+
+Stacker reutiliza `MainSchematic` con `variant="stacker"`: muestra 13 zonas ERT1A/B, ERT2C/D, STRT1/2, LFRT1/2/3, SGRT1/2 y NCCT1/2, con el peso de SGRT2. No dibuja Bundler/RTOUT, RTTY1/2, IMRT1/2, secciones Bay 2 ni sus conexiones. Se recorta espacio vacío mediante una traslación vertical común, sin cambiar posiciones API. Overview conserva 29 zonas y Bundler 20; el snapshot y las acciones manuales no cambian.
+
+Validación local: **66/66 regresiones**, TypeScript y build live aprobados. El modo `test-manual-actions-ui.mjs --layout-only` aprobó **8 comprobaciones** GET-only en navegador: incluye geometría del Overview, lienzo Stacker 1104 × 440, escala máxima 1.3, scroll a 760 px y navegación independiente a Stackers. Sin errores de ejecución/intercepción; no se usó backend de planta. Capturas locales en `dist/stacker-overview-desktop.png` y variantes `-narrow-left.png`/`-narrow-right.png`. No se repitió en este cambio la secuencia completa de comandos manuales en navegador.
+
 Carpeta fuente utilizada en el servidor: `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`. Para la sesión de código se abre esa carpeta; el navegador apunta a `http://127.0.0.1:3000`. No hace falta cambiar a otra rama ni levantar un simulador para mostrar el flujo real. Las modificaciones documentales posteriores no cambian el build ya desplegado.
 
 El empaquetador y `start.cmd` siguen siendo la variante legacy. No se incorporaron `service.ps1`, `test-deployment.ps1`, el JSON de servicio ni el empaquetador ampliado del kit.

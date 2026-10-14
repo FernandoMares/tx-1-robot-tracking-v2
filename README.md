@@ -6,13 +6,16 @@ Frontend de seguimiento de bundles para Texas 1 / Nucor. **Esta rama reúne FIFO
 
 Rama: `release/integrated-hmi`. Última base funcional desplegada documentada: **`7fc34e863ed0a9b12e955ae28a224996e84fd011`**. Checkpoint anterior de documentación: `c7df85a`. Este checkpoint de fuente del **13 de octubre de 2026** reúne el filtro de removidos, la confirmación de retiro retenido y el reset de mantenimiento del día 9, más Bundler reutilizando el Overview sin la rama Stackers/STRT/LFRT. El identificador exacto se consulta con `git log -1 --oneline`; guardar/publicar el fuente no actualiza el servidor ni los ZIP existentes. Estos ajustes siguen pendientes de empaquetado, despliegue y validación en planta. Procedencia funcional: FIFO `77f79bf` + operaciones manuales `5338300`, sobre `600d20f`.
 
+El checkpoint anterior está guardado/publicado como `90c849c`. Este nuevo checkpoint de fuente añade una pestaña **Stacker** (singular), independiente de **Stackers** (plural), que conserva su vista anterior. El cambio Stacker no forma parte de `90c849c` ni del paquete instalado; guardar/publicar Git no equivale a desplegarlo.
+
 La base funcional `7fc34e8` se publicó y desplegó en el servidor sobre el **puerto 3000**, contra Tracking 8085/API 0.42. Sus verificaciones locales previas fueron FIFO 8/8, retiro 4/4, reposicionamiento 4/4, prevalidación 7/7, integración 2/2, TypeScript, build live y siete comprobaciones de navegador. No equivalen a aceptación física de planta ni validan los nuevos cambios de trabajo.
 
 **Hallazgo histórico y ajuste local:** el evento REMOVE **154605** dejó un registro `REMOVED` sin zona ni posiciones ocupadas. En `7fc34e8` la HMI seguía pendiente al exigir ausencia completa. El código de trabajo ahora oculta `REMOVED` de vistas activas y acepta ausencia o un único registro del mismo escenario con `REMOVED`, `CurrentZone: null` y `OccupiedZones: []`. Conserva el snapshot completo para verificar comandos; no acredita efectos PLC. Ver [evidencia y pendientes](docs/estado-entrega.md).
 
 | Incluido en este fuente | Comportamiento |
 | --- | --- |
-| Plant Overview, Stackers, Bundler, Bay 1, Bay 2 | Posiciones según `CurrentZone`; diagramas no controlan equipos |
+| Plant Overview, Stackers, Stacker, Bundler, Bay 1, Bay 2 | Posiciones según `CurrentZone`; diagramas no controlan equipos |
+| Tab Stacker (singular) | Nueva vista del Overview limitada a ERT, STRT, LFRT, SGRT1/2, NCCT1/2 y báscula SGRT2; sin Bundler, RTTY, IMRT ni secciones Bay 2. Stackers (plural) conserva su pantalla anterior |
 | Tab Bundler | Mismo layout del Overview, sin ERT1A/B, ERT2C/D, STRT1/2 ni LFRT1/2/3; conserva báscula, SGRT/NCCT, buffers y Robot 2. Overview permanece completo |
 | Selecciones globales | Mill Order, Destination e impresora con confirmación y GET posterior |
 | Báscula | `Weight` de la zona exacta SGRT2; no calcula peso ni inventa unidad |
@@ -123,6 +126,10 @@ node scripts/test-tracking-reset-state.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló verificación de estado de reset.' }
 node scripts/test-integrated-tracking.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló integración FIFO/manual.' }
+node scripts/test-bundler-layout.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló layout Bundler/Overview.' }
+node scripts/test-stacker-layout.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló layout Stacker o preservación de Stackers.' }
 pnpm typecheck
 if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript.' }
 $env:NEXT_PUBLIC_PLANT_DATA_MODE = 'live'

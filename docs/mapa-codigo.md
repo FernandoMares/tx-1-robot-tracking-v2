@@ -28,6 +28,7 @@ app/page.tsx — Page
    └─ Vista elegida — tracking, bundlesByZone y props visuales
       ├─ PlantMap → MainSchematic
       ├─ StackersSchematic → SchematicScreen
+      ├─ StackerSchematic → SchematicScreen → MainSchematic (variant="stacker")
       ├─ BundlerSchematic → SchematicScreen
       ├─ BayOneSchematic → SchematicScreen
       └─ BayTwoSchematic → SchematicScreen
@@ -153,7 +154,7 @@ En `hooks/use-tracking-api.ts`:
 
 `components/app-header.tsx`: `TABS`, `ViewTabs` y `AppHeader`. `components/dashboard.tsx`: estado `view` y render condicional. Para añadir otra pestaña habría que extender `PlantView`, declarar la pestaña y renderizar su componente; no basta con cambiar el label del menú.
 
-`components/plant/plant-map.tsx`: `PlantMap` envuelve el overview y llama `MainSchematic`; su `ResizeObserver` limita escala entre 0.95 y 1.3. `components/plant/schematic-screen.tsx`: `SchematicScreen` es el marco compartido de las vistas detalladas, con mínimo 0.9 y `maxScale` por defecto 1.45 (Bundler usa 1.3), encabezado, badge y leyenda. Mantienen scroll horizontal cuando el lienzo no cabe.
+`components/plant/plant-map.tsx`: `PlantMap` envuelve el overview y llama `MainSchematic`; su `ResizeObserver` limita escala entre 0.95 y 1.3. `components/plant/schematic-screen.tsx`: `SchematicScreen` es el marco compartido de las vistas detalladas, con mínimo 0.9 y `maxScale` por defecto 1.45 (Bundler y Stacker singular usan 1.3), encabezado, badge y leyenda. Mantienen scroll horizontal cuando el lienzo no cabe.
 
 ### Geometría que se mantiene a mano
 
@@ -161,6 +162,7 @@ En `hooks/use-tracking-api.ts`:
 | --- | --- | --- |
 | Overview | `main-schematic.tsx`: `MainSchematic`, `MAIN_SCHEMATIC_WIDTH`, `MAIN_SCHEMATIC_HEIGHT`, `BUNDLER_ROW_TOP`, `MachineOutline`, `HorizontalSequence`, `VerticalSection` | Mover grupos, ajustar alineación y flechas. `BUNDLER_ROW_TOP` ya relaciona contenedor y transferencias Bundler. |
 | Stackers | `stackers-schematic.tsx`: `SOURCE_POSITIONS`, `COMMON_LINE_POSITIONS`, `EXIT_POSITIONS`, `ZoneSlot` | Coordenadas de fuentes, línea común, NCCT/IMRT1. |
+| Stacker (singular, nueva) | `stacker-schematic.tsx`: `StackerSchematic` llama `MainSchematic` con `variant="stacker"`; `main-schematic.tsx`: `STACKER_TOP_OFFSET`, `STACKER_SCHEMATIC_WIDTH`, `STACKER_SCHEMATIC_HEIGHT` | 13 zonas ERT/STRT/LFRT/SGRT/NCCT y báscula. Omite Bundler, RTTY, IMRT y secciones Bay 2; traslada las zonas retenidas juntas 320 px hacia arriba en lienzo 1104 × 440. No reemplaza Stackers ni modifica CurrentZone. |
 | Bundler | `bundler-schematic.tsx`: `BundlerSchematic` llama `MainSchematic` con `variant="bundler"`; `main-schematic.tsx`: `BUNDLER_LEFT_OFFSET`, `BUNDLER_SCHEMATIC_WIDTH` | Overview sin la rama ERT/STRT/LFRT. Traslada el conjunto restante 480 px, conserva relaciones y usa lienzo 1000 × 760. El Overview predeterminado sigue en 1480 × 760. |
 | Bay 1 | `bay-one-schematic.tsx`: `BayOneSchematic`, `EquipmentContext`, `Zone` | SGRT/NCCT y contexto de báscula/manual station. |
 | Bay 2 | `bay-two-schematic.tsx`: `STK_ROUTE_ZONES`, `FINAL_ROUTE_ZONES`, `LaneFlowArrows`, `Zone` | Dos rutas A/B, dimensiones CCH y transferencias ilustrativas. |

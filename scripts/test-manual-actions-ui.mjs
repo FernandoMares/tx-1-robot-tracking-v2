@@ -3,7 +3,7 @@
 // NEXT_PUBLIC_TRACKING_API_URL=/tracking-api. Run: node scripts/test-manual-actions-ui.mjs
 // EDGE_PATH may point to Edge/Chrome/Chromium on any OS. The runner creates its
 // own loopback simulator/HMI, blocks other page origins, and removes its profile.
-// Add --layout-only to check Overview/Bundler geometry without any command POST.
+// Add --layout-only to check Overview/Bundler/Stacker geometry without any command POST.
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
@@ -295,8 +295,10 @@ try {
   await waitFor(`document.querySelector('button[aria-label^="View tracked bundles"]')?.getAttribute('aria-label').includes('10 active')`, "live tracking with owned simulator")
   const overviewLabel = "Mirrored Exit Tracking physical overview"
   const bundlerLabel = "Bundler overview without the stacker branch"
+  const stackerLabel = "Stacker overview without bundler or Bay 2 handoffs"
   const omittedZones = ["ERT1A", "ERT1B", "ERT2C", "ERT2D", "STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"]
   const retainedZones = ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD", "RTTY1", "RTTY2", "IMRT2", "CCH2A", "CCH2B", "SGRT2A", "SGRT2B", "CCH1A", "CCH1B", "SGRT1A", "SGRT1B", "SGRT1", "SGRT2", "NCCT1", "NCCT2", "IMRT1"]
+  const stackerZones = [...omittedZones, "SGRT1", "SGRT2", "NCCT1", "NCCT2"]
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1350, deviceScaleFactor: 1, mobile: false })
   await waitFor(`document.querySelector('[role="group"][aria-label="${overviewLabel}"] [data-zone-name="RTOUTA"]')`, "Overview zones ready")
   const overviewGeometry = await diagramGeometry(overviewLabel, 1480)
@@ -346,13 +348,63 @@ try {
   assert.equal(await evaluate(`(()=>{const viewport=(${bundlerViewport}).getBoundingClientRect();const card=document.querySelector('section[aria-label="Bundler"] [data-zone-name="SGRT2B"]').getBoundingClientRect();const robot=document.querySelector('aside[aria-label="Robot 2 physical equipment context"]').getBoundingClientRect();return card.left>=viewport.left && card.right<=viewport.right && robot.right<=viewport.right})()`), true, "Rightmost zones and Robot 2 are reachable by horizontal scroll")
   await screenshot("bundler-overview-narrow-right.png")
   checks.push("Narrow viewport keeps all 20 cards with unchanged geometry; horizontal scrolling reaches both Bundler outputs and rightmost zones/Robot 2 without clipping")
+
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1100, deviceScaleFactor: 1, mobile: false })
+  await selectView("Stacker", stackerLabel)
+  await waitFor(`Math.abs(document.querySelector('[role="group"][aria-label="${stackerLabel}"]').getBoundingClientRect().width-1435.2)<1`, "Stacker desktop scale settled at its 1.3 maximum")
+  const stackerGeometry = await diagramGeometry(stackerLabel, 1104)
+  assertZoneNames(stackerGeometry, stackerZones)
+  assert.ok(Math.abs(stackerGeometry.height-440)<0.3, "Stacker crops the unused upper area to a 440px canvas")
+  assert.ok(Math.abs(stackerGeometry.scale-1.3)<0.001)
+  const overviewStackerAnchor = overviewGeometry.cards.find(card=>card.name === "ERT1A")
+  const stackerAnchor = stackerGeometry.cards.find(card=>card.name === "ERT1A")
+  for (const card of stackerGeometry.cards) {
+    const original = overviewGeometry.cards.find(candidate=>candidate.name === card.name)
+    for (const axis of ["x", "y"]) {
+      assert.ok(Math.abs((card[axis]-stackerAnchor[axis])-(original[axis]-overviewStackerAnchor[axis]))<0.3, card.name + " preserves Overview " + axis + " relative position in Stacker")
+    }
+    assert.ok(Math.abs(card.width-original.width)<0.3 && Math.abs(card.height-original.height)<0.3, card.name + " preserves Overview card size in Stacker")
+    assert.ok(card.x>=0 && card.y>=0 && card.x+card.width<=stackerGeometry.width+0.3 && card.y+card.height<=stackerGeometry.height+0.3, card.name + " is not clipped by the Stacker canvas")
+  }
+  assert.equal(await evaluate(`(()=>{const root=document.querySelector('section[aria-label="Stacker"]');return Boolean(root.querySelector('aside[aria-label^="Scale Weight Station, showing"]')) && root.querySelector('[aria-label="SGRT2 bundle weight"]')?.textContent.includes('SGRT2 weight') && root.innerText.includes('STK Stackers')})()`), true)
+  assert.equal(await evaluate(`(()=>{const root=document.querySelector('section[aria-label="Stacker"]');return Boolean(root.querySelector('aside[aria-label="Robot 2 physical equipment context"]')) || /BUND Bundler|LMD [123]|First tracking section|Second tracking section/i.test(root.innerText)})()`), false)
+  await screenshot("stacker-overview-desktop.png")
+  checks.push("New Stacker tab contains exactly 13 Overview zones and the SGRT2 scale; excludes Bundler, RTTY, IMRT, Bay 2 columns, Robot 2 and old LMD equipment labels")
+  checks.push("Stacker retains Overview relative card geometry and size inside its 1104x440 cropped canvas, with a maximum desktop scale of 1.3")
+
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 760, height: 1100, deviceScaleFactor: 1, mobile: false })
+  const stackerViewport = `document.querySelector('[aria-label="Scrollable Stacker production diagram"]')`
+  await waitFor(`(${stackerViewport}).scrollWidth>(${stackerViewport}).clientWidth && Math.abs(document.querySelector('[role="group"][aria-label="${stackerLabel}"]').getBoundingClientRect().width-993.6)<1`, "Stacker narrow horizontal overflow at minimum scale")
+  const stackerNarrowGeometry = await diagramGeometry(stackerLabel, 1104)
+  assertZoneNames(stackerNarrowGeometry, stackerZones)
+  assert.ok(Math.abs(stackerNarrowGeometry.scale-0.9)<0.001)
+  for (const card of stackerNarrowGeometry.cards) {
+    const desktop = stackerGeometry.cards.find(candidate=>candidate.name === card.name)
+    for (const property of ["x", "y", "width", "height"]) {
+      assert.ok(Math.abs(card[property]-desktop[property])<0.3, card.name + " retains narrow Stacker " + property)
+    }
+  }
+  await evaluate(`(${stackerViewport}).scrollLeft=0`)
+  assert.equal(await evaluate(`(()=>{const viewport=(${stackerViewport}).getBoundingClientRect();return ['ERT1A','ERT2D'].every(name=>{const card=document.querySelector('section[aria-label="Stacker"] [data-zone-name="'+name+'"]').getBoundingClientRect();return card.left>=viewport.left && card.right<=viewport.right})})()`), true, "All four Stacker sources are reachable at the left edge")
+  await screenshot("stacker-overview-narrow-left.png")
+  await evaluate(`(${stackerViewport}).scrollLeft=(${stackerViewport}).scrollWidth`)
+  await waitFor(`(${stackerViewport}).scrollLeft>0`, "Stacker horizontal scroll changed")
+  assert.equal(await evaluate(`(()=>{const viewport=(${stackerViewport}).getBoundingClientRect();const root=document.querySelector('section[aria-label="Stacker"]');const elements=['SGRT1','SGRT2','NCCT1','NCCT2'].map(name=>root.querySelector('[data-zone-name="'+name+'"]'));elements.push(root.querySelector('aside[aria-label^="Scale Weight Station, showing"]'));return elements.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=viewport.left && rect.right<=viewport.right})})()`), true, "Both SGRT/NCCT columns and the scale are reachable at the right edge")
+  await screenshot("stacker-overview-narrow-right.png")
+  checks.push("Narrow Stacker keeps all 13 card geometries; horizontal scrolling exposes all four source slots and the complete scale/SGRT/NCCT group")
+
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false })
+  await selectView("Stackers", "Stackers official worksheet layout")
+  const legacyStackersGeometry = await diagramGeometry("Stackers official worksheet layout", 1440)
+  assertZoneNames(legacyStackersGeometry, [...stackerZones, "IMRT1"])
+  assert.equal(await evaluate(`(()=>{const root=document.querySelector('section[aria-label="Stackers"]');return ['LMD 1','LMD 2','LMD 3','Bay 2 handoff'].every(label=>root.textContent.includes(label))})()`), true)
+  checks.push("Existing plural Stackers tab remains separate and unchanged, retaining its 14 zones, IMRT1 handoff and LMD equipment labels")
   await selectView("Plant Overview", overviewLabel)
   assertZoneNames(await diagramGeometry(overviewLabel, 1480), [...retainedZones, ...omittedZones])
   assert.equal(commandRequests.length, 0)
   assert.equal(resetRequests.length, 0)
   assert.equal(requests.some(request=>request.method!=="GET"), false, "Layout navigation must remain read-only")
-  checks.push("Returning to Overview restores all 29 original zones; all layout checks sent GET requests only")
+  checks.push("Returning from Bundler, Stacker and legacy Stackers to Overview restores all 29 original zones; all layout checks sent GET requests only")
 
   if (!layoutOnly) {
   await evaluate(`document.querySelector('button[aria-label^="View tracked bundles"]').click()`)

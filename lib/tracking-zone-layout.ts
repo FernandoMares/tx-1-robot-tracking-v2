@@ -1,7 +1,7 @@
 import type { TrackedBundleDto, TrackingMapDto } from "@/lib/tracking-api"
 import { getActiveBundles } from "@/lib/tracking-api/bundle-lifecycle"
 
-export type TrackingDetailScreen = "stackers" | "bundler" | "bay-1" | "bay-2"
+export type TrackingDetailScreen = "stackers" | "stacker" | "bundler" | "bay-1" | "bay-2"
 
 export type TrackingZoneGroup =
   | "stacker-source"
@@ -33,19 +33,19 @@ export interface TrackingZoneLayoutMeta {
  * that apparent PDF label typo remains pending.
  */
 export const TRACKING_ZONE_LAYOUT = {
-  ERT1A: zone("stackers", ["stackers"], "stacker-source", 10, "ERT1A"),
-  ERT1B: zone("stackers", ["stackers"], "stacker-source", 20, "ERT1B"),
-  ERT2C: zone("stackers", ["stackers"], "stacker-source", 30, "ERT2C"),
-  ERT2D: zone("stackers", ["stackers"], "stacker-source", 40, "ERT2D"),
-  STRT1: zone("stackers", ["stackers"], "stacker-line", 50, "STRT1"),
-  STRT2: zone("stackers", ["stackers"], "stacker-line", 60, "STRT2"),
-  LFRT1: zone("stackers", ["stackers"], "stacker-line", 70, "LFRT1"),
-  LFRT2: zone("stackers", ["stackers"], "stacker-line", 80, "LFRT2"),
-  LFRT3: zone("stackers", ["stackers"], "stacker-line", 90, "LFRT3"),
-  SGRT1: zone("stackers", ["stackers", "bay-1", "bundler"], "stacker-line", 100, "SGRT1"),
-  SGRT2: zone("stackers", ["stackers", "bay-1", "bundler"], "stacker-line", 110, "SGRT2"),
-  NCCT1: zone("bay-1", ["stackers", "bay-1", "bundler"], "bay-1-exit", 120, "NCCT1"),
-  NCCT2: zone("bay-1", ["stackers", "bay-1", "bundler"], "bay-1-exit", 130, "NCCT2"),
+  ERT1A: zone("stackers", ["stackers", "stacker"], "stacker-source", 10, "ERT1A"),
+  ERT1B: zone("stackers", ["stackers", "stacker"], "stacker-source", 20, "ERT1B"),
+  ERT2C: zone("stackers", ["stackers", "stacker"], "stacker-source", 30, "ERT2C"),
+  ERT2D: zone("stackers", ["stackers", "stacker"], "stacker-source", 40, "ERT2D"),
+  STRT1: zone("stackers", ["stackers", "stacker"], "stacker-line", 50, "STRT1"),
+  STRT2: zone("stackers", ["stackers", "stacker"], "stacker-line", 60, "STRT2"),
+  LFRT1: zone("stackers", ["stackers", "stacker"], "stacker-line", 70, "LFRT1"),
+  LFRT2: zone("stackers", ["stackers", "stacker"], "stacker-line", 80, "LFRT2"),
+  LFRT3: zone("stackers", ["stackers", "stacker"], "stacker-line", 90, "LFRT3"),
+  SGRT1: zone("stackers", ["stackers", "bay-1", "bundler", "stacker"], "stacker-line", 100, "SGRT1"),
+  SGRT2: zone("stackers", ["stackers", "bay-1", "bundler", "stacker"], "stacker-line", 110, "SGRT2"),
+  NCCT1: zone("bay-1", ["stackers", "bay-1", "bundler", "stacker"], "bay-1-exit", 120, "NCCT1"),
+  NCCT2: zone("bay-1", ["stackers", "bay-1", "bundler", "stacker"], "bay-1-exit", 130, "NCCT2"),
 
   RTOUTA: zone("bundler", ["bundler"], "bundler-source", 210, "RTOUTA"),
   RTOUTB: zone("bundler", ["bundler"], "bundler-source", 220, "RTOUTB"),
@@ -119,6 +119,7 @@ export const TRACKING_ZONE_NAMES = Object.freeze(
 
 export const TRACKING_ZONES_BY_SCREEN = Object.freeze({
   stackers: TRACKING_ZONE_NAMES.filter((name) => TRACKING_ZONE_LAYOUT[name].screens.includes("stackers")),
+  stacker: TRACKING_ZONE_NAMES.filter((name) => TRACKING_ZONE_LAYOUT[name].screens.includes("stacker")),
   bundler: TRACKING_ZONE_NAMES.filter((name) => TRACKING_ZONE_LAYOUT[name].screens.includes("bundler")),
   "bay-1": TRACKING_ZONE_NAMES.filter((name) => TRACKING_ZONE_LAYOUT[name].screens.includes("bay-1")),
   "bay-2": TRACKING_ZONE_NAMES.filter((name) => TRACKING_ZONE_LAYOUT[name].screens.includes("bay-2")),

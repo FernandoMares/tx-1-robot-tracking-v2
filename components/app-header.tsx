@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 const TABS: { id: PlantView; label: string }[] = [
   { id: "overview", label: "Plant Overview" },
   { id: "stackers", label: "Stackers" },
+  { id: "stacker", label: "Stacker" },
   { id: "bundler", label: "Bundler" },
   { id: "bay-1", label: "Bay 1" },
   { id: "bay-2", label: "Bay 2" },
@@ -26,7 +27,7 @@ interface AppHeaderProps {
 
 /**
  * Scrollable view switcher. Rendered inline on wide screens and as a second
- * header row on narrow ones, where five tabs cannot share the top bar.
+ * header row on narrow ones, where all tabs cannot share the top bar.
  */
 function ViewTabs({
   view,

@@ -11,6 +11,7 @@ import { BayOneSchematic } from "@/components/plant/bay-one-schematic"
 import { BayTwoSchematic } from "@/components/plant/bay-two-schematic"
 import { BundlerSchematic } from "@/components/plant/bundler-schematic"
 import { PlantMap } from "@/components/plant/plant-map"
+import { StackerSchematic } from "@/components/plant/stacker-schematic"
 import { StackersSchematic } from "@/components/plant/stackers-schematic"
 import { TrackingBundlesPanel } from "@/components/tracking-bundles-panel"
 import { TrackingConnectionBanner } from "@/components/tracking-connection-banner"
@@ -127,6 +128,16 @@ export function Dashboard() {
                 animationRunning={animationRunning}
                 tracking={tracking}
                 matchedIds={matchedIds}
+                bundlesByZone={bundlesByZone}
+              />
+            )}
+
+            {view === "stacker" && (
+              <StackerSchematic
+                updatedAt={updatedAt}
+                animationRunning={animationRunning}
+                matchedIds={matchedIds}
+                tracking={tracking}
                 bundlesByZone={bundlesByZone}
               />
             )}

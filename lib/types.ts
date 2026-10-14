@@ -1,11 +1,11 @@
 /** Health of a table or piece of equipment, driving every status colour. */
 export type PlantStatus = "active" | "warning" | "error" | "empty" | "offline"
 
-/** Physical areas of the plant, matching the tab bar. */
+/** Physical areas of the plant; multiple tabs may show the same area. */
 export type ZoneId = "stackers" | "bundler" | "bay-1" | "bay-2"
 
 /** Screens reachable from the top navigation. */
-export type PlantView = "overview" | "stackers" | "bundler" | "bay-1" | "bay-2"
+export type PlantView = "overview" | "stackers" | "stacker" | "bundler" | "bay-1" | "bay-2"
 
 /**
  * A single table on the floor. `bundleCount` is what operators read, while
