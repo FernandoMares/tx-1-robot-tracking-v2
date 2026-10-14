@@ -21,6 +21,7 @@ import type {
   TrackingCorrectionRequestDto,
   TrackingRemovalRequestDto,
   TrackingRepositionRequestDto,
+  TrackingResetAcceptedDto,
   TrackingEventsResponseDto,
   TrackingMapDto,
   TrackingStateDto,
@@ -46,6 +47,7 @@ import {
   isTrackingCorrectionRequestDto,
   isTrackingRemovalRequestDto,
   isTrackingRepositionRequestDto,
+  isTrackingResetAcceptedDto,
   isTrackingEventsResponseDto,
   isTrackingMapDto,
   isTrackingStateDto,
@@ -156,6 +158,7 @@ export class TrackingApiClient {
     validate: (value: unknown) => value is T,
     externalSignal?: AbortSignal,
     requestBody?: unknown,
+    options: { headers?: HeadersInit; redirect?: RequestRedirect } = {},
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`
     const controller = new AbortController()
@@ -182,6 +185,7 @@ export class TrackingApiClient {
     if (method === "POST" || method === "PUT") {
       requestHeaders.set("Content-Type", "application/json")
     }
+    new Headers(options.headers).forEach((value, name) => requestHeaders.set(name, value))
 
     try {
       const response = await this.fetchImpl(url, {
@@ -189,6 +193,7 @@ export class TrackingApiClient {
         body: method === "POST" || method === "PUT" ? JSON.stringify(requestBody) : undefined,
         cache: "no-store",
         credentials: "omit",
+        redirect: options.redirect,
         headers: requestHeaders,
         signal: controller.signal,
       })
@@ -288,6 +293,15 @@ export class TrackingApiClient {
 
   getState(signal?: AbortSignal): Promise<TrackingStateDto> {
     return this.get("/api/tracking/state", isTrackingStateDto, signal)
+  }
+
+  /** Sends one bodyless reset. Callers must confirm intent and never auto-retry. */
+  resetTracking(signal?: AbortSignal): Promise<TrackingResetAcceptedDto> {
+    return this.request("POST", "/api/tracking/reset", isTrackingResetAcceptedDto, signal, undefined, {
+      // A deliberate HMI-proxy intent guard, not backend authentication.
+      headers: { "X-Tracking-Reset-Confirmation": "RESET" },
+      redirect: "error",
+    })
   }
 
   getBundle(trackingId: string, signal?: AbortSignal): Promise<TrackedBundleDto> {

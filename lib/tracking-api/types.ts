@@ -307,6 +307,13 @@ export interface TrackingCommandAcceptedDto extends ExtensibleDto {
   trackingId: string
 }
 
+/** Global reset acknowledgement; acceptance is not proof of completion. */
+export interface TrackingResetAcceptedDto extends ExtensibleDto {
+  accepted: boolean
+  eventId: number
+  eventType: "RESET"
+}
+
 export interface TrackingEventDto extends ExtensibleDto {
   EventId: number
   ScenarioName?: string | null

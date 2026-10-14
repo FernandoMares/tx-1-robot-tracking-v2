@@ -14,7 +14,9 @@ import { PlantMap } from "@/components/plant/plant-map"
 import { StackersSchematic } from "@/components/plant/stackers-schematic"
 import { TrackingBundlesPanel } from "@/components/tracking-bundles-panel"
 import { TrackingConnectionBanner } from "@/components/tracking-connection-banner"
+import { TrackingResetControl } from "@/components/tracking-reset-control"
 import { usePlantState } from "@/hooks/use-plant-state"
+import { useTrackingCommandGate } from "@/hooks/use-tracking-command-gate"
 import type { PlantView } from "@/lib/types"
 
 export function Dashboard() {
@@ -34,6 +36,7 @@ export function Dashboard() {
 
   const [view, setView] = useState<PlantView>("overview")
   const [filters, setFilters] = useState<PlantFilters>(DEFAULT_FILTERS)
+  const commandGate = useTrackingCommandGate()
 
   const filtersActive = filters.table !== "all" || filters.status !== "all"
 
@@ -97,11 +100,22 @@ export function Dashboard() {
               ) : (
                 <>
                   <GlobalMillOrderPanel tracking={tracking} config={trackingConfig} />
-                  <TrackingBundlesPanel
-                    tracking={tracking}
-                    config={trackingConfig}
-                    onRefresh={retryTracking}
-                  />
+                  <div className="flex flex-wrap items-stretch gap-2">
+                    <div className="min-w-0 flex-1">
+                      <TrackingBundlesPanel
+                        tracking={tracking}
+                        config={trackingConfig}
+                        onRefresh={retryTracking}
+                        commandGate={commandGate}
+                      />
+                    </div>
+                    <TrackingResetControl
+                      tracking={tracking}
+                      config={trackingConfig}
+                      onRefresh={retryTracking}
+                      commandGate={commandGate}
+                    />
+                  </div>
                 </>
               )}
             </div>

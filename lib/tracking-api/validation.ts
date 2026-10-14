@@ -20,6 +20,7 @@ import type {
   TrackingCorrectionRequestDto,
   TrackingRemovalRequestDto,
   TrackingRepositionRequestDto,
+  TrackingResetAcceptedDto,
   TrackingEventsResponseDto,
   TrackingMapDto,
   TrackingStateDto,
@@ -469,6 +470,15 @@ export function isTrackingCommandAcceptedDto(
     isPositiveInteger(value.eventId) &&
     isNonEmptyString(value.eventType) &&
     isNonEmptyString(value.trackingId)
+  )
+}
+
+export function isTrackingResetAcceptedDto(value: unknown): value is TrackingResetAcceptedDto {
+  return (
+    isObject(value) &&
+    typeof value.accepted === "boolean" &&
+    isPositiveInteger(value.eventId) &&
+    value.eventType === "RESET"
   )
 }
 

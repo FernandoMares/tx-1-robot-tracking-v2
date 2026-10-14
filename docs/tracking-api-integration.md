@@ -4,11 +4,11 @@ Referencia para mantener el cliente HTTP, el proxy y la presentación de datos. 
 
 ## Alcance integrado y procedencia
 
-**Versión actual: `release/integrated-hmi`, commit `7fc34e8`, publicado y desplegado.** Incluye lectura FIFO, selección global, retiro REMOVE y reposicionamiento juntos. En el servidor, el fuente está en `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`, HMI en **3000** y Tracking en **8085**. La capacitación usa ese código y ese entorno real; no requiere levantar otro frontend ni un simulador. Las filas siguientes explican la procedencia de los cambios, no limitaciones funcionales de esta rama.
+**Rama actual: `release/integrated-hmi`.** Base funcional desplegada documentada `7fc34e8`, checkpoint documental anterior `c7df85a`. El checkpoint de fuente del 13 de octubre de 2026 incluye filtro de removidos, confirmación de REMOVE retenido, reset de mantenimiento y layout compartido de Bundler; estos ajustes aún no están desplegados. En la evidencia del servidor, el fuente era `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`, HMI **3000**, Tracking **8085**. Las filas siguientes identifican procedencia histórica, no prueban qué versión está ejecutándose ahora.
 
 | Fuente | Funciones incluidas |
 | --- | --- |
-| Integrado `7fc34e8`, release actual en 3000 | Reúne la base funcional, FIFO, REMOVE, reposicionamiento y regresiones combinadas. |
+| Integrado `7fc34e8`, último despliegue documentado en 3000 | Reúne la base funcional, FIFO, REMOVE, reposicionamiento y regresiones combinadas; sin los nuevos cambios locales. |
 | Base `600d20f` | Lecturas de Tracking; selecciones globales de Mill Order, Destination e impresora; cliente técnico de corrección `MillOrder1`. |
 | FIFO histórico `77f79bf`, que precedió al integrado en 3000 | Base más campos opcionales FIFO y orden de tarjetas de zona. No incluye UI de retiro ni reposicionamiento. |
 | Manual `5338300`, antecedente incorporado al integrado | Añade `REMOVE` y reposicionamiento por `CurrentZone`. El release manual histórico `ce3c8a9` sólo incorporaba REMOVE. |
@@ -43,7 +43,7 @@ El modo mock no consulta la API. El modo live no cambia automáticamente a mock 
 
 [TrackingApiClient](../lib/tracking-api/client.ts) concentra los métodos públicos; [types.ts](../lib/tracking-api/types.ts) define DTOs y [validation.ts](../lib/tracking-api/validation.ts) valida respuestas en tiempo de ejecución.
 
-`request` usa `fetch` con `cache: "no-store"`, `credentials: "omit"`, señal de cancelación y timeout. En escrituras serializa JSON y envía `Content-Type: application/json`. Distingue errores HTTP, red, timeout, cancelación, JSON inválido y estructura incompatible. No hace reintentos automáticos de PUT o POST.
+`request` usa `fetch` con `cache: "no-store"`, `credentials: "omit"`, señal de cancelación y timeout. En escrituras con payload serializa JSON y envía `Content-Type: application/json`; reset es la excepción explícita sin cuerpo. Distingue errores HTTP, red, timeout, cancelación, JSON inválido y estructura incompatible. No hace reintentos automáticos de PUT o POST.
 
 Los tipos extensibles permiten campos adicionales del backend. Los validadores comprueban los campos conocidos, no convierten arbitrariamente cadenas en números. La normalización explícita se limita a variantes soportadas del contrato.
 
@@ -116,7 +116,7 @@ Según el contrato, la selección global afecta operaciones posteriores: no rees
 
 ## Representación: zona física, peso y FIFO
 
-[groupTrackingBundlesByZone](../lib/tracking-zone-layout.ts) agrupa únicamente por `CurrentZone`. El catálogo y los componentes de planta definen el dibujo; una zona nueva del backend no aparece automáticamente como nueva geometría.
+[groupTrackingBundlesByZone](../lib/tracking-zone-layout.ts) agrupa únicamente por `CurrentZone`, después de excluir los registros cuyo `Status`, normalizado con trim/mayúsculas, sea exactamente `REMOVED`. [bundle-lifecycle.ts](../lib/tracking-api/bundle-lifecycle.ts) centraliza `isRemovedBundle` y `getActiveBundles`; los usan lista, conteos, banner, zonas y báscula. No se presumen terminales otros estados. El snapshot original conserva todos los registros para verificación, diagnóstico y ocupación reportada; no se borra ni muta la respuesta de API. Una zona nueva del backend no crea automáticamente geometría.
 
 La báscula de Overview/Bay 1 recibe sólo bundles en la zona exacta `SGRT2`. Muestra `Weight`, incluido cero; si no hay bundle o falta peso lo indica. No usa SGRT2A/B, no calcula ni inventa unidades.
 
@@ -185,11 +185,11 @@ El `correctBundle` legacy permanece disponible con `TrackingId, OperatorId, Reas
 
 No se implementó `RETIRE` en la UI ni se inventó `MOVE`. El reposicionamiento representa una corrección declarada del estado: no ordena por sí mismo mover maquinaria. El backend conserva las reglas reales de capacidad, rutas y operación.
 
-El panel manual revalida después de la confirmación con metadatos y estado nuevos, compara bundle/escenario/origen/destino y bloquea comandos duplicados localmente. La verificación posterior empieza con un GET nuevo después de la respuesta; no considera suficiente un snapshot anterior. **La implementación actual exige ausencia del TrackingId para retiro** o presencia única en el destino para reposicionamiento. No reconoce `Status: REMOVED` retenido como finalización; ver el caso real siguiente. Si no hay evidencia según ese criterio en la ventana de verificación, permite nueva lectura, no reenvío automático.
+El panel manual revalida después de confirmar con metadatos y estado nuevos, compara bundle/escenario/origen/destino y rechaza seleccionados `REMOVED`. La verificación comienza con un GET posterior a la respuesta. **REMOVE acepta ausencia o exactamente un registro del mismo escenario con `REMOVED`, `CurrentZone: null` y `OccupiedZones: []` explícito.** Una zona/huella residual o identidad duplicada no confirma. Reposition exige presencia única, no removida, en el destino. Si no hay evidencia en la ventana de verificación, permite nueva lectura, no reenvío automático.
 
 Una respuesta 202 con `accepted: true` sólo confirma aceptación/encolado. El tipo de evento del ACK no se presupone `MANUAL_REMOVE`. La prueba anterior de `TRK-0000100822` recibió evento `134331`, `MANUAL_CORRECTION`; el bundle siguió `WAITING_QMOS_ID` y el evento no se encontró en la ventana reciente consultada. Ese caso permanece separado del retiro más reciente. `getRecentEvents` no implementa búsqueda histórica completa ni filtros inventados para encontrarlo.
 
-### REMOVE real: ACK 154605 y representación final por acordar
+### REMOVE histórico en 7fc34e8: ACK 154605 y ajuste local posterior
 
 En el integrado `7fc34e8`, `TRK-0000103919` / bundle `101637697` recibió HTTP **202 Accepted**, Date **Thu, 08 Oct 2026 02:11:48 GMT**, con `accepted: true`, `eventId: 154605`, `eventType: MANUAL_CORRECTION`. La lectura directa posterior de `/state` en 8085 conservó el objeto con:
 
@@ -205,9 +205,7 @@ En el integrado `7fc34e8`, `TRK-0000103919` / bundle `101637697` recibió HTTP *
 }
 ```
 
-El panel muestra ese Status y sigue pendiente porque `manualOutcomeObserved` busca `matches.length === 0` para REMOVE. El contrato define retirada del tracking activo y preservación del historial; no define expresamente si `/state` debe conservar un registro terminal. Está pendiente confirmar con backend esta semántica antes de modificar el criterio de éxito, los conteos y la disponibilidad de acciones sobre retirados. No se aplicó aún un cambio de código para ello.
-
-La lista `TrackingBundlesPanel` y `KpiCards` usan actualmente el arreglo recibido sin excluir por Status. Por tanto, un REMOVED retenido sigue en el listado y en el contador denominado activo. El mapa agrupa por CurrentZone: al quedar null ya no lo ubica en CCH2A. Es una diferencia verificable entre **ocupación visual, registro recibido y estado terminal**, no una prueba de que el PLC haya quedado limpio.
+En `7fc34e8` el panel mostró ese Status y siguió pendiente porque sólo aceptaba `matches.length === 0`; lista y KPI contaban todo el arreglo. El ajuste local posterior implementa la proyección activa y el criterio estricto anteriores. Aún requiere desplegarse y probarse; ni ocultar un registro ni observar estado terminal demuestra por sí solo que el PLC haya quedado limpio o que exista auditoría completa.
 
 ### Rastro del clic y evidencia disponible
 
@@ -221,21 +219,31 @@ Para explicar el flujo en el código, abrir estos símbolos en este orden:
 
 No hay una bitácora persistente de acciones propia del HMI: los mensajes/eventId se mantienen en React y el proxy no los almacena. Para la prueba coordinada se usa F12 → Network, **Preserve log**, y se conserva **Headers** (URL, método, HTTP, Date), **Payload** y **Response**. Preview es otra representación de Response, no evidencia adicional indispensable. No repetir el POST desde DevTools. La auditoría formal y los efectos PLC deben confirmarse en el backend con el evento 154605.
 
-`OperatorId` es texto aportado por el cliente, no identidad autenticada. Los bloqueos de UI no sustituyen autorización, auditoría ni idempotencia del backend.
+`OperatorId` es texto aportado por el cliente, no identidad autenticada. **v0.39, sección 4, exige OperatorId y Reason para REMOVE**; v0.6, sección 5.8, exige operador para correcciones. Para reposicionamiento, Reason está en el ejemplo, sin demostrar obligación contractual general. La implementación actual —formularios disponibles, cliente y proxy— exige ambos en los tres caminos de `/correct`; ocultar operador y hacer Comments/Reason opcional sigue pendiente de acuerdo con backend. No se cambiaron esas validaciones ni se agregaron identificadores/motivos ficticios. No inventar Comments en selecciones globales ni reset.
 
 Antes del POST, el panel vuelve a consultar status, capabilities, map y finalmente state. Solo ofrece reposicionar a nombres únicos de `map.Zones` con `IsEnabled: true`; son posiciones de Tracking, no el catálogo QMOS Destination. Una LCH oculta puede seguir siendo destino si está habilitada en el mapa. Se muestran capacidad/ocupación como información, no como un permiso industrial.
 
-El bloqueo se comparte entre REMOVE y Reposition dentro del panel montado y persiste al cerrarlo, pero no al recargar el navegador. La comprobación posterior inicia lecturas nuevas de state, con espera de dos segundos entre solicitudes durante aproximadamente un minuto. Si el resultado no se confirma, mantiene el bloqueo y permite **Check state again (read only)**; no repite el POST. La validación atómica de capacidad, rutas y PLC corresponde al backend; sigue existiendo una ventana de concurrencia entre GET y POST.
+El bloqueo de `useTrackingCommandGate`, creado en Dashboard, se comparte entre REMOVE, Reposition y reset; persiste al cerrar sus controles, pero no al recargar la página. No bloquea otras estaciones ni constituye autenticación. La comprobación manual posterior inicia GET nuevos con espera de dos segundos entre solicitudes durante aproximadamente un minuto. Si no confirma, mantiene bloqueo y permite **Check state again (read only)**; no repite el POST. La validación atómica de capacidad, rutas y PLC corresponde al backend; permanece una ventana entre GET y POST.
 
 Procedimientos detallados: [retiro manual](manual-bundle-removal-commissioning.md) y [reposicionamiento](manual-bundle-reposition-commissioning.md). Combinar funciones no autoriza su ejecución sobre material real.
 
 ## Proxy y superficie permitida
 
-El [Route Handler](../app/tracking-api/%5B...path%5D/route.ts) permite los GET enumerados, los tres PUT globales y los tres cuerpos de corrección descritos arriba. Rutas/métodos fuera de la allowlist reciben 404. Las escrituras requieren JSON y validan/sanitizan los campos; el query `max` de órdenes admite un único entero de 1 a 100.
+El [Route Handler](../app/tracking-api/%5B...path%5D/route.ts) permite los GET enumerados, los tres PUT globales, los tres cuerpos de corrección y el POST reset explícito sin cuerpo. Rutas/métodos fuera de la allowlist reciben 404. Las escrituras con payload requieren JSON y validan/sanitizan campos; reset rechaza cuerpo y query. El query `max` de órdenes admite un único entero de 1 a 100.
 
 El proxy transmite la respuesta del backend sin seleccionar propiedades del estado. En particular, no elimina los campos FIFO del JSON recibido. Devuelve errores del backend; problemas de configuración o conexión del proxy pueden producir 503 o 502.
 
-Siguen fuera de alcance del proxy: reset, escritura OPC, inyección de eventos y POST de QMOS, incluidos crear e imprimir. No habilitarlos porque aparezcan en capabilities. La allowlist reduce superficie, pero no aporta login, roles, control multiusuario ni protección industrial. El acceso de red/TLS debe acordarse con IT.
+Siguen fuera de alcance del proxy: escritura OPC, inyección de eventos y POST de QMOS, incluidos crear e imprimir. No habilitarlos porque aparezcan en capabilities. La allowlist reduce superficie, pero no aporta login, roles, control multiusuario ni protección industrial. El acceso de red/TLS debe acordarse con IT.
+
+## Reset global de mantenimiento — cambio local pendiente de commissioning
+
+`TrackingResetControl` es independiente del retiro individual. Antes del envío exige escribir `RESET`, declarar autorización operativa y aceptar la confirmación global nativa. Lee nuevamente status/capabilities/state y `resetPreflightProblem` comprueba servicio, capability anunciada, escenario y alcance de IDs activos consistente con el confirmado. Comparar IDs no constituye bloqueo atómico del backend ni una comprobación física.
+
+`TrackingApiClient.resetTracking` envía **POST `/api/tracking/reset` sin cuerpo**. La respuesta contractual esperada es HTTP 202 con `accepted: true`, `eventType: "RESET"` y `eventId`, sin `trackingId` obligatorio. `TrackingResetAcceptedDto` / `isTrackingResetAcceptedDto` validan boolean de aceptación, ID positivo y tipo RESET; la UI comprueba que `accepted` sea true. El transporte acepta status HTTP satisfactorios, no compara exclusivamente 202. El header HMI `X-Tracking-Reset-Confirmation: RESET` declara intención explícita y no se reenvía al servicio. El proxy rechaza Origin incompatible, cuerpo o query; el header y la casilla **no autentican ni autorizan usuarios**.
+
+Tras el acuse se hacen GET nuevos: se distingue aceptación, resultado observado, pendiente e incierto. Para observar estado vaciado se exige un alcance inicial con activos, escenario/identidades coherentes y cero activos posteriores; si quedan registros, todos deben ser REMOVED con zona null y huella explícita vacía. Un estado inicialmente vacío no demuestra que reset se procesó; nuevas entradas pueden impedir esa observación. Un timeout/resultado incierto no provoca otro POST: consultar evento/auditoría. El lock compartido evita solapar reset y acciones manuales sólo desde ese Dashboard.
+
+No se ha ejecutado reset real como parte de este desarrollo ni se presume aprobación industrial. Ver [commissioning de reset](tracking-reset-commissioning.md). La implementación de correcciones mantiene OperatorId/Reason obligatorios; la exigencia contractual explícita de ambos corresponde a REMOVE. No se añaden al cuerpo vacío de reset.
 
 ## Criterios de verificación
 

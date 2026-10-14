@@ -73,7 +73,7 @@ payload, acuse pendiente, bloqueo al cerrar/reabrir, retiro y respuesta incierta
 
 ## Una prueba coordinada en el servidor
 
-La sesión utiliza el release integrado en 3000 con la API real, sin levantar simulador. El [procedimiento de retiro](manual-bundle-removal-commissioning.md) explica las precauciones y verificaciones. La aprobación de despliegue no sustituye autorizar el bundle/origen/destino concretos. No usar el caso ya retirado `TRK-0000103919` como candidato de otra operación: el backend lo reportó REMOVED, y esa condición aún no está tratada completamente por los guards del Front.
+La sesión utiliza el release integrado en 3000 con la API real, sin levantar simulador. El [procedimiento de retiro](manual-bundle-removal-commissioning.md) distingue `7fc34e8` de los ajustes locales posteriores. El despliegue no sustituye autorizar bundle/origen/destino. No usar el caso retirado `TRK-0000103919`: el código local ya filtra REMOVED y lo rechaza en preflight, pero aún no está desplegado. La implementación exige OperatorId/Reason; el operador tiene requisito base contractual, mientras Reason sólo consta en el ejemplo de reposicionamiento y su obligatoriedad backend debe confirmarse. El lock local se comparte con reset, no entre estaciones.
 
 1. Registrar commit realmente compilado, version API, escenario, hora y operador.
 2. Con el responsable, elegir TrackingId, origen y destino compatibles con la

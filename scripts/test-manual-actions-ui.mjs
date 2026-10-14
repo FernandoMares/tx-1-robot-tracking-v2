@@ -3,6 +3,7 @@
 // NEXT_PUBLIC_TRACKING_API_URL=/tracking-api. Run: node scripts/test-manual-actions-ui.mjs
 // EDGE_PATH may point to Edge/Chrome/Chromium on any OS. The runner creates its
 // own loopback simulator/HMI, blocks other page origins, and removes its profile.
+// Add --layout-only to check Overview/Bundler geometry without any command POST.
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
@@ -14,6 +15,7 @@ import { startSimulator } from "./tracking-api-test-helpers.mjs"
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const artifacts = resolve(root, "dist")
 const standalone = resolve(root, ".next/standalone")
+const layoutOnly = process.argv.includes("--layout-only")
 const browser = process.env.EDGE_PATH || [
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
   "C:/Program Files/Google/Chrome/Application/chrome.exe",
@@ -55,7 +57,7 @@ const killOwned = () => { for (const child of owned) if (child.exitCode === null
 process.once("exit", killOwned)
 
 try {
-  simulator = await startSimulator({ disabledZones: "LCH2A" })
+  simulator = await startSimulator({ disabledZones: "LCH2A", allowReset: true })
   const initialState = await (await simulator.fetch(simulator.baseUrl + "/api/tracking/state")).json()
   cpSync(resolve(root, ".next/static"), resolve(standalone, ".next/static"), { recursive: true })
   if (existsSync(resolve(root, "public"))) cpSync(resolve(root, "public"), resolve(standalone, "public"), { recursive: true })
@@ -79,14 +81,22 @@ try {
   const pending = new Map()
   const requests = []
   const commandRequests = []
+  const resetRequests = []
   const runtimeErrors = []
   const interceptionErrors = []
+  const cancelledReads = []
+  const cancelledNetworkRequests = new Set()
   const checks = []
+  const screenshots = []
   let sequence = 0
+  let reloadGeneration = 0
+  let reloadInProgress = false
   let dialogWaiter
   let stateOverride = null
   let mapOverride = null
   let commandOverride = null
+  let capabilitiesOverride = null
+  let resetOverride = null
   function cdp(method, params = {}) {
     const id = ++sequence
     return new Promise((done, reject) => {
@@ -106,13 +116,56 @@ try {
     const url = new URL(request.url)
     if (url.origin !== appUrl) return cdp("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" })
     requests.push({ method: request.method, path: url.pathname })
+    if (layoutOnly && request.method !== "GET") return cdp("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" })
     if (request.method === "POST" && url.pathname.endsWith("/api/tracking/correct")) {
       commandRequests.push(JSON.parse(request.postData))
       if (commandOverride) return fulfill(requestId, commandOverride.body, commandOverride.status)
     }
-    if (request.method === "GET" && url.pathname.endsWith("/api/tracking/state") && stateOverride) return fulfill(requestId, stateOverride)
+    if (request.method === "POST" && url.pathname.endsWith("/api/tracking/reset")) {
+      resetRequests.push({ body: request.postData, headers: request.headers })
+      if (resetOverride) return fulfill(requestId, resetOverride.body, resetOverride.status)
+    }
+    if (request.method === "GET" && url.pathname.endsWith("/api/tracking/state") && stateOverride) {
+      return fulfill(requestId, typeof stateOverride === "function" ? await stateOverride() : stateOverride)
+    }
     if (request.method === "GET" && url.pathname.endsWith("/api/tracking/map") && mapOverride) return fulfill(requestId, mapOverride)
+    if (request.method === "GET" && url.pathname.endsWith("/api/tracking/capabilities") && capabilitiesOverride) return fulfill(requestId, capabilitiesOverride)
     return cdp("Fetch.continueRequest", { requestId })
+  }
+  async function handlePausedRequest(params) {
+    const generation = reloadGeneration
+    const startedDuringReload = reloadInProgress
+    try {
+      await intercept(params)
+    } catch (error) {
+      const url = new URL(params.request.url)
+      const crossedReload = generation < reloadGeneration || startedDuringReload || reloadInProgress
+      const isCancelledReadCandidate = params.request.method === "GET" && url.origin === appUrl &&
+        /^\/tracking-api\/api\/(tracking|qmos)\//.test(url.pathname) &&
+        (crossedReload || url.pathname === "/tracking-api/api/tracking/state") &&
+        error.cdpCode === -32602 && error.cdpMessage === "Invalid InterceptionId." && params.networkId
+      // Reload can cancel an intercepted poll while the test asynchronously
+      // obtains its fixture. Chromium then rejects that now-expired Fetch id.
+      // Require the matching Network.loadingFailed cancellation, not merely an
+      // error string. State verification also intentionally aborts its GET when
+      // the command resolves. Never suppress writes, other non-reload reads,
+      // uncancelled requests, or any other protocol error.
+      if (isCancelledReadCandidate) {
+        const deadline = Date.now() + 200
+        while (!cancelledNetworkRequests.has(params.networkId) && Date.now() < deadline) await delay(10)
+        if (cancelledNetworkRequests.has(params.networkId)) {
+          cancelledReads.push({
+            method: params.request.method, path: url.pathname, networkId: params.networkId,
+            reason: crossedReload ? "test-page-reload" : "browser-cancelled-state-read",
+          })
+          return
+        }
+      }
+      interceptionErrors.push({
+        method: params.request.method, path: url.pathname, networkId: params.networkId,
+        generation, reloadGeneration, startedDuringReload, error: error.message,
+      })
+    }
   }
   socket.addEventListener("message", ({ data }) => {
     const message = JSON.parse(data)
@@ -121,10 +174,17 @@ try {
       if (!operation) return
       clearTimeout(operation.timer)
       pending.delete(message.id)
-      message.error ? operation.reject(new Error(JSON.stringify(message.error))) : operation.done(message.result)
+      if (message.error) {
+        const error = new Error(JSON.stringify(message.error))
+        error.cdpCode = message.error.code
+        error.cdpMessage = message.error.message
+        operation.reject(error)
+      } else operation.done(message.result)
     } else if (message.method === "Runtime.exceptionThrown") runtimeErrors.push(message.params.exceptionDetails.text)
     else if (message.method === "Page.javascriptDialogOpening") dialogWaiter?.(message.params)
-    else if (message.method === "Fetch.requestPaused") void intercept(message.params).catch((error) => interceptionErrors.push(error.message))
+    else if (message.method === "Page.frameNavigated" && !message.params.frame.parentId) reloadInProgress = false
+    else if (message.method === "Network.loadingFailed" && message.params.canceled === true) cancelledNetworkRequests.add(message.params.requestId)
+    else if (message.method === "Fetch.requestPaused") void handlePausedRequest(message.params)
   })
   async function evaluate(expression) {
     const result = await cdp("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true, userGesture: true })
@@ -142,10 +202,13 @@ try {
     await evaluate(`{const element=document.getElementById(${JSON.stringify(id)});const prototype=element.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:element.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(element,${JSON.stringify(value)});element.dispatchEvent(new Event(element.tagName==='SELECT'?'change':'input',{bubbles:true}));}`)
   }
   async function selectAction(trackingId, action) {
-    await evaluate(`document.querySelector('[title="${trackingId}"]').closest('li').querySelector('button[aria-label^="${action}"]').click()`)
+    // A confirmed command refreshes tracking and briefly disables actions.
+    // Wait for availability and click in the same browser task; clicking a
+    // disabled button immediately after the success message is a no-op.
+    await waitFor(`(()=>{const button=document.querySelector('[title="${trackingId}"]')?.closest('li')?.querySelector('button[aria-label^="${action}"]');if(!button||button.disabled)return false;button.click();return true})()`, action + " available")
     await waitFor(`document.getElementById('${action === "Reposition" ? "reposition" : "removal"}-operator-id')`, action + " form")
   }
-  async function submitConfirmation({ accept = true, holdMs = 0, beforeAccept } = {}) {
+  async function submitConfirmation({ accept = true, holdMs = 0, beforeAccept, kind = "manual" } = {}) {
     let dialogTimer
     const dialog = new Promise((done, reject) => {
       dialogWaiter = done
@@ -155,7 +218,7 @@ try {
     try {
       const opened = await dialog
       assert.equal(opened.type, "confirm")
-      assert.ok(opened.message.includes("TrackingId:"))
+      assert.ok(opened.message.includes(kind === "reset" ? "RESET ALL TRACKING" : "TrackingId:"))
       if (holdMs) await delay(holdMs)
       beforeAccept?.()
       await cdp("Page.handleJavaScriptDialog", { accept })
@@ -173,17 +236,125 @@ try {
     assert.equal(await evaluate(`Array.from(document.querySelectorAll('li button[aria-label^="Reposition"],li button[aria-label^="Remove"]')).every(button=>button.disabled)`), true)
     assert.equal(await evaluate(`document.querySelector('form button[type="submit"]')===null`), true)
   }
+  const resetButton = `Array.from(document.querySelectorAll('button')).find(button=>['Reset tracking','Reset pending'].includes(button.textContent.trim()))`
+  async function closeSheet() {
+    await evaluate(`document.querySelector('[data-slot="sheet-close"]').click()`)
+    await waitFor(`!document.querySelector('[data-slot="sheet-content"]')`, "sheet closed")
+  }
+  async function openReset() {
+    await waitFor(`${resetButton} && !(${resetButton}).disabled`, "reset control available")
+    await evaluate(`(${resetButton}).click()`)
+    await waitFor(`document.querySelector('[data-slot="sheet-content"]')`, "reset sheet opened")
+  }
+  async function authorizeReset() {
+    await input("tracking-reset-confirmation", "RESET")
+    await evaluate(`{const box=document.querySelector('form input[type="checkbox"]');if(!box.checked)box.click()}`)
+    await waitFor(`!document.querySelector('form button[type="submit"]').disabled`, "reset authorized and typed")
+  }
+  async function reloadTestPage(activeCount) {
+    // Only used to separate injected test scenarios on this owned loopback HMI.
+    // Reload is NOT a production recovery procedure for an unresolved command.
+    await reloadOwnedPage()
+    await waitFor(`document.querySelector('button[aria-label^="View tracked bundles"]')?.getAttribute('aria-label').includes('${activeCount} active')`, "fresh isolated test page")
+  }
+  async function reloadOwnedPage() {
+    reloadGeneration += 1
+    reloadInProgress = true
+    await cdp("Page.reload")
+  }
   async function screenshot(name) {
     // The sheet is present in the DOM before its opening transition finishes.
     await delay(400)
     const result = await cdp("Page.captureScreenshot", { format: "png", captureBeyondViewport: false })
     writeFileSync(resolve(artifacts, name), Buffer.from(result.data, "base64"))
+    screenshots.push("dist/" + name)
+  }
+  async function selectView(label, diagramLabel) {
+    await evaluate(`Array.from(document.querySelectorAll('nav[aria-label="Plant views"] button')).find(button=>button.textContent.trim()===${JSON.stringify(label)} && button.getBoundingClientRect().width>0).click()`)
+    await waitFor(`document.querySelector('[role="group"][aria-label=${JSON.stringify(diagramLabel)}]')`, label + " diagram")
+  }
+  async function diagramGeometry(label, logicalWidth) {
+    return evaluate(`(()=>{
+      const root=document.querySelector('[role="group"][aria-label=${JSON.stringify(label)}]');
+      const bounds=root.getBoundingClientRect();const scale=bounds.width/${logicalWidth};
+      const cards=Array.from(root.querySelectorAll('[data-zone-name]')).map(card=>{
+        const rect=card.getBoundingClientRect();
+        return {name:card.dataset.zoneName,x:(rect.left-bounds.left)/scale,y:(rect.top-bounds.top)/scale,width:rect.width/scale,height:rect.height/scale};
+      });
+      return {cards,width:bounds.width/scale,height:bounds.height/scale,scale};
+    })()`)
+  }
+  function assertZoneNames(geometry, expected) {
+    assert.deepEqual(geometry.cards.map(card=>card.name).sort(), [...expected].sort(), "Exactly the intended unique zones are rendered")
   }
   await cdp("Page.enable")
   await cdp("Runtime.enable")
+  await cdp("Network.enable")
   await cdp("Fetch.enable", { patterns: [{ urlPattern: "*" }] })
   await cdp("Page.navigate", { url: appUrl })
   await waitFor(`document.querySelector('button[aria-label^="View tracked bundles"]')?.getAttribute('aria-label').includes('10 active')`, "live tracking with owned simulator")
+  const overviewLabel = "Mirrored Exit Tracking physical overview"
+  const bundlerLabel = "Bundler overview without the stacker branch"
+  const omittedZones = ["ERT1A", "ERT1B", "ERT2C", "ERT2D", "STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"]
+  const retainedZones = ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD", "RTTY1", "RTTY2", "IMRT2", "CCH2A", "CCH2B", "SGRT2A", "SGRT2B", "CCH1A", "CCH1B", "SGRT1A", "SGRT1B", "SGRT1", "SGRT2", "NCCT1", "NCCT2", "IMRT1"]
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1350, deviceScaleFactor: 1, mobile: false })
+  await waitFor(`document.querySelector('[role="group"][aria-label="${overviewLabel}"] [data-zone-name="RTOUTA"]')`, "Overview zones ready")
+  const overviewGeometry = await diagramGeometry(overviewLabel, 1480)
+  assertZoneNames(overviewGeometry, [...retainedZones, ...omittedZones])
+  await selectView("Bundler", bundlerLabel)
+  await waitFor(`Math.abs(document.querySelector('[role="group"][aria-label="${bundlerLabel}"]').getBoundingClientRect().width-1300)<1`, "Bundler desktop scale settled")
+  const bundlerGeometry = await diagramGeometry(bundlerLabel, 1000)
+  assertZoneNames(bundlerGeometry, retainedZones)
+  const originalAnchor = overviewGeometry.cards.find(card=>card.name === "RTOUTA")
+  const bundlerAnchor = bundlerGeometry.cards.find(card=>card.name === "RTOUTA")
+  for (const card of bundlerGeometry.cards) {
+    const original = overviewGeometry.cards.find(candidate=>candidate.name === card.name)
+    for (const axis of ["x", "y"]) {
+      assert.ok(Math.abs((card[axis]-bundlerAnchor[axis])-(original[axis]-originalAnchor[axis])) < 0.3, card.name + " preserves Overview " + axis + " relative position")
+    }
+    assert.ok(Math.abs(card.width-original.width)<0.3 && Math.abs(card.height-original.height)<0.3, card.name + " preserves card size")
+    assert.ok(card.x>=0 && card.y>=0 && card.x+card.width<=bundlerGeometry.width+0.3 && card.y+card.height<=bundlerGeometry.height+0.3, card.name + " is not clipped by the canvas")
+  }
+  const handoffTop = bundlerGeometry.cards.find(card=>card.name === "SGRT2A").y
+  for (const name of ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD", "RTTY1", "RTTY2", "IMRT2"]) {
+    assert.ok(Math.abs(bundlerGeometry.cards.find(card=>card.name === name).y-handoffTop)<=2, name + " aligns with SGRT2A")
+  }
+  for (const name of ["CCH1A", "CCH1B", "CCH2A", "CCH2B"]) {
+    assert.ok(bundlerGeometry.cards.find(card=>card.name === name).height>=149, name + " retains five-row buffer height")
+  }
+  assert.equal(await evaluate(`Boolean(document.querySelector('section[aria-label="Bundler"] aside[aria-label^="Scale Weight Station, showing"]')) && Boolean(document.querySelector('section[aria-label="Bundler"] aside[aria-label="Robot 2 physical equipment context"]'))`), true)
+  assert.equal(await evaluate(`document.querySelector('section[aria-label="Bundler"] [aria-label="SGRT2 bundle weight"]')?.textContent.includes('SGRT2 weight')`), true)
+  assert.equal(await evaluate(`document.querySelector('section[aria-label="Bundler"]').innerText.includes('STK Stackers')`), false)
+  await screenshot("bundler-overview-desktop.png")
+  checks.push("Bundler contains exactly the 20 retained Overview zones, scale and Robot 2; removes only the nine blue-branch zones and retains hidden LCH behavior")
+  checks.push("All retained cards preserve Overview relative geometry and size; RTOUT/RTTY/IMRT2 align with SGRT2A and CCH buffers retain five-row height")
+
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 760, height: 1250, deviceScaleFactor: 1, mobile: false })
+  const bundlerViewport = `document.querySelector('[aria-label="Scrollable Bundler production diagram"]')`
+  await waitFor(`(${bundlerViewport}).scrollWidth>(${bundlerViewport}).clientWidth && Math.abs(document.querySelector('[role="group"][aria-label="${bundlerLabel}"]').getBoundingClientRect().width-900)<1`, "Bundler narrow horizontal overflow")
+  const narrowGeometry = await diagramGeometry(bundlerLabel, 1000)
+  assertZoneNames(narrowGeometry, retainedZones)
+  for (const card of narrowGeometry.cards) {
+    const desktop = bundlerGeometry.cards.find(candidate=>candidate.name===card.name)
+    assert.ok(Math.abs(card.x-desktop.x)<0.3 && Math.abs(card.y-desktop.y)<0.3, card.name + " retains narrow-screen geometry")
+  }
+  await evaluate(`(${bundlerViewport}).scrollLeft=0`)
+  assert.equal(await evaluate(`(()=>{const viewport=(${bundlerViewport}).getBoundingClientRect();const card=document.querySelector('section[aria-label="Bundler"] [data-zone-name="RTOUTA"]').getBoundingClientRect();return card.left>=viewport.left && card.right<=viewport.right})()`), true)
+  await screenshot("bundler-overview-narrow-left.png")
+  await evaluate(`(${bundlerViewport}).scrollLeft=(${bundlerViewport}).scrollWidth`)
+  await waitFor(`(${bundlerViewport}).scrollLeft>0`, "Bundler horizontal scroll changed")
+  assert.equal(await evaluate(`(()=>{const viewport=(${bundlerViewport}).getBoundingClientRect();const card=document.querySelector('section[aria-label="Bundler"] [data-zone-name="SGRT2B"]').getBoundingClientRect();const robot=document.querySelector('aside[aria-label="Robot 2 physical equipment context"]').getBoundingClientRect();return card.left>=viewport.left && card.right<=viewport.right && robot.right<=viewport.right})()`), true, "Rightmost zones and Robot 2 are reachable by horizontal scroll")
+  await screenshot("bundler-overview-narrow-right.png")
+  checks.push("Narrow viewport keeps all 20 cards with unchanged geometry; horizontal scrolling reaches both Bundler outputs and rightmost zones/Robot 2 without clipping")
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false })
+  await selectView("Plant Overview", overviewLabel)
+  assertZoneNames(await diagramGeometry(overviewLabel, 1480), [...retainedZones, ...omittedZones])
+  assert.equal(commandRequests.length, 0)
+  assert.equal(resetRequests.length, 0)
+  assert.equal(requests.some(request=>request.method!=="GET"), false, "Layout navigation must remain read-only")
+  checks.push("Returning to Overview restores all 29 original zones; all layout checks sent GET requests only")
+
+  if (!layoutOnly) {
   await evaluate(`document.querySelector('button[aria-label^="View tracked bundles"]').click()`)
   await waitFor(`document.querySelector('[title="SIM-TRACK-HOLD"]')`, "bundle panel")
   await selectAction("SIM-TRACK-HOLD", "Reposition")
@@ -221,7 +392,7 @@ try {
   mapOverride = null
   // Reload the test page after releasing the injected map so its metadata
   // cache is rebuilt from the simulator, not the synthetic disabled map.
-  await cdp("Page.reload")
+  await reloadOwnedPage()
   await waitFor(`document.querySelector('button[aria-label^="View tracked bundles"]')?.getAttribute('aria-label').includes('10 active')`, "restored map after reload")
   await evaluate(`document.querySelector('button[aria-label^="View tracked bundles"]').click()`)
   await waitFor(`document.querySelector('[title="SIM-TRACK-HOLD"]')`, "reopened bundle panel")
@@ -248,6 +419,7 @@ try {
   }
   await reopenLockedSheet()
   assert.equal(commandRequests.length, 1)
+  assert.equal(await evaluate(`(${resetButton}).disabled`), true, "Pending manual action must block global reset")
   await screenshot("manual-reposition-pending.png")
   stateOverride = null
   await waitFor(`document.body.innerText.includes('101623999 is now reported at SGRT2A.')`, "observed reposition success")
@@ -260,12 +432,32 @@ try {
   await input("removal-operator-id", " a1 ")
   await input("removal-reason", " Simulator removal smoke ")
   await waitFor(`!document.querySelector('form button[type="submit"]').disabled`, "removal form")
+  const retainedRemoved = {
+    ...movedState.Bundles.find((bundle) => bundle.TrackingId === "SIM-TRACK-HOLD"),
+    Status: "REMOVED", CurrentZone: null, OccupiedZones: [],
+  }
+  // Model the observed backend variant: the selected record remains in /state
+  // as REMOVED with cleared occupancy after the real simulator REMOVE succeeds.
+  let observedRetainedState = false
+  stateOverride = async () => {
+    const state = await (await simulator.fetch(simulator.baseUrl + "/api/tracking/state")).json()
+    if (!state.Bundles.some((bundle) => bundle.TrackingId === retainedRemoved.TrackingId)) {
+      state.Bundles.push(retainedRemoved)
+      observedRetainedState = true
+    }
+    return state
+  }
   await submitConfirmation()
   await waitFor(`document.body.innerText.includes('101623999 is no longer in active tracking.')`, "observed removal success")
   assert.deepEqual(commandRequests[1], { TrackingId: "SIM-TRACK-HOLD", OperatorId: "a1", Reason: "Simulator removal smoke", Operation: "REMOVE" })
   const removedState = await (await simulator.fetch(simulator.baseUrl + "/api/tracking/state")).json()
   assert.deepEqual(removedState.Bundles, initialState.Bundles.filter((bundle) => bundle.TrackingId !== "SIM-TRACK-HOLD"))
-  checks.push("removal regression passes and preserves all other bundles")
+  assert.equal(observedRetainedState, true, "Success must be observed with the REMOVED record retained")
+  await waitFor(`document.querySelector('button[aria-label^="View tracked bundles"]')?.getAttribute('aria-label').includes('9 active')`, "REMOVED excluded from active count")
+  assert.equal(await evaluate(`document.querySelector('[data-slot="sheet-content"] li [title="SIM-TRACK-HOLD"]')===null`), true)
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll('dl[aria-label="Current tracking metrics"] dt')).find(dt=>dt.textContent==='Active tracked bundles').parentElement.querySelector('dd').textContent`), "9")
+  stateOverride = null
+  checks.push("removal preserves other bundles; retained REMOVED with empty occupancy confirms success and disappears from the active list and KPI")
 
   await selectAction("SIM-DEMO-BUFFER-1", "Reposition")
   await input("reposition-operator-id", "a1")
@@ -277,6 +469,7 @@ try {
   await waitFor(`document.body.innerText.includes('It may have been accepted')`, "uncertain response")
   await reopenLockedSheet()
   assert.equal(commandRequests.length, 3)
+  assert.equal(await evaluate(`(${resetButton}).disabled`), true, "Uncertain manual action must block reset")
   await evaluate(`window.__originalNow=Date.now;Date.now=()=>window.__originalNow()+61000`)
   await waitFor(`document.body.innerText.includes('Check state again (read only)')`, "verification deadline without waiting one minute")
   await screenshot("manual-reposition-uncertain.png")
@@ -285,10 +478,103 @@ try {
   assert.equal(commandRequests.length, 3, "Read-only verification must not resend")
   await evaluate(`Date.now=window.__originalNow`)
   checks.push("uncertain response locks both actions; deadline offers read-only checking without resend")
-  assert.ok(!requests.some((request) => request.path.endsWith("/api/tracking/reset")))
+  assert.equal(resetRequests.length, 0, "Manual action tests must never send reset")
+
+  // Reset cases are independent of the preceding synthetic manual failure.
+  // The real simulator still has exactly the nine records captured above.
+  commandOverride = null
+  await reloadTestPage(9)
+  await openReset()
+  await waitFor(`document.getElementById('tracking-reset-confirmation')`, "reset confirmation input")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true)
+  await input("tracking-reset-confirmation", "RESET")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Authorization acknowledgement is required")
+  await evaluate(`document.querySelector('form input[type="checkbox"]').click()`)
+  await input("tracking-reset-confirmation", "reset")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Exact uppercase RESET is required")
+  await authorizeReset()
+  await screenshot("tracking-reset-confirmation.png")
+  await submitConfirmation({ kind: "reset", accept: false })
+  assert.equal(resetRequests.length, 0)
+  checks.push("global reset requires typed RESET and maintenance acknowledgement; native cancel sends no POST")
+
+  const noResetCapabilities = await (await simulator.fetch(simulator.baseUrl + "/api/tracking/capabilities")).json()
+  noResetCapabilities.commands = noResetCapabilities.commands.filter((command) => !command.includes("/api/tracking/reset"))
+  await submitConfirmation({ kind: "reset", beforeAccept: () => { capabilitiesOverride = noResetCapabilities } })
+  await waitFor(`document.body.innerText.includes('no longer advertises POST /api/tracking/reset')`, "fresh reset capability rejection")
+  assert.equal(resetRequests.length, 0)
+  capabilitiesOverride = null
+  await reloadTestPage(9)
+  await openReset()
+  await authorizeReset()
+  const changedResetScope = structuredClone(removedState)
+  changedResetScope.Bundles.pop()
+  await submitConfirmation({ kind: "reset", beforeAccept: () => { stateOverride = changedResetScope } })
+  await waitFor(`document.body.innerText.includes('set of active bundles changed while confirming')`, "changed reset scope rejection")
+  assert.equal(resetRequests.length, 0)
+  stateOverride = null
+  checks.push("fresh reset capability removal and changed active scope each prevent POST")
+
+  await reloadTestPage(9)
+  await openReset()
+  await authorizeReset()
+  const beforeResetPreflight = requests.length
+  await submitConfirmation({ kind: "reset", beforeAccept: () => { stateOverride = removedState } })
+  await waitFor(`document.body.innerText.includes('Reset request accepted') && document.body.innerText.includes('Acceptance is not completion')`, "accepted reset stays pending")
+  assert.equal(resetRequests.length, 1)
+  assert.ok(resetRequests[0].body === undefined || resetRequests[0].body === "", "Reset must not send a JSON body")
+  assert.equal(new Headers(resetRequests[0].headers).get("X-Tracking-Reset-Confirmation"), "RESET")
+  const resetPreflight = requests.slice(beforeResetPreflight)
+  const resetPostIndex = resetPreflight.findIndex((request) => request.method === "POST")
+  for (const endpoint of ["status", "capabilities", "state"]) {
+    assert.ok(resetPreflight.slice(0, resetPostIndex).some((request) => request.path.endsWith("/api/tracking/" + endpoint)), "Fresh " + endpoint + " before reset POST")
+  }
+  const emptySimulatorState = await (await simulator.fetch(simulator.baseUrl + "/api/tracking/state")).json()
+  assert.equal(emptySimulatorState.Bundles.length, 0, "Only the owned simulator was actually reset")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]')===null`), true)
+  await screenshot("tracking-reset-pending.png")
+  await closeSheet()
+  await evaluate(`document.querySelector('button[aria-label^="View tracked bundles"]').click()`)
+  await waitFor(`document.querySelector('[data-slot="sheet-content"] li button[aria-label^="Reposition"]')`, "manual panel while reset pending")
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll('li button[aria-label^="Reposition"],li button[aria-label^="Remove"]')).every(button=>button.disabled)`), true)
+  await closeSheet()
+  await openReset()
+  await waitFor(`document.body.innerText.includes('Reset request accepted')`, "pending reset survives close/reopen")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]')===null`), true)
+  assert.equal(resetRequests.length, 1)
+  assert.equal(commandRequests.length, 3)
+  stateOverride = null
+  await waitFor(`document.body.innerText.includes('subsequent API snapshot reports no active bundles')`, "fresh cleared state observed after reset")
+  await waitFor(`document.querySelector('button[aria-label^="View tracked bundles"]')?.getAttribute('aria-label').includes('0 active')`, "zero active bundles after reset")
+  assert.equal(resetRequests.length, 1)
+  checks.push("one bodyless reset receives 202 but remains pending; shared lock blocks manual actions and survives close/reopen; fresh empty state confirms observation")
+
+  // A distinct injected response-loss scenario. The actual owned backend stays
+  // empty; the test supplies a nonempty baseline and intercepts the next POST.
+  stateOverride = removedState
+  resetOverride = { status: 500, body: { error: "Simulated reset response uncertainty" } }
+  await reloadTestPage(9)
+  await openReset()
+  await authorizeReset()
+  await submitConfirmation({ kind: "reset" })
+  await waitFor(`document.body.innerText.includes('reset may already have been accepted')`, "uncertain reset result")
+  assert.equal(resetRequests.length, 2)
+  await closeSheet()
+  await openReset()
+  await waitFor(`document.body.innerText.includes('reset may already have been accepted')`, "uncertain reset survives close/reopen")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]')===null`), true)
+  await evaluate(`window.__originalNow=Date.now;Date.now=()=>window.__originalNow()+61000`)
+  await waitFor(`document.body.innerText.includes('Check state again (read only)')`, "reset verification deadline")
+  await evaluate(`Array.from(document.querySelectorAll('button')).find(button=>button.textContent.includes('Check state again (read only)')).click()`)
+  await delay(300)
+  assert.equal(resetRequests.length, 2, "Read-only reset verification must not resend")
+  assert.equal(commandRequests.length, 3)
+  await evaluate(`Date.now=window.__originalNow`)
+  checks.push("uncertain reset keeps the local lock after close/reopen; verification deadline allows GET only and never retries POST")
+  }
   assert.deepEqual(runtimeErrors, [])
   assert.deepEqual(interceptionErrors, [])
-  console.log(JSON.stringify({ passed: true, checks, screenshots: ["dist/manual-reposition-form.png", "dist/manual-reposition-pending.png", "dist/manual-reposition-uncertain.png"] }, null, 2))
+  console.log(JSON.stringify({ passed: true, mode: layoutOnly ? "layout-only (GET requests only)" : "layout and manual actions", checks, cancelledReads, screenshots }, null, 2))
 } finally {
   socket?.close()
   killOwned()

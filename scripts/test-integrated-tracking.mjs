@@ -155,7 +155,7 @@ test("FIFO, REMOVE, reposition and legacy correction coexist through the actual 
     assert.ok(forwarded.every((request) => ["GET", "POST"].includes(request.method)))
     assert.ok(!forwarded.some((request) => request.path.endsWith("/reset")))
     const forwardedCount = forwarded.length
-    assert.equal((await routeRequest(proxy.POST, removal, { path: "/api/tracking/reset" })).status, 404)
+    assert.equal((await routeRequest(proxy.POST, removal, { path: "/api/tracking/reset" })).status, 403)
     assert.equal((await routeRequest(proxy.POST, { ...reposition, MillOrder1: "mixed" })).status, 400)
     assert.equal(forwarded.length, forwardedCount, "Rejected routes/payloads must not reach the simulator")
     assert.deepEqual((await client.getState()).Bundles, finalState.Bundles)

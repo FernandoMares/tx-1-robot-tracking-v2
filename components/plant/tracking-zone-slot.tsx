@@ -5,6 +5,7 @@ import {
   type TrackingZoneName,
 } from "@/lib/tracking-zone-layout"
 import type { TrackedBundleDto } from "@/lib/tracking-api"
+import { getActiveBundles } from "@/lib/tracking-api/bundle-lifecycle"
 import { getFifoMembership, orderBundlesByLogicalFifo } from "@/lib/tracking-fifo"
 import { cn } from "@/lib/utils"
 
@@ -30,13 +31,14 @@ function bundleIdentity(bundle: TrackedBundleDto): string {
  */
 export function TrackingZoneSlot({
   zoneName,
-  bundles = [],
+  bundles: suppliedBundles = [],
   compact = false,
   compactVisibleRows,
   hasSnapshot = true,
   className,
   style,
 }: TrackingZoneSlotProps) {
+  const bundles = getActiveBundles(suppliedBundles)
   const zone = getTrackingVisualZone(zoneName)
   const fifo = orderBundlesByLogicalFifo(bundles)
   const fifoIncomplete = fifo.hasFifoMembers && (fifo.hasUnorderedMembers || fifo.hasDuplicateSequences)

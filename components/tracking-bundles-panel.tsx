@@ -6,6 +6,8 @@ import { ArrowRightLeft, Boxes, ChevronRight, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import type { TrackingCommandGate } from "@/hooks/use-tracking-command-gate"
+import { getActiveBundles, isRemovedBundle } from "@/lib/tracking-api/bundle-lifecycle"
 import {
   ApiError,
   createTrackingApiClient,
@@ -27,6 +29,7 @@ interface TrackingBundlesPanelProps {
   tracking: TrackingRuntimeState
   config: TrackingApiConfig
   onRefresh: () => void
+  commandGate: TrackingCommandGate
 }
 
 type CommandStatus = "idle" | "checking" | "sending" | "pending" | "uncertain" | "success" | "error"
@@ -55,8 +58,10 @@ function commandMayHaveBeenAccepted(error: unknown): boolean {
 }
 
 /** One command lock shared by removal and reposition; closing the sheet does not reset it. */
-export function TrackingBundlesPanel({ tracking, config, onRefresh }: TrackingBundlesPanelProps) {
-  const bundles = tracking.trackingState?.Bundles
+export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate }: TrackingBundlesPanelProps) {
+  const bundles = useMemo(() => tracking.trackingState
+    ? getActiveBundles(tracking.trackingState.Bundles) : undefined, [tracking.trackingState])
+  const { owner: commandOwner, tryAcquire, release } = commandGate
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [selectedBundle, setSelectedBundle] = useState<TrackedBundleDto | null>(null)
@@ -80,7 +85,7 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh }: TrackingBu
     ? bundles?.find((bundle) => bundle.TrackingId === selectedBundle.TrackingId &&
       bundle.ScenarioName === selectedBundle.ScenarioName) : null
   const currentSelection = selectedStillTracked ?? selectedBundle
-  const commandAvailable = tracking.syncStatus === "live" && supportsManualCorrection(tracking.capabilities)
+  const commandAvailable = commandOwner !== "reset" && tracking.syncStatus === "live" && supportsManualCorrection(tracking.capabilities)
   const zones = useMemo(() => getRepositionZones(tracking.topology), [tracking.topology])
   const selectedZone = zones.find((zone) => zone.ZoneName === destination) ?? null
   const reportedOccupants = reportedZoneOccupants(tracking.trackingState, destination)
@@ -128,6 +133,7 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh }: TrackingBu
             (action === "reposition" ? " This confirms the reported position, not physical equipment motion." : ""),
           )
           commandLocked.current = false
+          release("manual")
           onRefresh()
           return
         }
@@ -145,10 +151,10 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh }: TrackingBu
     }
     void verify()
     return () => { cancelled = true; clearTimeout(timer); controller.abort() }
-  }, [action, client, commandStatus, destination, onRefresh, selectedBundle, verificationRevision])
+  }, [action, client, commandStatus, destination, onRefresh, release, selectedBundle, verificationRevision])
 
   function selectBundle(bundle: TrackedBundleDto, nextAction: ManualTrackingAction) {
-    if (commandLocked.current || busy) return
+    if (commandLocked.current || commandOwner !== null || busy || isRemovedBundle(bundle)) return
     setSelectedBundle(bundle)
     setAction(nextAction)
     setDestination("")
@@ -172,6 +178,7 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh }: TrackingBu
     const displayedState = tracking.trackingState
     const trackingId = selected.TrackingId
     const targetZone = selectedZone
+    if (!tryAcquire("manual")) return
     commandLocked.current = true
     const confirmed = window.confirm(
       (isReposition ? `Reposition bundle ${displayIdentity(selected)} in tracking?` : `Remove bundle ${displayIdentity(selected)} from active tracking?`) +
@@ -183,7 +190,7 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh }: TrackingBu
         : "\nTracking will clear this bundle's occupied positions, including PLC occupancy. " +
           "This does not remove any other bundle. Continue?"),
     )
-    if (!confirmed) { commandLocked.current = false; return }
+    if (!confirmed) { commandLocked.current = false; release("manual"); return }
 
     setCommandStatus("checking")
     setCommandMessage("Checking fresh tracking state and configuration before sending...")
@@ -222,11 +229,13 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh }: TrackingBu
       if (!mounted.current) return
       if (!commandDispatched) {
         commandLocked.current = false
+        release("manual")
         setCommandStatus("idle")
         setCommandMessage(`${describeCommandError(error)} No command was sent. Refreshing tracking; review and confirm again.`)
       } else {
         const uncertain = commandMayHaveBeenAccepted(error)
         commandLocked.current = uncertain
+        if (!uncertain) release("manual")
         setCommandStatus(uncertain ? "uncertain" : "error")
         setCommandMessage(`${describeCommandError(error)} ${uncertain
           ? "It may have been accepted. Do not resend until the backend audit/state is checked."
@@ -254,7 +263,7 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh }: TrackingBu
               <Boxes className="size-5 text-muted-foreground" aria-hidden />Tracked bundles
               <span className="tabular rounded-md bg-muted px-2 py-0.5 text-sm font-semibold">{bundles?.length ?? "—"}</span>
             </SheetTitle>
-            <SheetDescription>Current Tracking snapshot. Manual actions change L2 tracking; they are not physical equipment controls.</SheetDescription>
+            <SheetDescription>Active bundles from the Tracking snapshot; removed records are hidden. Manual actions change L2 tracking; they are not physical equipment controls.</SheetDescription>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             {selectedBundle && (
@@ -316,8 +325,8 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh }: TrackingBu
                       {isReposition ? <ArrowRightLeft aria-hidden /> : <Trash2 aria-hidden />}
                       {isReposition ? "Reposition selected bundle" : "Remove selected bundle"}
                     </Button>
-                    {!commandAvailable && <p className="text-xs text-muted-foreground">Manual actions require a live Tracking connection that advertises the correction command.</p>}
-                    {!selectedStillTracked && <p className="text-xs text-muted-foreground">This bundle is no longer in the current snapshot.</p>}
+                    {!commandAvailable && <p className="text-xs text-muted-foreground">Manual actions require a live Tracking connection that advertises the correction command and no pending global reset.</p>}
+                    {!selectedStillTracked && <p className="text-xs text-muted-foreground">This bundle is no longer active in the current snapshot.</p>}
                   </>
                 )}
                 {commandMessage && <p className="text-xs text-foreground" role={commandStatus === "error" ? "alert" : "status"}>{commandMessage}</p>}

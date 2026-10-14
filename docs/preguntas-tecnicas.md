@@ -1,6 +1,6 @@
 # Preguntas técnicas para la transferencia TX1
 
-Respuestas basadas en el **integrado `7fc34e8`, rama `release/integrated-hmi`, publicado y desplegado**: FIFO y operaciones manuales conviven en el HMI de 3000, con Tracking en 8085. La sesión se realiza sobre el servidor real y el fuente `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`; no se basa en una demo de simulador. “Base” (`600d20f`), “FIFO” (`77f79bf`) y “manual” (`5338300`) identifican antecedentes históricos, no ramas que deban intercambiarse durante el training.
+Respuestas para `release/integrated-hmi`: base funcional desplegada documentada **`7fc34e8`**, checkpoint documental anterior `c7df85a` y checkpoint de fuente del **13 de octubre de 2026**, pendiente de despliegue. La nueva proyección REMOVED, el reset y el layout compartido de Bundler no deben atribuirse al paquete antiguo de 3000. El servidor documentado usa Tracking en 8085 y el fuente `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`. Los commits de base/FIFO/manual son antecedentes, no ramas para intercambiar durante el training.
 
 Las respuestas cortas están escritas para decirse en la sesión. Cuando pidan demostrar algo, abrir el archivo enlazado y buscar el símbolo indicado con Ctrl+F. Una explicación del código no sustituye la validación de efectos PLC/auditoría; el caso real REMOVE del evento 154605 permite mostrar esa diferencia con evidencia.
 
@@ -164,7 +164,7 @@ En el panel manual incluido, tras la confirmación nativa vuelve a leer estado d
 
 ### 36. ¿HTTP 202 o accepted:true significa “retirado”?
 
-No: significa aceptado/encolado. En la prueba más reciente, evento **154605** para `TRK-0000103919`, además del 202 se observó después **Status REMOVED, CurrentZone null y OccupiedZones vacío** directamente en 8085. Son dos evidencias distintas. La HMI todavía exige ausencia total del TrackingId para cerrar REMOVE, por eso quedó pendiente al conservarse el registro. Falta confirmar con backend esa retención y los efectos PLC/auditoría, no demostrar otra vez que el POST sí se envió.
+No: significa aceptado/encolado. En el evento **154605** para `TRK-0000103919`, además del 202 se observó después **REMOVED, CurrentZone null y OccupiedZones vacío** directamente en 8085. La HMI de `7fc34e8` quedó pendiente porque exigía ausencia total. El cambio local reconoce ese resultado sólo con identidad única, mismo escenario y posiciones explícitamente vacías. Aún se deben verificar despliegue, PLC y auditoría; no reenviar para demostrar otra vez el POST.
 
 El evento anterior `134331`, de otro TrackingId (`TRK-0000100822`), quedó `WAITING_QMOS_ID` y no apareció en la ventana reciente consultada. No mezclar ambos resultados. La ventana reciente no es una auditoría histórica completa.
 
@@ -182,7 +182,7 @@ Localizar el contrato y versión, leer la guía Next pertinente, comprobar tipos
 
 ### 40. ¿Qué debe quedar registrado al entregar y qué sigue pendiente?
 
-Commit del fuente (`7fc34e8`), identidad del paquete/build, configuración sin secretos, responsable, resultados y límites de pruebas. Esta versión mantiene el empaquetador legacy y no incluye los helpers de servicio del kit histórico. El integrado ya fue publicado y desplegado; no describirlo como una integración futura. Queda confirmar FIFO con secuencias reales, semántica del REMOVED retenido y evidencia PLC/auditoría. Servicio Windows, recuperación, persistencia y reglas necesitan su propia prueba. Ver [Entrega Git](entrega-git.md), [Despliegue](windows-standalone-deployment.md) y [Estado de entrega](estado-entrega.md).
+Commit del fuente y cambios locales, identidad del paquete/build, configuración sin secretos, responsable y límites de pruebas. `7fc34e8` fue desplegado; los cambios nuevos aún no. Antes de entregar deben identificarse y probarse desde su versión final. Quedan FIFO con secuencias reales, commissioning del filtro/confirmación y reset, PLC/auditoría y acuerdo de campos obligatorios. Se conserva empaquetador legacy sin los helpers del kit. Ver [Entrega Git](entrega-git.md), [Despliegue](windows-standalone-deployment.md) y [Estado de entrega](estado-entrega.md).
 
 ## Preguntas sobre la prueba real y dónde demostrar cada respuesta
 
@@ -196,19 +196,19 @@ De la fila POST `correct` en Network: **Headers** con URL/método/HTTP/Date; **P
 
 ### 43. ¿Por qué sale REMOVED / Unknown zone y al mismo tiempo “pendiente”?
 
-Porque hoy se usan dos criterios diferentes. El listado presenta el Status recibido y convierte una zona nula en “Unknown zone”. El verificador `manualOutcomeObserved` exige `matches.length === 0` para REMOVE: si el backend conserva el registro como REMOVED, nunca cumple esa condición. Abrir [manual-position.ts](../lib/tracking-api/manual-position.ts) y después [tracking-bundles-panel.tsx](../components/tracking-bundles-panel.tsx), buscando `manualOutcomeObserved`, `bundle.Status` y `Unknown zone`. No es que el frontend invente REMOVED ni que faltara enviar la solicitud.
+Eso se observó en `7fc34e8`: el listado mostraba el registro, mientras `manualOutcomeObserved` sólo aceptaba ausencia. El código local ya filtra REMOVED de vistas activas y confirma un único registro retenido del mismo escenario con zona null y huella explícita vacía. Abrir [bundle-lifecycle.ts](../lib/tracking-api/bundle-lifecycle.ts), [manual-position.ts](../lib/tracking-api/manual-position.ts) y el panel. El snapshot completo sigue disponible; pendientes por ocupación residual no se convierten artificialmente en éxito.
 
 ### 44. ¿Entonces sólo cambiamos el if a Status REMOVED y ya quedó?
 
-Primero confirmar con backend qué significa el estado final y qué condiciones de ocupación/membresía deben acompañarlo. El contrato indica retiro del tracking activo y conservación de histórico, pero no define aquí la representación del histórico en `/state`. Si se confirma retención, hay que alinear resultado observado, lista/conteo de activos y acciones permitidas sobre retirados, con pruebas de estado inconsistente, duplicados y escenarios distintos. **Ese ajuste aún no está implementado.** No basta ocultar la tarjeta ni mostrar éxito basándose en el 202.
+No basta Status ni HTTP 202. El ajuste local comprueba además identidad única, escenario coincidente, `CurrentZone === null` y `OccupiedZones` array explícitamente vacío. También admite ausencia; duplicados, zona/huella residual o estado no removido no confirman. Las vistas usan una proyección separada y el preflight bloquea nuevas acciones sobre removidos. Pruebas locales no sustituyen validar efectos operativos y auditoría.
 
 ### 45. ¿El contador de activos ya excluye los retirados?
 
-No. En `components/kpi-cards.tsx`, `KpiCards` usa `liveBundles.length`; el panel también cuenta todo `state.Bundles`. Buscar esas expresiones. El mapa es diferente: `groupTrackingBundlesByZone` agrupa por CurrentZone, de modo que un REMOVED con zona nula no ocupa CCH2A visualmente, pero sigue en lista y contador. Es parte de la misma semántica por acordar, no evidencia de que el bundle continúe físicamente en la mesa.
+Sí en el nuevo código local: KPI, banner, listado, agrupación de zonas y peso usan `getActiveBundles`. Sólo excluye REMOVED normalizado, sin inventar otros estados terminales. `state.Bundles` conserva todos los registros: la HMI no borra historia ni pierde evidencia de una huella inconsistente. El paquete histórico `7fc34e8` no tenía ese filtro.
 
 ### 46. ¿Puedo refrescar la página y volver a enviar para que quite el pendiente?
 
-No como método de diagnóstico. Recargar borra el bloqueo local, pero no revierte ni cancela el comando aceptado por el backend. Actualmente no hay un filtro específico que impida seleccionar un registro retenido sólo por Status REMOVED después de recargar. Usar **Check state again (read only)** y consultar backend con el eventId; no repetir POST, cambiar a RETIRE o hacer RESET para forzar el resultado visual.
+No como diagnóstico. Recargar borra el bloqueo local, pero no revierte ni cancela el comando backend. El nuevo filtro/preflight impide seleccionar removidos, pero eso no proporciona idempotencia de backend ni justifica repetir una acción incierta. Usar **Check state again (read only)** y consultar el eventId; no repetir POST ni usar RETIRE/RESET para forzar el resultado visual.
 
 ### 47. ¿Dónde puedo seguir un dato desde la API hasta una tarjeta?
 
@@ -229,3 +229,15 @@ Para peso, terminar en `components/plant/scale-weight-readout.tsx`, `ScaleWeight
 ### 48. ¿Qué respondo si durante la sesión la API no entrega un valor o falla una llamada?
 
 “Vamos a distinguir qué respondió el servicio y qué hace la pantalla con esa respuesta. No voy a completar el dato ni cambiar producción para que la demo se vea de cierta forma.” Mostrar Network, escenario, HTTP y campo exacto; conservar evidencia del caso. Continuar con el código y la captura disponible si falla la conexión. No diagnosticar PLC sólo con un 200 de status, ni presentar datos históricos como si fueran la posición actual. Registrar la pregunta pendiente y el responsable que puede confirmarla.
+
+### 49. ¿Ya está oculto Operator ID y puedo omitir Comments?
+
+No todavía. v0.39, sección 4, exige `OperatorId` y `Reason` para REMOVE; v0.6, sección 5.8, exige operador en correcciones. Reason aparece en el ejemplo de reposicionamiento, pero eso no demuestra que sea obligatorio para todas las variantes. Hoy formulario, cliente y proxy requieren ambos; falta acordar qué admite backend antes de relajarlos u ocultarlos. No inventar operador ni motivo automático. Operator ID es texto de auditoría, no autenticación.
+
+### 50. ¿Reset reinicia Windows o equivale a retirar un bundle?
+
+No es un reinicio de Windows ni de Node. Es el comando **global de Tracking** `POST /api/tracking/reset`, sin cuerpo, separado de `/correct`. Su efecto industrial/histórico exacto se valida con backend y operación; no usarlo para resolver un pending individual. La UI exige RESET escrito, casilla de autorización, confirmación global y preflight fresco. Ver [commissioning de reset](tracking-reset-commissioning.md).
+
+### 51. ¿Cómo sé que el reset terminó y qué protege el botón?
+
+El acuse HTTP 202 con `accepted`, `eventId` y `eventType: RESET` no demuestra finalización. La UI verifica con GET posterior y no usa un estado inicialmente vacío como prueba. El lock compartido evita simultaneidad manual/reset sólo en ese Dashboard; una respuesta incierta no se reenvía automáticamente. Header explícito, capability, casilla y diálogo no son autenticación/roles ni bloqueo multiusuario. La auditoría y efectos PLC se confirman por separado.

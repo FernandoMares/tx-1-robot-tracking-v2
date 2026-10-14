@@ -16,6 +16,7 @@ interface SchematicScreenProps {
   tracking: TrackingRuntimeState
   canvasWidth: number
   canvasHeight: number
+  maxScale?: number
   muted?: boolean
   children: ReactNode
 }
@@ -29,6 +30,7 @@ export function SchematicScreen({
   tracking,
   canvasWidth,
   canvasHeight,
+  maxScale = 1.45,
   muted = false,
   children,
 }: SchematicScreenProps) {
@@ -43,12 +45,12 @@ export function SchematicScreen({
       const availableWidth = entry.contentRect.width
       // Detailed views contain fewer, wider cards than the overview, so they
       // can safely grow further on control-room displays without crowding.
-      setDiagramScale(Math.min(1.45, Math.max(0.9, availableWidth / canvasWidth)))
+      setDiagramScale(Math.min(maxScale, Math.max(0.9, availableWidth / canvasWidth)))
     })
 
     observer.observe(viewport)
     return () => observer.disconnect()
-  }, [canvasWidth])
+  }, [canvasWidth, maxScale])
 
   return (
     <section className="flex min-w-0 max-w-full flex-col rounded-xl border border-border bg-card" aria-label={title}>

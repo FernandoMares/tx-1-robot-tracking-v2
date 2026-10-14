@@ -4,23 +4,28 @@ Frontend de seguimiento de bundles para Texas 1 / Nucor. **Esta rama reúne FIFO
 
 ## Versión y alcance
 
-Rama: `release/integrated-hmi`. Código integrado: **`7fc34e863ed0a9b12e955ae28a224996e84fd011`**. Procedencia: FIFO `77f79bf` + operaciones manuales `5338300`, sobre la base común `600d20f`.
+Rama: `release/integrated-hmi`. Última base funcional desplegada documentada: **`7fc34e863ed0a9b12e955ae28a224996e84fd011`**. Checkpoint anterior de documentación: `c7df85a`. Este checkpoint de fuente del **13 de octubre de 2026** reúne el filtro de removidos, la confirmación de retiro retenido y el reset de mantenimiento del día 9, más Bundler reutilizando el Overview sin la rama Stackers/STRT/LFRT. El identificador exacto se consulta con `git log -1 --oneline`; guardar/publicar el fuente no actualiza el servidor ni los ZIP existentes. Estos ajustes siguen pendientes de empaquetado, despliegue y validación en planta. Procedencia funcional: FIFO `77f79bf` + operaciones manuales `5338300`, sobre `600d20f`.
 
-El release integrado se publicó y se está probando en el servidor sobre el **mismo puerto 3000**, contra Tracking 8085/API 0.42. Las verificaciones locales previas fueron FIFO 8/8, retiro 4/4, reposicionamiento 4/4, prevalidación 7/7, integración 2/2, TypeScript, build live y siete comprobaciones de navegador. No equivalen a aceptación física de planta.
+La base funcional `7fc34e8` se publicó y desplegó en el servidor sobre el **puerto 3000**, contra Tracking 8085/API 0.42. Sus verificaciones locales previas fueron FIFO 8/8, retiro 4/4, reposicionamiento 4/4, prevalidación 7/7, integración 2/2, TypeScript, build live y siete comprobaciones de navegador. No equivalen a aceptación física de planta ni validan los nuevos cambios de trabajo.
 
-**Hallazgo de campo actual:** el evento REMOVE **154605** recibió 202; el estado posterior conserva el bundle `TRK-0000103919` como `REMOVED`, sin zona ni posiciones ocupadas. La HMI sigue pendiente porque `manualOutcomeObserved` solo confirma ausencia completa del registro. La confirmación, la lista y el conteo necesitan conciliar esa semántica con backend; **ese ajuste no está implementado en 7fc34e8**. Ver [evidencia y pendientes](docs/estado-entrega.md).
+**Hallazgo histórico y ajuste local:** el evento REMOVE **154605** dejó un registro `REMOVED` sin zona ni posiciones ocupadas. En `7fc34e8` la HMI seguía pendiente al exigir ausencia completa. El código de trabajo ahora oculta `REMOVED` de vistas activas y acepta ausencia o un único registro del mismo escenario con `REMOVED`, `CurrentZone: null` y `OccupiedZones: []`. Conserva el snapshot completo para verificar comandos; no acredita efectos PLC. Ver [evidencia y pendientes](docs/estado-entrega.md).
 
 | Incluido en este fuente | Comportamiento |
 | --- | --- |
 | Plant Overview, Stackers, Bundler, Bay 1, Bay 2 | Posiciones según `CurrentZone`; diagramas no controlan equipos |
+| Tab Bundler | Mismo layout del Overview, sin ERT1A/B, ERT2C/D, STRT1/2 ni LFRT1/2/3; conserva báscula, SGRT/NCCT, buffers y Robot 2. Overview permanece completo |
 | Selecciones globales | Mill Order, Destination e impresora con confirmación y GET posterior |
 | Báscula | `Weight` de la zona exacta SGRT2; no calcula peso ni inventa unidad |
 | Buffers CCH | Cinco filas y desplazamiento; LCH ocultas en las vistas acordadas, sin borrar datos |
 | FIFO v0.42 | `LogicalBufferName` + `QueueSequence`, orden ascendente dentro de cada buffer |
 | Remove from Tracking | POST `/api/tracking/correct`, `Operation: "REMOVE"`, identidad técnica, operador y motivo |
 | Reposition | Mismo endpoint, `CurrentZone` destino y **sin Operation**, con revalidación y lectura posterior |
+| Bundles removidos | Fuera de listas, diagramas, peso y contadores activos; snapshot original conservado |
+| Reset de mantenimiento | POST `/api/tracking/reset` sin cuerpo, confirmación global explícita, preflight y verificación por GET; pendiente de commissioning |
 
-No se agrega un comando `MOVE`, botón `RETIRE`, reset global, escritura OPC ni impresión QMOS desde el HMI. Las acciones manuales requieren una prueba coordinada: pueden afectar Tracking y ocupación PLC, aunque no sean órdenes directas de movimiento de maquinaria.
+No se agrega un comando `MOVE`, botón `RETIRE`, escritura OPC ni impresión QMOS desde el HMI. El reset global se incorpora como acción separada de mantenimiento, no como alternativa a retirar un bundle ni como recuperación de un comando incierto. Toda escritura requiere coordinación con operación.
+
+**Operator ID y comentarios:** ocultar Operator ID y hacer comentarios opcionales **sigue pendiente**. v0.39, sección 4, exige `OperatorId` y `Reason` para **REMOVE**; el contrato base v0.6, sección 5.8, exige operador para correcciones. No hay evidencia de que Reason sea obligatorio por contrato en todas las variantes: en reposicionamiento aparece en el ejemplo. La implementación actual exige ambos en los tres caminos de `/correct`; se conserva así hasta acordar el cambio con backend, sin operador ficticio ni motivo automático. Reset no lleva esos campos.
 
 ## Por dónde empezar
 
@@ -33,6 +38,7 @@ No se agrega un comando `MOVE`, botón `RETIRE`, reset global, escritura OPC ni 
 - [Regresiones aisladas, referencia de desarrollo fuera de la sesión](docs/tracking-api-simulator.md).
 - [Estado de versiones y pruebas pendientes](docs/estado-entrega.md).
 - [Commissioning de retiro](docs/manual-bundle-removal-commissioning.md) y [reposicionamiento](docs/manual-bundle-reposition-commissioning.md).
+- [Commissioning de reset global](docs/tracking-reset-commissioning.md): alcance, confirmación, evidencia y límites.
 - [Despliegue Windows](docs/windows-standalone-deployment.md) y [entrega a Git](docs/entrega-git.md).
 
 Mapa, manual y referencias de API son documentación para quienes mantienen el fuente. El guion y la chuleta personales se conservan localmente y están excluidos de Git; no son necesarios para consultar esta documentación. Revisar qué documentos se entregan al cliente antes de exportar: las guías no contienen credenciales, pero no debe agregarse toda la carpeta de trabajo indiscriminadamente. **Los helpers de servicio de otro kit no forman parte de esta rama**.
@@ -109,6 +115,12 @@ node scripts/test-manual-reposition.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló reposicionamiento.' }
 node scripts/test-manual-position.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló prevalidación manual.' }
+node scripts/test-bundle-lifecycle.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló ciclo de vida de bundles.' }
+node scripts/test-tracking-reset.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló contrato de reset.' }
+node scripts/test-tracking-reset-state.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló verificación de estado de reset.' }
 node scripts/test-integrated-tracking.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló integración FIFO/manual.' }
 pnpm typecheck
@@ -141,12 +153,12 @@ Este ejemplo apunta al Tracking de esa máquina, **no a una demo aislada**. Mant
 
 - Allowlist no es autenticación: no hay login, roles ni terminación TLS propios.
 - `OperatorId` es texto de auditoría, no identidad autenticada ni necesariamente numérica.
-- HTTP 202/accepted confirma recepción, no ejecución. El panel observa ausencia del bundle o zona destino mediante GET nuevo; no reintenta POST automáticamente. La ausencia exigida no reconoce todavía el estado REMOVED retenido observado en servidor.
-- El bloqueo manual es local al panel montado, no una transacción con PLC ni bloqueo multiusuario; no sobrevive a recargar la página.
+- HTTP 202/accepted confirma recepción, no ejecución. REMOVE admite ausencia o registro REMOVED único, del mismo escenario y sin ninguna posición reportada; Reposition exige coincidencia activa en destino. El reset también verifica con GET y no trata un estado inicialmente vacío como prueba suficiente. Ninguna escritura se reintenta automáticamente.
+- El bloqueo local se comparte entre acciones manuales y reset en el Dashboard montado. No es autenticación, transacción PLC ni bloqueo multiusuario; no sobrevive a recargar la página.
 - Mill Order y Destination usan dos PUT independientes, no una transacción atómica.
 - Seleccionar impresora no imprime; persistencia, reglas y operación corresponden al backend.
 - El caso FIFO real revisado devolvió membresía/secuencia null. Se necesita una muestra válida antes de aceptar el orden en planta.
-- El evento reciente154605 sí tiene evidencia de estado REMOVED y huella reportada vacía, aunque la UI sigue pendiente; no demuestra por sí solo limpieza PLC. El evento anterior134331 correspondía a otro bundle y no quedó confirmado. No repetir ninguno para forzar una respuesta.
+- El evento histórico 154605 sí tiene evidencia de REMOVED y huella vacía; la UI de `7fc34e8` quedó pendiente. El ajuste local aún requiere desplegarse y validarse. El evento anterior 134331 correspondía a otro bundle y no quedó confirmado. No repetir ninguno para forzar una respuesta.
 - El layout conserva Analytics en producción; revisión de telemetría y red según política de IT.
 - Combinar las funciones no cierra esos pendientes; registrar prueba, responsable y resultado en [Estado de entrega](docs/estado-entrega.md).
 

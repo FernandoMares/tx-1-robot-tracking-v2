@@ -32,6 +32,7 @@ const STATIC_READ_ENDPOINTS = new Set([
 ])
 
 const TRACKING_CORRECTION_ENDPOINT = "/api/tracking/correct"
+const TRACKING_RESET_ENDPOINT = "/api/tracking/reset"
 const GLOBAL_MILL_ORDER_ENDPOINT = "/api/tracking/mill-order"
 const GLOBAL_DESTINATION_ENDPOINT = "/api/tracking/destination"
 const GLOBAL_PRINTER_ENDPOINT = "/api/tracking/printer"
@@ -155,6 +156,10 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   const { path } = await context.params
   const decodedPath = "/" + path.join("/")
 
+  if (decodedPath === TRACKING_RESET_ENDPOINT) {
+    return resetTracking(request, path)
+  }
+
   if (decodedPath !== TRACKING_CORRECTION_ENDPOINT) {
     return jsonError(404, "Tracking API endpoint not found.")
   }
@@ -235,6 +240,85 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     })
   } catch {
     return jsonError(502, "The tracking service could not be reached by the frontend server.")
+  }
+}
+
+async function resetTracking(request: Request, path: string[]): Promise<Response> {
+  // This makes reset an explicit HMI action and blocks simple cross-origin form
+  // submissions. It is NOT authentication or an operator authorization check.
+  if (request.headers.get("X-Tracking-Reset-Confirmation") !== "RESET") {
+    return jsonError(403, "An explicit tracking reset confirmation is required.")
+  }
+
+  const requestUrl = new URL(request.url)
+  if (!resetOriginMatchesRequest(request, requestUrl)) {
+    return jsonError(403, "Tracking reset must originate from this HMI.")
+  }
+  if (requestUrl.search) {
+    return jsonError(400, "Tracking reset does not accept query parameters.")
+  }
+
+  try {
+    if ((await request.text()).length !== 0) {
+      return jsonError(400, "Tracking reset does not accept a request body.")
+    }
+  } catch {
+    return jsonError(400, "The tracking reset request could not be read.")
+  }
+
+  let proxyTarget: URL
+  try {
+    proxyTarget = getProxyTarget()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Tracking API proxy is not configured."
+    return jsonError(503, message)
+  }
+
+  const encodedPath = path.map((segment) => encodeURIComponent(segment)).join("/")
+  const upstreamUrl = new URL(encodedPath, proxyTarget)
+  try {
+    // Reset has no request body in the backend contract. Do not forward the
+    // browser's intent header or follow redirects that could repeat this POST.
+    const upstream = await fetch(upstreamUrl, {
+      method: "POST",
+      cache: "no-store",
+      redirect: "error",
+      headers: { Accept: "application/json" },
+      signal: request.signal,
+    })
+    const body = await upstream.arrayBuffer()
+    const bodyForbidden = upstream.status === 204 || upstream.status === 205 || upstream.status === 304
+    return new Response(bodyForbidden ? null : body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
+      },
+    })
+  } catch {
+    return jsonError(502, "Tracking reset response was not received. The command may have been accepted; do not resend it automatically.")
+  }
+}
+
+function resetOriginMatchesRequest(request: Request, requestUrl: URL): boolean {
+  const origin = request.headers.get("Origin")
+  if (origin === null) return true
+
+  // Next may normalize a loopback URL to localhost or build it from the listen
+  // hostname (0.0.0.0), while the browser actually addressed a different host.
+  // Compare against the inbound Host authority, not that internal hostname.
+  // Never substitute X-Forwarded-Host/Forwarded supplied by a caller. A reverse
+  // proxy deployment must preserve the approved Host and request protocol.
+  const host = request.headers.get("Host") ?? requestUrl.host
+  if (!host || /[\s\\/?#@,%]/.test(host)) return false
+  try {
+    const inbound = new URL(`${requestUrl.protocol}//${host}`)
+    if (!inbound.hostname || inbound.username || inbound.password ||
+      inbound.pathname !== "/" || inbound.search || inbound.hash) return false
+    return (inbound.protocol === "http:" || inbound.protocol === "https:") && origin === inbound.origin
+  } catch {
+    return false
   }
 }
 

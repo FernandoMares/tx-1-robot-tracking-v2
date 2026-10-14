@@ -159,7 +159,7 @@ test("reposition preflight rejects changed destination map or reported occupancy
   }
 })
 
-test("observed reposition requires one exact CurrentZone match; removal requires absence", () => {
+test("observed reposition requires one exact active CurrentZone match; absent removal is confirmed", () => {
   const selected = bundle("SELECTED", { CurrentZone: "SGRT2A" })
   const snapshot = state([selected, bundle("OTHER")])
   assert.equal(manualOutcomeObserved("reposition", "SELECTED", "SGRT2A", snapshot), true)

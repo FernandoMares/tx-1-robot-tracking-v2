@@ -17,11 +17,12 @@ const OPC_CONNECTED = booleanSetting(process.env.TRACKING_SIMULATOR_OPC_CONNECTE
 const LOG_REQUESTS = booleanSetting(process.env.TRACKING_SIMULATOR_LOG_REQUESTS, false)
 const BUFFER_DEMO = process.env.TRACKING_SIMULATOR_BUFFER_DEMO?.trim().toLowerCase() === "true"
 const FIFO_DEMO = process.env.TRACKING_SIMULATOR_FIFO_DEMO?.trim().toLowerCase() === "true"
+const ENABLE_RESET = process.env.TRACKING_SIMULATOR_ENABLE_RESET?.trim().toLowerCase() === "true"
 const DISABLED_ZONES = new Set(
   (process.env.TRACKING_SIMULATOR_DISABLED_ZONES ?? "").split(",").map((name) => name.trim()).filter(Boolean),
 )
 const SCENARIO = "LOCAL_HMI_SIMULATOR"
-const API_VERSION = "sim-1.5.0"
+const API_VERSION = "sim-1.6.0"
 const STARTED_AT = Date.now()
 const CYCLE_STEPS = 9
 const MAX_REQUEST_BODY_BYTES = 64 * 1024
@@ -461,6 +462,7 @@ function capabilities() {
     ],
     commands: [
       "/api/tracking/correct",
+      ...(ENABLE_RESET ? ["POST /api/tracking/reset"] : []),
       "PUT /api/tracking/mill-order",
       "PUT /api/tracking/destination",
       "PUT /api/tracking/printer",
@@ -676,6 +678,17 @@ const server = createServer(async (request, response) => {
   }
 
   if (method === "POST") {
+    // Explicit opt-in for owned regression environments only. No PLC/DB effects.
+    if (ENABLE_RESET && url.pathname === "/api/tracking/reset") {
+      if (url.search) return sendJson(response, 400, { error: "Reset accepts no query parameters." })
+      for await (const chunk of request) {
+        if (chunk.length > 0) return sendJson(response, 400, { error: "Reset accepts no body." })
+      }
+      for (const bundle of bundles(now)) removedTrackingIds.add(bundle.TrackingId)
+      bundleCorrections.clear()
+      lastManualChangeAt = now
+      return sendJson(response, 202, { accepted: true, eventId: nextCorrectionEventId++, eventType: "RESET" })
+    }
     if (url.pathname !== "/api/tracking/correct") {
       return sendJson(response, 404, { error: "Endpoint not found", path: url.pathname })
     }

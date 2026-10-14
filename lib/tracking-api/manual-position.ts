@@ -6,6 +6,7 @@ import type {
   TrackingStatusDto,
   TrackingZoneDto,
 } from "./types"
+import { isRemovedBundle } from "./bundle-lifecycle"
 
 export type ManualTrackingAction = "remove" | "reposition"
 
@@ -74,8 +75,11 @@ export function manualPreflightProblem(options: {
     (service.scenario !== null && service.scenario !== state.ScenarioName)
   ) return "The tracking scenario changed. Reload tracking before selecting a bundle."
 
+  if (isRemovedBundle(selected)) return "The selected bundle has already been removed from active tracking."
+
   const matches = state.Bundles.filter((bundle) => bundle.TrackingId === selected.TrackingId)
   if (matches.length !== 1) return "The selected TrackingId is missing or ambiguous in the current state."
+  if (isRemovedBundle(matches[0])) return "The selected bundle has already been removed from active tracking."
   if (matches[0].ScenarioName !== state.ScenarioName || positionSignature(matches[0]) !== positionSignature(selected)) {
     return "The selected bundle's position changed. Review its current position and confirm again."
   }
@@ -102,7 +106,12 @@ export function manualOutcomeObserved(
   state: TrackingStateDto,
 ): boolean {
   const matches = state.Bundles.filter((bundle) => bundle.TrackingId === trackingId)
+  if (action === "remove" && matches.length === 0) return true
+  if (matches.length !== 1 || matches[0].ScenarioName !== state.ScenarioName) return false
+
+  const bundle = matches[0]
   return action === "remove"
-    ? matches.length === 0
-    : matches.length === 1 && matches[0].ScenarioName === state.ScenarioName && matches[0].CurrentZone === destination
+    ? isRemovedBundle(bundle) && bundle.CurrentZone === null &&
+      Array.isArray(bundle.OccupiedZones) && bundle.OccupiedZones.length === 0
+    : !isRemovedBundle(bundle) && bundle.CurrentZone === destination
 }

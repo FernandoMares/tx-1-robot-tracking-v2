@@ -1,4 +1,5 @@
 import type { TrackedBundleDto, TrackingMapDto } from "@/lib/tracking-api"
+import { getActiveBundles } from "@/lib/tracking-api/bundle-lifecycle"
 
 export type TrackingDetailScreen = "stackers" | "bundler" | "bay-1" | "bay-2"
 
@@ -41,10 +42,10 @@ export const TRACKING_ZONE_LAYOUT = {
   LFRT1: zone("stackers", ["stackers"], "stacker-line", 70, "LFRT1"),
   LFRT2: zone("stackers", ["stackers"], "stacker-line", 80, "LFRT2"),
   LFRT3: zone("stackers", ["stackers"], "stacker-line", 90, "LFRT3"),
-  SGRT1: zone("stackers", ["stackers", "bay-1"], "stacker-line", 100, "SGRT1"),
-  SGRT2: zone("stackers", ["stackers", "bay-1"], "stacker-line", 110, "SGRT2"),
-  NCCT1: zone("bay-1", ["stackers", "bay-1"], "bay-1-exit", 120, "NCCT1"),
-  NCCT2: zone("bay-1", ["stackers", "bay-1"], "bay-1-exit", 130, "NCCT2"),
+  SGRT1: zone("stackers", ["stackers", "bay-1", "bundler"], "stacker-line", 100, "SGRT1"),
+  SGRT2: zone("stackers", ["stackers", "bay-1", "bundler"], "stacker-line", 110, "SGRT2"),
+  NCCT1: zone("bay-1", ["stackers", "bay-1", "bundler"], "bay-1-exit", 120, "NCCT1"),
+  NCCT2: zone("bay-1", ["stackers", "bay-1", "bundler"], "bay-1-exit", 130, "NCCT2"),
 
   RTOUTA: zone("bundler", ["bundler"], "bundler-source", 210, "RTOUTA"),
   RTOUTB: zone("bundler", ["bundler"], "bundler-source", 220, "RTOUTB"),
@@ -54,20 +55,20 @@ export const TRACKING_ZONE_LAYOUT = {
   RTTY2: zone("bundler", ["bundler"], "bundler-line", 260, "RTTY2"),
   IMRT2: zone("bundler", ["bundler", "bay-2"], "bundler-line", 270, "IMRT2"),
 
-  IMRT1: zone("bay-2", ["stackers", "bay-2"], "bay-2-line-1", 310, "IMRT1"),
-  SGRT1A: zone("bay-2", ["bay-2"], "bay-2-line-1", 320, "SGRT1A"),
-  SGRT1B: zone("bay-2", ["bay-2"], "bay-2-line-1", 330, "SGRT1B"),
+  IMRT1: zone("bay-2", ["stackers", "bay-2", "bundler"], "bay-2-line-1", 310, "IMRT1"),
+  SGRT1A: zone("bay-2", ["bay-2", "bundler"], "bay-2-line-1", 320, "SGRT1A"),
+  SGRT1B: zone("bay-2", ["bay-2", "bundler"], "bay-2-line-1", 330, "SGRT1B"),
   LCH1A: zone("bay-2", ["bay-2"], "bay-2-line-1", 340, "LCH1A"),
   LCH1B: zone("bay-2", ["bay-2"], "bay-2-line-1", 350, "LCH1B"),
-  CCH1A: zone("bay-2", ["bay-2"], "bay-2-line-1", 360, "CCH1A"),
-  CCH1B: zone("bay-2", ["bay-2"], "bay-2-line-1", 370, "CCH1B"),
+  CCH1A: zone("bay-2", ["bay-2", "bundler"], "bay-2-line-1", 360, "CCH1A"),
+  CCH1B: zone("bay-2", ["bay-2", "bundler"], "bay-2-line-1", 370, "CCH1B"),
 
-  SGRT2A: zone("bay-2", ["bay-2"], "bay-2-line-2", 410, "SGRT2A"),
-  SGRT2B: zone("bay-2", ["bay-2"], "bay-2-line-2", 420, "SGRT2B"),
+  SGRT2A: zone("bay-2", ["bay-2", "bundler"], "bay-2-line-2", 410, "SGRT2A"),
+  SGRT2B: zone("bay-2", ["bay-2", "bundler"], "bay-2-line-2", 420, "SGRT2B"),
   LCH2A: zone("bay-2", ["bay-2"], "bay-2-line-2", 430, "LCH2A"),
   LCH2B: zone("bay-2", ["bay-2"], "bay-2-line-2", 440, "LCH2B"),
-  CCH2A: zone("bay-2", ["bay-2"], "bay-2-line-2", 450, "CCH2A"),
-  CCH2B: zone("bay-2", ["bay-2"], "bay-2-line-2", 460, "CCH2B"),
+  CCH2A: zone("bay-2", ["bay-2", "bundler"], "bay-2-line-2", 450, "CCH2A"),
+  CCH2B: zone("bay-2", ["bay-2", "bundler"], "bay-2-line-2", 460, "CCH2B"),
 } as const satisfies Record<string, TrackingZoneLayoutMeta>
 
 export type TrackingZoneName = keyof typeof TRACKING_ZONE_LAYOUT
@@ -150,7 +151,7 @@ export function getTrackingZonesForScreen(screen: TrackingDetailScreen): Trackin
     .sort((left, right) => left.order - right.order)
 }
 
-/** Groups by CurrentZone only; array order must never be interpreted as a physical slot. */
+/** Groups active bundles by CurrentZone only; array order is not a physical slot. */
 export function groupTrackingBundlesByZone(
   bundles: readonly TrackedBundleDto[],
 ): GroupedTrackingBundles {
@@ -160,7 +161,7 @@ export function groupTrackingBundlesByZone(
   const unknownZone: TrackedBundleDto[] = []
   const withoutZone: TrackedBundleDto[] = []
 
-  for (const bundle of bundles) {
+  for (const bundle of getActiveBundles(bundles)) {
     if (!bundle.CurrentZone) {
       withoutZone.push(bundle)
     } else if (isTrackingZoneName(bundle.CurrentZone)) {

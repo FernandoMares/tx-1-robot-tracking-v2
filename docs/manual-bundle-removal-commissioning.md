@@ -1,8 +1,8 @@
 # Retiro manual de bundles — commissioning del release integrado
 
-Esta guía corresponde a **`release/integrated-hmi`, commit `7fc34e8`**, desplegado en el frontend operativo **3000** con Tracking en **8085**. REMOVE y Reposition están incluidos junto con FIFO. La capacitación se realiza sobre ese servidor y su fuente real, sin levantar un simulador. Abrir código y hacer GETs no equivale a autorizar una nueva remoción: toda escritura se coordina con operación.
+Esta guía distingue la base desplegada **`7fc34e8`** de los cambios locales del **9 de octubre de 2026**, posteriores al checkpoint documental `c7df85a`, en la misma rama `release/integrated-hmi`. El nuevo filtro y criterio de retiro retenido aún no se han desplegado. La evidencia real corresponde a HMI **3000** con Tracking **8085**. Abrir código y hacer GETs no equivale a autorizar una nueva remoción: toda escritura se coordina con operación.
 
-Fuente del servidor: `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`. Ver la sección 5 antes de repetir una prueba: ya existe evidencia de un registro `REMOVED` retenido que la HMI todavía no considera finalizado.
+Fuente del despliegue documentado: `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`. Ver la sección 5 antes de repetir una prueba: ya existe evidencia histórica de un registro `REMOVED` retenido. No reenviar ese comando para comprobar el nuevo filtro.
 
 ## Alcance y precauciones
 
@@ -12,6 +12,7 @@ Fuente del servidor: `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release
 - Usar el frontend en 3000 no autoriza cualquier retiro. Elegir con operación el bundle y la ventana permitidos.
 - Una segunda instancia en otro puerto no crea otro backend ni aislamiento de datos.
 - `OperatorId` es texto de trazabilidad, no autenticación.
+- `OperatorId` y `Reason` son obligatorios para REMOVE según v0.39, sección 4; ocultar operador y volver opcional el comentario está solicitado, pero pendiente de acuerdo con backend. No extrapolar esta obligación de Reason a todas las variantes de corrección ni sustituir campos por valores ficticios.
 - Que capabilities anuncie `/api/tracking/correct` no demuestra por sí solo soporte ni permisos de REMOVE.
 
 ## 1. Preparación del código y del entorno
@@ -57,8 +58,10 @@ La HMI no escribe una bitácora persistente propia: los mensajes de aceptación 
    y pide revisar de nuevo. La duracion del dialogo no invalida por si sola el envio.
 5. Confirmar una sola vez y conservar las tres pestañas de evidencia indicadas arriba. Si aparece “No command was sent”, el preflight impidió el envío; no atribuirlo a un rechazo del backend sin que exista POST. `OperatorId` admite texto: usar `a1` no demuestra que el campo deba ser numérico.
 6. La HMI solicita refresco e inicia nuevas lecturas despues de la respuesta,
-   esperando un estado sin ese `TrackingId`. Mientras espera, bloquea retiros y
-   reposicionamientos desde ese panel, incluso al cerrar/reabrir. Tras un minuto
+   esperando ausencia del `TrackingId` o un registro único del mismo escenario
+   con `REMOVED`, `CurrentZone: null` y `OccupiedZones: []` explícito. Mientras
+   espera, bloquea retiros, reposicionamientos y reset desde ese Dashboard,
+   incluso al cerrar/reabrir el panel. Tras un minuto
    sin confirmacion permite consultar de nuevo con **Check state again (read only)**,
    sin reenviar el POST. Verificar tambien los demas bundles, considerando movimiento normal.
 7. Con backend/operacion, confirmar limpieza completa HEAD/TAIL y ocupacion
@@ -71,7 +74,7 @@ El bloqueo del panel no persiste al recargar el navegador y no es una garantia
 de idempotencia del backend. Si permanece pendiente, conciliar con backend antes
 de recargar o volver a intentar.
 
-El verificador actual exige **ausencia del TrackingId en el arreglo** para terminar REMOVE. Un objeto que sigue en state como `REMOVED` no cumple ese criterio aunque ya no tenga ocupación. Ese comportamiento fue observado en la prueba de la sección 5 y no se ha modificado todavía.
+El código local acepta los dos resultados descritos en el paso 6, sin tratar `REMOVED` por sí solo como éxito: zona/huella no vacías, identidad duplicada o escenario distinto mantienen la operación sin confirmar. Un REMOVED se oculta de vistas activas incluso si trae una posición inconsistente, pero el snapshot original permanece disponible para verificar esa inconsistencia. `reportedZoneOccupants` no descarta huellas al validar destinos de reposicionamiento.
 
 ## 4. Consultar el resultado sin reenviar el comando
 
@@ -99,7 +102,7 @@ Este bloque realiza un único GET directo al backend del servidor. El ID es el d
 
 Una consulta al detalle `/bundles/{trackingId}` por sí sola no indica si el objeto permanece en el snapshot usado por la pantalla: podría ser una consulta que conserva historia. Por eso se revisa `/state`. Para comparar con la HMI se puede repetir únicamente el GET por `http://127.0.0.1:3000/tracking-api/api/tracking/state`, teniendo presente que las dos capturas no son simultáneas.
 
-## 5. Caso actual: evento 154605 y registro REMOVED retenido
+## 5. Caso histórico en 7fc34e8: evento 154605 y registro REMOVED retenido
 
 El POST para `TRK-0000103919`, bundle visible `101637697`, antes en CCH2A, devolvió **202 Accepted** y Date **Thu, 08 Oct 2026 02:11:48 GMT**:
 
@@ -126,7 +129,7 @@ En la lectura directa posterior de 8085 el mismo registro seguía en `Bundles`:
 }
 ```
 
-La pantalla mostró REMOVED / Unknown zone pero siguió pendiente. La causa del mensaje es el criterio de `manualOutcomeObserved`: busca ausencia total, no un Status terminal retenido. El contrato habla de salir del tracking activo y preservar histórico; no especifica aquí cómo debe aparecer ese histórico en `/state`. Se pidió confirmar con backend si esta retención es correcta antes de ajustar éxito, listado/conteo activo y acciones sobre registros retirados. **No hay corrección implementada de esa semántica todavía.**
+La pantalla de `7fc34e8` mostró REMOVED / Unknown zone pero siguió pendiente porque entonces `manualOutcomeObserved` exigía ausencia total. El código de trabajo ya incorpora el criterio estricto descrito arriba, oculta los retirados de vistas activas y bloquea nuevas acciones sobre ellos. Es un cambio local pendiente de despliegue/commissioning; no reescribe esta evidencia histórica ni acredita PLC o auditoría.
 
 No decir “el backend no hizo nada”: sí cambió el estado reportado. Tampoco decir “PLC y auditoría ya validados”: los JSON no lo acreditan. No reenviar el evento 154605 ni usar RESET/RETIRE para intentar hacer desaparecer el registro.
 

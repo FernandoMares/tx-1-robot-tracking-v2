@@ -89,7 +89,7 @@ test("proxy routes explicit reposition, legacy order edits and removal unambiguo
   assert.equal((await routeRequest(proxy.POST, { ...legacy, CurrentZone: null })).status, 400)
   assert.equal((await routeRequest(proxy.POST, reposition, { raw: "{" })).status, 400)
   assert.equal((await routeRequest(proxy.POST, reposition, { contentType: "text/plain" })).status, 415)
-  assert.equal((await routeRequest(proxy.POST, reposition, { path: "/api/tracking/reset" })).status, 404)
+  assert.equal((await routeRequest(proxy.POST, reposition, { path: "/api/tracking/reset" })).status, 403)
   assert.equal(calls.length, 3, "Rejected requests must not reach the backend")
   assert.ok(calls.every(({ path }) => path === correctionPath))
 })

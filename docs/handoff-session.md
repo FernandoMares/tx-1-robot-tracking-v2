@@ -2,7 +2,7 @@
 
 Esta sesión se realiza **en el servidor, leyendo el fuente y observando el frontend existente en el puerto 3000 contra Tracking en 8085**. No requiere levantar otra instancia, usar un simulador, compilar, detener procesos ni ejecutar comandos industriales. El objetivo es que otro desarrollador pueda seguir el código, diagnosticar un dato y saber dónde implementar un cambio.
 
-La referencia del recorrido es el commit **`7fc34e8`**, `feat(hmi): unify FIFO and manual bundle actions`, de `release/integrated-hmi`. Incluye selección global de Mill Order/Destination/Printer, peso de SGRT2, layout, FIFO, REMOVE y reposicionamiento en una misma base. Integrado no significa que todas las condiciones reales estén aceptadas: la confirmación de REMOVE tiene el pendiente concreto descrito en la sección 10.
+La base funcional del servidor documentado es **`7fc34e8`**, en `release/integrated-hmi`. Después del checkpoint documental `c7df85a`, el checkpoint de fuente del **13 de octubre de 2026** reúne filtro REMOVED, confirmación de retiro retenido, reset de mantenimiento y el nuevo layout compartido de Bundler. Estos ajustes aún no están desplegados. Esta guía distingue lo instalado de lo nuevo: abrir la versión real antes de afirmar que un control ya está disponible. Operator ID y comentarios siguen obligatorios hasta acordar los cambios solicitados con backend.
 
 ## 1. Preparación en el servidor: abrir la carpeta correcta
 
@@ -30,7 +30,7 @@ Get-Content -LiteralPath '.\dist\tx1-tracking-windows\RELEASE.txt'
 Invoke-RestMethod -Uri 'http://127.0.0.1:3000/tracking-api/api/tracking/status' -TimeoutSec 10 | ConvertTo-Json -Depth 5
 ```
 
-Esperar `7fc34e8` en el fuente y su hash completo correspondiente en `RELEASE.txt`; si no coinciden, declarar qué copia se está leyendo antes de continuar. El archivo de release identifica el paquete, pero por sí solo no prueba qué proceso posee 3000. La versión `apiVersion` del GET pertenece al backend, no al commit del frontend.
+El último despliegue documentado fue `7fc34e8`; comprobar el fuente y `RELEASE.txt` reales antes de continuar. Los ajustes locales nuevos no se incorporan a ese paquete automáticamente. El manifiesto identifica el paquete, no demuestra qué proceso posee 3000. `apiVersion` del GET pertenece al backend, no al commit frontend.
 
 Abrir el navegador del servidor en `http://127.0.0.1:3000/`. Mantener otra pestaña de editor con búsqueda de símbolos. No ejecutar `start.cmd` sobre un puerto ya ocupado; no modificar archivos ni guardar cambios durante este recorrido.
 
@@ -158,7 +158,7 @@ Volver a `Dashboard`, seguir `bundlesByZone` hasta `MainSchematic`, su helper `Z
 
 Una tarjeta ocupada se ve ámbar si algún bundle está `WAITING_QMOS_ID` o `UNMATCHED`; si no, verde. No concluir que un color equivale a alarma física del PLC. `hasSnapshot=false` representa espera de datos, distinto de snapshot válido con cero bundles.
 
-**Detalle importante del estado actual:** ni `groupTrackingBundlesByZone` ni el listado general eliminan un registro porque su `Status` sea `REMOVED`. El KPI “Active tracked bundles” usa `Bundles.length`. Si backend conserva registros terminales dentro de esa colección, pueden seguir en el listado/contador aunque ya no ocupen una tarjeta. Es una diferencia semántica que debe revisarse, no ocultarse durante la explicación.
+**Cambio local importante:** abrir `lib/tracking-api/bundle-lifecycle.ts`. `getActiveBundles` oculta únicamente `Status: REMOVED` normalizado de agrupación, lista, KPI, banner y peso; no muta el snapshot. La verificación manual sigue leyendo datos completos. `7fc34e8` todavía contaba/listaba esos registros: al enseñar el servidor antiguo, explicar la diferencia sin atribuirle el ajuste nuevo.
 
 ## 7. FIFO, báscula y geometría: tres cambios distintos
 
@@ -181,6 +181,8 @@ Mostrar la diferencia entre sin snapshot, zona vacía y bundle con `Weight: null
 ### Layout
 
 En `MainSchematic`, `MAIN_SCHEMATIC_WIDTH=1480`, `MAIN_SCHEMATIC_HEIGHT=760` y `BUNDLER_ROW_TOP=250` gobiernan el lienzo y la fila del Bundler. `MachineOutline`, `HorizontalSequence`, `VerticalSection` y `FlowArrow` son helpers de dibujo, no reglas de Tracking.
+
+Cambio local del 13 de octubre: la pestaña Bundler ahora reutiliza ese mismo componente con `variant="bundler"`. Omite únicamente ERT1A/B, ERT2C/D, STRT1/2, LFRT1/2/3 y sus flechas; mantiene báscula SGRT2, NCCT, ambas secciones y Robot 2. El desplazamiento horizontal común recorta el espacio sobrante, no cambia `CurrentZone`. La variante por defecto del Overview permanece completa. No atribuir este cambio al paquete desplegado `7fc34e8`.
 
 Las LCH se omiten de los diagramas de operador, pero permanecen en el catálogo y pueden aparecer como destino manual si `/map` las habilita. CCH muestra cinco filas visibles con scroll, no una capacidad operativa máxima de cinco. `compactVisibleRows` controla presentación; `Capacity` pertenece al contrato del mapa.
 
@@ -235,9 +237,9 @@ Si falla el preflight, no se envía el comando. Si pasó, `removeBundle` o `repo
 
 ### Aceptación y verificación son pasos diferentes
 
-Después de `accepted: true`, el panel pasa a `pending`, informa `eventId` y pide nuevas lecturas. La verificación propia consulta state aproximadamente cada dos segundos entre lecturas durante una ventana de 60 segundos. El código actual espera ausencia del ID para retiro o una única coincidencia en destino para reposición.
+Después de `accepted: true`, el panel pasa a `pending`, informa `eventId` y consulta state cada dos segundos entre lecturas durante una ventana de 60 segundos. El código local confirma REMOVE por ausencia o registro único del mismo escenario con REMOVED, CurrentZone null y OccupiedZones explícitamente vacío. Reposition exige coincidencia única no removida en destino.
 
-Un timeout, error de red o ciertos errores posteriores al envío pueden dejar `uncertain`: el comando pudo llegar. Se conserva el bloqueo y se ofrece volver a verificar con GET, **no reenviar automáticamente el POST**. El bloqueo pertenece a esta instancia montada del panel: no es global entre PCs ni persiste tras recargar toda la página.
+Un timeout, error de red o ciertos errores posteriores al envío pueden dejar `uncertain`: el comando pudo llegar. Se conserva el bloqueo y se ofrece verificar con GET, **no reenviar automáticamente el POST**. El nuevo `useTrackingCommandGate` comparte el lock entre acciones manuales y reset del Dashboard montado; no abarca otras PCs ni persiste tras recargar.
 
 ## 10. Caso real para enseñar diagnóstico: REMOVE aceptado, UI pendiente
 
@@ -253,15 +255,15 @@ La evidencia reportada para esta versión incluye el evento **154605**, `Trackin
 }
 ```
 
-Es un extracto de evidencia, no una respuesta completa ni garantía de que siga igual al abrir la sesión. Para entender el resultado abrir `manualOutcomeObserved` en `lib/tracking-api/manual-position.ts`. La rama de remove devuelve:
+Es evidencia histórica de `7fc34e8`, no garantía de que siga igual. Entonces la rama de remove de `manualOutcomeObserved` devolvía:
 
 ```ts
 matches.length === 0
 ```
 
-Si backend mantiene el registro terminal, la longitud sigue siendo uno. Por eso la UI no confirma retiro aunque el servicio ya reporte `REMOVED` y sin zonas. **Esa condición aún no está corregida en `7fc34e8`.** No afirmar que el backend nunca procesó el comando, ni que la UI ya comprobó la desocupación física del PLC.
+Si backend mantiene el registro terminal, la longitud sigue siendo uno: por eso la UI de `7fc34e8` no confirmó. El cambio local ahora admite el registro retenido bajo las condiciones estrictas de la sección 9. No afirmar que el backend nunca procesó el comando ni que la UI comprueba desocupación física PLC.
 
-El ajuste posterior deberá acordar el criterio de estado terminal del contrato y añadir casos para ausencia, registro REMOVED, duplicados, estados intermedios y escenarios incoherentes. También debe revisarse si listado, KPI y elegibilidad de acciones deben excluir terminales. No modificar la condición a ciegas ni volver a enviar REMOVE sólo porque aparece pending.
+Abrir el helper actual y `scripts/test-bundle-lifecycle.mjs`: hay casos para ausencia, REMOVED retenido, posiciones residuales, duplicados y escenarios incorrectos. Lista y KPI excluyen removidos; preflight impide operar sobre ellos. Falta validar el cambio una vez desplegado; no reenviar un REMOVE anterior sólo para obtener una nueva captura.
 
 Una consulta de lectura para inspeccionar ese caso, si procede en la sesión:
 
@@ -281,13 +283,19 @@ No ver filas significa que el filtro no encontró el ID en esa lectura; no prueb
 
 ## 11. Cómo continuar un cambio después del training
 
+### Recorrido adicional: reset de mantenimiento
+
+Sólo leer el código: `components/tracking-reset-control.tsx` → `lib/tracking-api/tracking-reset.ts` → `TrackingApiClient.resetTracking` → POST del proxy. El control exige escribir RESET, declarar autorización y aceptar el diálogo global; después revalida servicio/capacidad/escenario/alcance y comparte lock con operaciones individuales. El POST no lleva cuerpo; el ACK trae RESET/eventId, no TrackingId obligatorio. Se verifica por GET; 202 y vacío inicial no prueban finalización. No ejecutarlo como demostración ni para desbloquear otro comando. Ver [procedimiento de reset](tracking-reset-commissioning.md).
+
+### Desarrollo y empaquetado
+
 El código se mantiene en `app/components/hooks/lib`, se verifica y luego se vuelve a empaquetar. El paquete standalone no se actualiza solo porque se edite un `.tsx` en el fuente. `next.config.mjs` usa `output: "standalone"`; `scripts/package-windows-standalone.ps1` construye el paquete y `deployment/windows/start.cmd` ejecuta `node server.js`.
 
 En esta sesión no se corre el empaquetador: modifica archivos de build y release. No se edita `.next`, no se reemplaza la carpeta del proceso en uso y no se mata todo `node.exe`. El procedimiento de despliegue debe identificar versión, proceso y rollback por separado.
 
 Para un cambio visual, empezar en el diagrama/componente. Para un campo nuevo de API, seguir `types → validation → client → consumidor`; si agrega endpoint, también el proxy. Para un comportamiento manual, cubrir `manual-position.ts`, panel, cliente, proxy y pruebas. Las recetas concretas están en [mapa-codigo.md](mapa-codigo.md).
 
-Pruebas automatizadas existentes se pueden explicar leyendo `scripts/test-fifo-ordering.mjs`, `test-manual-position.mjs`, `test-manual-removal.mjs`, `test-manual-reposition.mjs`, `test-integrated-tracking.mjs` y `test-manual-actions-ui.mjs`. No ejecutarlas contra planta ni convertir esta capacitación en una sesión de pruebas operativas. Un resultado local previo no constituye aceptación del comportamiento actual del backend.
+Las regresiones se pueden explicar leyendo los scripts de FIFO, acciones manuales, integración, navegador y los nuevos `test-bundle-lifecycle.mjs`, `test-tracking-reset.mjs` y `test-tracking-reset-state.mjs`. No ejecutarlas contra planta ni convertir esta capacitación en pruebas operativas. Un resultado local previo no constituye aceptación del backend real.
 
 ## 12. Cierre técnico: comprobar que sí se transfirió conocimiento
 
@@ -299,6 +307,7 @@ Pedir al mantenedor que localice, sin ayuda:
 4. El algoritmo que ordena FIFO sin usar BundleId.
 5. El handler que guarda Destination antes de Mill Order y el riesgo de aplicación parcial.
 6. La diferencia entre `removeBundle`, `repositionBundle` y `manualOutcomeObserved`.
-7. La condición exacta que explica el pending del registro REMOVED conservado.
+7. El criterio histórico de pending y el nuevo criterio estricto para REMOVED retenido, sin borrar el snapshot.
+8. El alcance global de reset, su confirmación, el lock compartido y por qué un 202 no certifica ejecución.
 
 Si puede explicar ese recorrido, conoce la arquitectura útil para mantener el proyecto; no sólo sus carpetas. Separar al cerrar lo demostrado por lectura/código de las validaciones operativas pendientes y de cualquier cambio que se acuerde implementar después.

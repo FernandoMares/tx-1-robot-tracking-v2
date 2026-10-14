@@ -1,4 +1,5 @@
 import type { TrackedBundleDto } from "@/lib/tracking-api"
+import { getActiveBundles } from "@/lib/tracking-api/bundle-lifecycle"
 import { cn } from "@/lib/utils"
 
 interface ScaleWeightReadoutProps {
@@ -13,10 +14,11 @@ function bundleIdentity(bundle: TrackedBundleDto): string {
 
 /** The scale displays only Weight from bundles currently reported in SGRT2. */
 export function ScaleWeightReadout({
-  bundles,
+  bundles: suppliedBundles,
   hasSnapshot,
   compact = false,
 }: ScaleWeightReadoutProps) {
+  const bundles = getActiveBundles(suppliedBundles)
   return (
     <div
       className={cn("min-w-0 text-center text-slate-700", compact ? "text-[9px] leading-3" : "text-[11px] leading-4")}

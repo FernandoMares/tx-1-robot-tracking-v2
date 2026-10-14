@@ -153,7 +153,8 @@ test("proxy restricts POST, sanitizes removal and preserves legacy correction", 
   }
   assert.equal((await routeRequest(proxy.POST, removal, { raw: "{" })).status, 400)
   assert.equal((await routeRequest(proxy.POST, removal, { contentType: "text/plain" })).status, 415)
-  for (const path of ["/api/tracking/reset", "/api/tracking/state", "/api/tracking/remove"]) {
+  assert.equal((await routeRequest(proxy.POST, removal, { path: "/api/tracking/reset" })).status, 403)
+  for (const path of ["/api/tracking/state", "/api/tracking/remove"]) {
     assert.equal((await routeRequest(proxy.POST, removal, { path })).status, 404)
   }
   const context = { params: Promise.resolve({ path: correctionPath.slice(1).split("/") }) }

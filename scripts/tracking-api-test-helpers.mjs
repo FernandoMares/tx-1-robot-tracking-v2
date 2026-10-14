@@ -59,7 +59,7 @@ async function unusedLoopbackPort() {
   return port
 }
 
-export async function startSimulator({ disabledZones = "", fifoDemo = false } = {}) {
+export async function startSimulator({ disabledZones = "", fifoDemo = false, allowReset = false } = {}) {
   const port = await unusedLoopbackPort()
   const baseUrl = "http://127.0.0.1:" + port
   const child = spawn(process.execPath, [resolve(root, "scripts/tracking-api-simulator.mjs")], {
@@ -71,6 +71,7 @@ export async function startSimulator({ disabledZones = "", fifoDemo = false } = 
       TRACKING_SIMULATOR_STEP_MS: "3600000",
       TRACKING_SIMULATOR_BUFFER_DEMO: "true",
       TRACKING_SIMULATOR_FIFO_DEMO: String(fifoDemo),
+      TRACKING_SIMULATOR_ENABLE_RESET: String(allowReset),
       TRACKING_SIMULATOR_QMOS_CONNECTED: "true",
       TRACKING_SIMULATOR_OPC_CONNECTED: "true",
       TRACKING_SIMULATOR_LOG_REQUESTS: "false",

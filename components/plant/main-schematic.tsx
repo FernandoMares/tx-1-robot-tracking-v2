@@ -14,10 +14,14 @@ interface MainSchematicProps {
   animationRunning: boolean
   bundlesByZone: BundlesByZone
   hasSnapshot: boolean
+  /** Bundler keeps the overview geometry, excluding only the stacker branch. */
+  variant?: "overview" | "bundler"
 }
 
 export const MAIN_SCHEMATIC_WIDTH = 1480
 export const MAIN_SCHEMATIC_HEIGHT = 760
+const BUNDLER_LEFT_OFFSET = 480
+export const BUNDLER_SCHEMATIC_WIDTH = MAIN_SCHEMATIC_WIDTH - BUNDLER_LEFT_OFFSET
 const ZONE_WIDTH = 84
 const BUNDLER_ROW_TOP = 250
 
@@ -239,15 +243,17 @@ export function MainSchematic({
   animationRunning,
   bundlesByZone,
   hasSnapshot,
+  variant = "overview",
 }: MainSchematicProps) {
+  const bundlerOnly = variant === "bundler"
   return (
     <div
-      className="relative shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
-      style={{ width: MAIN_SCHEMATIC_WIDTH, height: MAIN_SCHEMATIC_HEIGHT }}
+      className={cn("relative shrink-0 overflow-hidden", !bundlerOnly && "rounded-lg border border-slate-200 bg-white shadow-sm")}
+      style={{ width: bundlerOnly ? BUNDLER_SCHEMATIC_WIDTH : MAIN_SCHEMATIC_WIDTH, height: MAIN_SCHEMATIC_HEIGHT }}
       role="group"
-      aria-label="Mirrored Exit Tracking physical overview"
+      aria-label={bundlerOnly ? "Bundler overview without the stacker branch" : "Mirrored Exit Tracking physical overview"}
     >
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-zone via-cell-fill to-zone" aria-hidden />
+      {!bundlerOnly && <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-zone via-cell-fill to-zone" aria-hidden />}
 
       <div className="absolute top-5 right-6 flex items-center gap-2 text-[10px] font-semibold tracking-wide text-slate-500 uppercase">
         Principal material flow
@@ -255,154 +261,162 @@ export function MainSchematic({
       </div>
 
       <p className="absolute top-5 left-7 text-xs font-bold tracking-[0.12em] text-slate-700 uppercase">
-        Tracking sections overview
+        {bundlerOnly ? "Bundler tracking sections" : "Tracking sections overview"}
       </p>
 
-      <MachineOutline
-        label="STK Stackers"
-        detail="Four source sections feeding the shared transfer route"
-        style={{ left: 20, top: 502, width: 376, height: 218 }}
-      >
-        <div className="absolute top-3 left-3 flex gap-1">
-          {STACKER_SOURCES.map((zone) => (
-            <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          ))}
-        </div>
-      </MachineOutline>
+      {/* Translate the retained diagram as one unit; all zone relationships
+          remain identical to Overview and no API position is reassigned. */}
+      <div className="absolute inset-y-0" style={{ left: bundlerOnly ? -BUNDLER_LEFT_OFFSET : 0, width: MAIN_SCHEMATIC_WIDTH }}>
+        {!bundlerOnly && (
+          <>
+            <MachineOutline
+              label="STK Stackers"
+              detail="Four source sections feeding the shared transfer route"
+              style={{ left: 20, top: 502, width: 376, height: 218 }}
+            >
+              <div className="absolute top-3 left-3 flex gap-1">
+                {STACKER_SOURCES.map((zone) => (
+                  <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+                ))}
+              </div>
+            </MachineOutline>
 
-      <div className="absolute" style={{ left: 400, top: 542 }}>
-        <FlowArrow running={animationRunning} className="size-3" />
-      </div>
+            <div className="absolute" style={{ left: 400, top: 542 }}>
+              <FlowArrow running={animationRunning} className="size-3" />
+            </div>
 
-      <div className="absolute" style={{ left: 416, top: 514 }}>
-        <HorizontalSequence
-          zones={STACKER_TRANSFERS}
-          bundlesByZone={bundlesByZone}
-          hasSnapshot={hasSnapshot}
-          running={animationRunning}
-        />
-      </div>
+            <div className="absolute" style={{ left: 416, top: 514 }}>
+              <HorizontalSequence
+                zones={STACKER_TRANSFERS}
+                bundlesByZone={bundlesByZone}
+                hasSnapshot={hasSnapshot}
+                running={animationRunning}
+              />
+            </div>
 
-      <div className="absolute" style={{ left: 892, top: 540 }}>
-        <FlowArrow running={animationRunning} className="size-4" />
-      </div>
+            <div className="absolute" style={{ left: 892, top: 540 }}>
+              <FlowArrow running={animationRunning} className="size-4" />
+            </div>
+          </>
+        )}
 
-      <section
-        className="absolute"
-        style={{ left: 908, top: 395 }}
-        aria-label="Scale Weight Station above SGRT1 and SGRT2, with NCCT1 and NCCT2 below"
-      >
-        <p className="mb-2 text-center text-[9px] font-bold tracking-[0.08em] text-slate-500 uppercase">
-          Physical scale · SGRT above NCCT
-        </p>
-        <div
-          className="grid gap-x-2 gap-y-5"
-          style={{ gridTemplateColumns: `${ZONE_WIDTH}px ${ZONE_WIDTH}px` }}
+        <section
+          className="absolute"
+          style={{ left: 908, top: 395 }}
+          aria-label="Scale Weight Station above SGRT1 and SGRT2, with NCCT1 and NCCT2 below"
         >
-          <ScaleContext bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          <Zone name="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          <Zone name="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          <Zone name="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          <Zone name="NCCT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          <p className="mb-2 text-center text-[9px] font-bold tracking-[0.08em] text-slate-500 uppercase">
+            Physical scale · SGRT above NCCT
+          </p>
+          <div
+            className="grid gap-x-2 gap-y-5"
+            style={{ gridTemplateColumns: `${ZONE_WIDTH}px ${ZONE_WIDTH}px` }}
+          >
+            <ScaleContext bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+            <Zone name="SGRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+            <Zone name="SGRT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+            <Zone name="NCCT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+            <Zone name="NCCT2" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+          </div>
+          <FlowArrow
+            running={animationRunning}
+            direction="down"
+            className="absolute size-2.5"
+            style={{ left: 37, top: 196 }}
+          />
+          <FlowArrow
+            running={animationRunning}
+            direction="down"
+            className="absolute size-2.5"
+            style={{ left: 129, top: 196 }}
+          />
+        </section>
+
+        <div className="absolute" style={{ left: 1084, top: 540 }}>
+          <FlowArrow running={animationRunning} className="size-4" />
         </div>
-        <FlowArrow
-          running={animationRunning}
-          direction="down"
-          className="absolute size-2.5"
-          style={{ left: 37, top: 196 }}
-        />
-        <FlowArrow
-          running={animationRunning}
-          direction="down"
-          className="absolute size-2.5"
-          style={{ left: 129, top: 196 }}
-        />
-      </section>
 
-      <div className="absolute" style={{ left: 1084, top: 540 }}>
-        <FlowArrow running={animationRunning} className="size-4" />
-      </div>
-
-      <div className="absolute" style={{ left: 1100, top: 514 }}>
-        <Zone name="IMRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-      </div>
-
-      <div className="absolute" style={{ left: 1184, top: 540 }}>
-        <FlowArrow running={animationRunning} className="size-4" />
-      </div>
-
-      <VerticalSection
-        label="First tracking section"
-        columns={UPPER_TRACKING_COLUMNS}
-        bundlesByZone={bundlesByZone}
-        hasSnapshot={hasSnapshot}
-        running={animationRunning}
-        direction="up"
-        style={{ left: 1200, top: 331 }}
-      />
-
-      <MachineOutline
-        label="BUND Bundler"
-        detail="Four bundler outputs feeding the second tracking section"
-        style={{ left: 500, top: BUNDLER_ROW_TOP - 12, width: 376, height: 220 }}
-      >
-        <div className="absolute top-3 left-3 flex gap-1">
-          {BUNDLER_OUTPUTS.map((zone) => (
-            <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-          ))}
+        <div className="absolute" style={{ left: 1100, top: 514 }}>
+          <Zone name="IMRT1" bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
         </div>
-      </MachineOutline>
 
-      <div className="absolute" style={{ left: 880, top: BUNDLER_ROW_TOP + 28 }}>
-        <FlowArrow running={animationRunning} className="size-3" />
-      </div>
+        <div className="absolute" style={{ left: 1184, top: 540 }}>
+          <FlowArrow running={animationRunning} className="size-4" />
+        </div>
 
-      <div className="absolute" style={{ left: 900, top: BUNDLER_ROW_TOP }}>
-        <HorizontalSequence
-          zones={["RTTY1", "RTTY2", "IMRT2"]}
+        <VerticalSection
+          label="First tracking section"
+          columns={UPPER_TRACKING_COLUMNS}
           bundlesByZone={bundlesByZone}
           hasSnapshot={hasSnapshot}
           running={animationRunning}
+          direction="up"
+          style={{ left: 1200, top: 331 }}
         />
+
+        <MachineOutline
+          label="BUND Bundler"
+          detail="Four bundler outputs feeding the second tracking section"
+          style={{ left: 500, top: BUNDLER_ROW_TOP - 12, width: 376, height: 220 }}
+        >
+          <div className="absolute top-3 left-3 flex gap-1">
+            {BUNDLER_OUTPUTS.map((zone) => (
+              <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+            ))}
+          </div>
+        </MachineOutline>
+
+        <div className="absolute" style={{ left: 880, top: BUNDLER_ROW_TOP + 28 }}>
+          <FlowArrow running={animationRunning} className="size-3" />
+        </div>
+
+        <div className="absolute" style={{ left: 900, top: BUNDLER_ROW_TOP }}>
+          <HorizontalSequence
+            zones={["RTTY1", "RTTY2", "IMRT2"]}
+            bundlesByZone={bundlesByZone}
+            hasSnapshot={hasSnapshot}
+            running={animationRunning}
+          />
+        </div>
+
+        <div className="absolute" style={{ left: 1184, top: BUNDLER_ROW_TOP + 28 }}>
+          <FlowArrow running={animationRunning} className="size-3" />
+        </div>
+
+        <VerticalSection
+          label="Second tracking section"
+          columns={LOWER_TRACKING_COLUMNS}
+          bundlesByZone={bundlesByZone}
+          hasSnapshot={hasSnapshot}
+          running={animationRunning}
+          direction="up"
+          style={{ left: 1200, top: 64 }}
+        />
+
+        <div className="absolute" style={{ left: 1237, top: 320 }}>
+          <FlowArrow running={animationRunning} direction="up" className="size-2.5" />
+        </div>
+
+        <div className="absolute" style={{ left: 1329, top: 320 }}>
+          <FlowArrow running={animationRunning} direction="up" className="size-2.5" />
+        </div>
+
+        <div className="absolute" style={{ left: 1380, top: 157 }}>
+          <FlowArrow running={animationRunning} className="size-3" />
+        </div>
+
+        <aside
+          className="absolute"
+          style={{ left: 1392, top: 70 }}
+          aria-label="Robot 2 physical equipment context"
+        >
+          <RobotCard robot={ROBOT_2_UNKNOWN} className="h-40 w-20 gap-2 bg-white/95 p-2" />
+        </aside>
       </div>
-
-      <div className="absolute" style={{ left: 1184, top: BUNDLER_ROW_TOP + 28 }}>
-        <FlowArrow running={animationRunning} className="size-3" />
-      </div>
-
-      <VerticalSection
-        label="Second tracking section"
-        columns={LOWER_TRACKING_COLUMNS}
-        bundlesByZone={bundlesByZone}
-        hasSnapshot={hasSnapshot}
-        running={animationRunning}
-        direction="up"
-        style={{ left: 1200, top: 64 }}
-      />
-
-      <div className="absolute" style={{ left: 1237, top: 320 }}>
-        <FlowArrow running={animationRunning} direction="up" className="size-2.5" />
-      </div>
-
-      <div className="absolute" style={{ left: 1329, top: 320 }}>
-        <FlowArrow running={animationRunning} direction="up" className="size-2.5" />
-      </div>
-
-      <div className="absolute" style={{ left: 1380, top: 157 }}>
-        <FlowArrow running={animationRunning} className="size-3" />
-      </div>
-
-      <aside
-        className="absolute"
-        style={{ left: 1392, top: 70 }}
-        aria-label="Robot 2 physical equipment context"
-      >
-        <RobotCard robot={ROBOT_2_UNKNOWN} className="h-40 w-20 gap-2 bg-white/95 p-2" />
-      </aside>
 
       <div
         className="absolute bottom-5 max-w-[35rem] rounded-md border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2 text-[10px] text-slate-500"
-        style={{ left: 520 }}
+        style={{ left: bundlerOnly ? 40 : 520 }}
       >
         Operator view of the tracking sections. Zone occupancy comes only from the tracking API.
       </div>

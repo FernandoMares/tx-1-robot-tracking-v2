@@ -209,11 +209,21 @@ node scripts/test-manual-position.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló prevalidación manual; revisar antes de publicar.' }
 node scripts/test-integrated-tracking.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló integración FIFO/manual; revisar antes de publicar.' }
+node scripts/test-bundle-lifecycle.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló ciclo de vida REMOVED; revisar antes de publicar.' }
+node scripts/test-tracking-reset.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló transporte de reset; revisar antes de publicar.' }
+node scripts/test-tracking-reset-state.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló verificación de reset; revisar antes de publicar.' }
+node scripts/test-bundler-layout.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló layout Bundler/Overview; revisar antes de publicar.' }
 pnpm typecheck
 if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript; no publicar.' }
 ```
 
 Los resultados pertenecen a la revisión exacta ensayada. Las pruebas históricas de ramas separadas no acreditan automáticamente la integración: registrar el resultado final. La prueba adicional `test-manual-actions-ui.mjs` necesita navegador local y puede iniciar procesos de prueba; revisar sus parámetros y requisitos antes de ejecutarla.
+
+Para verificar únicamente la navegación/layout Bundler frente a Overview, usar `node scripts/test-manual-actions-ui.mjs --layout-only` después del build live requerido por el runner. Crea su propio servidor/API loopback, bloquea solicitudes distintas de GET y guarda capturas desktop y de desplazamiento horizontal; no usa el backend de planta.
 
 ## 8. Endpoints y límites del simulador
 
@@ -237,6 +247,8 @@ GET /api/qmos/printers
 ```
 
 Las escrituras simuladas comunes son los tres PUT globales y POST `/api/tracking/correct` legacy con `TrackingId, OperatorId, Reason, MillOrder1`. En esta versión integrada también se simulan REMOVE y reposicionamiento por CurrentZone. No se simula `POST /api/qmos/print`.
+
+El cambio local del 9 de octubre (`sim-1.6.0`) agrega reset ficticio **deshabilitado por defecto**: sólo con `TRACKING_SIMULATOR_ENABLE_RESET=true` anuncia y acepta POST `/api/tracking/reset` sin cuerpo. Limpia únicamente el estado en memoria de esa instancia; no conecta a PLC/SQL. `test-manual-actions-ui.mjs` habilita esta opción en su propio simulador loopback para probar confirmaciones, bloqueo compartido y resultado incierto sin reintentos. No usar ese flag ni ese resultado como evidencia de autorización o ejecución en planta.
 
 GET de impresora usa `PrinterId/PrinterName/UpdatedUtc`; la respuesta PUT usa `updated/printerId/printerName/updatedUtc/appliesTo`. El simulador ayuda a observar ese casing, no lo homogeneiza.
 

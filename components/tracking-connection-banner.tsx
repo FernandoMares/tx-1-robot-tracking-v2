@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { getActiveBundles } from "@/lib/tracking-api/bundle-lifecycle"
 import type {
   TrackingRuntimeState,
   TrackingSyncStatus,
@@ -131,7 +132,7 @@ export function TrackingConnectionBanner({
     tracking.topology?.ScenarioName ??
     "Unknown"
   const apiVersion = tracking.service?.apiVersion ?? tracking.capabilities?.apiVersion ?? "Unknown"
-  const bundleCount = tracking.trackingState?.Bundles.length
+  const bundleCount = tracking.trackingState ? getActiveBundles(tracking.trackingState.Bundles).length : undefined
   const enabledZoneCount = tracking.topology?.Zones.filter((zone) => zone.IsEnabled).length
   const hasSnapshot = Boolean(tracking.trackingState || tracking.topology)
   const showSnapshot = tracking.syncStatus === "live" || hasSnapshot
@@ -183,8 +184,8 @@ export function TrackingConnectionBanner({
                 <dd className="font-medium text-foreground">v{apiVersion}</dd>
               </div>
               <div className="flex gap-1">
-                <dt className="sr-only">Bundles</dt>
-                <dd className="font-medium text-foreground">{bundleCount ?? "N/A"} bundles</dd>
+                <dt className="sr-only">Active bundles</dt>
+                <dd className="font-medium text-foreground">{bundleCount ?? "N/A"} active bundles</dd>
               </div>
               <div className="flex gap-1">
                 <dt className="sr-only">Enabled zones</dt>

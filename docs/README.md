@@ -1,6 +1,6 @@
 # Documentación TX1 — versión integrada
 
-Este fuente reúne **FIFO + retiro REMOVE + reposicionamiento manual**, junto con las selecciones globales, diagramas y peso de SGRT2. Rama: `release/integrated-hmi`, código `7fc34e8`. La capacitación se realiza sobre el servidor **3000 → 8085**, sin simulador. La inclusión de una función no equivale a su aceptación en planta: consultar [estado de entrega](estado-entrega.md).
+Este fuente reúne **FIFO + retiro REMOVE + reposicionamiento manual**, selecciones globales, diagramas y peso de SGRT2. Rama: `release/integrated-hmi`; base funcional desplegada documentada `7fc34e8`, checkpoint documental anterior `c7df85a`. El checkpoint de fuente del 13 de octubre incluye filtrado `REMOVED`, confirmación de retiro retenido, reset de mantenimiento y Bundler compartiendo el Overview sin Stackers/STRT/LFRT; estos ajustes aún no están desplegados. Ocultar Operator ID y hacer comentarios opcionales queda pendiente del acuerdo de contrato. La capacitación del servidor **3000 → 8085** debe explicar la versión efectivamente instalada, no atribuirle cambios posteriores. Consultar [estado de entrega](estado-entrega.md).
 
 ## Empieza aquí
 
@@ -19,6 +19,7 @@ Este fuente reúne **FIFO + retiro REMOVE + reposicionamiento manual**, junto co
 | Regresiones aisladas para desarrollo, fuera de esta capacitación | [Simulador HTTP](tracking-api-simulator.md) |
 | Validar retiro sin confundir Accepted con ejecución | [Commissioning de retiro](manual-bundle-removal-commissioning.md) |
 | Validar corrección de posición registrada | [Commissioning de reposicionamiento](manual-bundle-reposition-commissioning.md) |
+| Preparar una prueba autorizada del reset global | [Commissioning de reset](tracking-reset-commissioning.md) |
 
 ## Para instalación y transferencia
 

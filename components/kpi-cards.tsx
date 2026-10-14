@@ -2,6 +2,7 @@ import { TrendingUp } from "lucide-react"
 
 import { formatCount } from "@/lib/status"
 import type { TrackingRuntimeState } from "@/lib/tracking-api"
+import { getActiveBundles } from "@/lib/tracking-api/bundle-lifecycle"
 import type { PlantKpis } from "@/lib/types"
 
 interface KpiCardsProps {
@@ -17,12 +18,12 @@ interface KpiTile {
 }
 
 export function KpiCards({ kpis, tracking }: KpiCardsProps) {
-  const liveBundles = tracking.trackingState?.Bundles ?? null
+  const liveBundles = tracking.trackingState ? getActiveBundles(tracking.trackingState.Bundles) : null
   const liveTiles: KpiTile[] = [
     {
       label: "Active tracked bundles",
       value: liveBundles ? formatCount(liveBundles.length) : "—",
-      footnote: "Current /tracking/state snapshot",
+      footnote: "Current /tracking/state snapshot, excluding REMOVED bundles",
     },
     {
       label: "Occupied zones",

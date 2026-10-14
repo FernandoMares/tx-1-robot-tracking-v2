@@ -1,6 +1,6 @@
 # Mapa de código y manual de mantenimiento
 
-Referencia de implementación: **HMI integrado `7fc34e8`**, rama `release/integrated-hmi`. Este documento explica símbolos y relaciones que existen en esa base. Para conducir el recorrido en el servidor, usar [Training de código fuente](handoff-session.md). Aquí se consulta dónde cambiar algo y qué otras piezas se verían afectadas.
+Referencia: rama `release/integrated-hmi`, base funcional `7fc34e8`, checkpoint documental `c7df85a` y **checkpoint de fuente del 13 de octubre de 2026, pendiente de despliegue**. El mapa incluye el nuevo filtro REMOVED, reset y layout compartido de Bundler; comprobar qué versión se abre en servidor antes de mostrarlos como funciones instaladas. Para el recorrido usar [Training de código fuente](handoff-session.md).
 
 Fuente usado en el servidor: `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`. Aplicación existente: puerto 3000; proxy hacia MaterialTrackingService en 8085. Leer fuente no requiere reiniciar el runtime. Los ejemplos de código de este documento explican comportamiento; no son instrucciones para enviar comandos a planta.
 
@@ -22,7 +22,9 @@ app/page.tsx — Page
    ├─ TrackingConnectionBanner — tracking, layoutValidation, onRetry
    ├─ KpiCards — tracking, kpis
    ├─ GlobalMillOrderPanel — tracking, config
-   ├─ TrackingBundlesPanel — tracking, config, onRefresh
+   ├─ useTrackingCommandGate — bloqueo local de acciones manuales y reset
+   ├─ TrackingBundlesPanel — tracking, config, onRefresh, commandGate
+   ├─ TrackingResetControl — mantenimiento global, mismo commandGate
    └─ Vista elegida — tracking, bundlesByZone y props visuales
       ├─ PlantMap → MainSchematic
       ├─ StackersSchematic → SchematicScreen
@@ -91,7 +93,7 @@ La respuesta sólo se devuelve si pasa su guard de runtime. `TrackingStateDto` e
 
 `GET`, `POST` y `PUT` son handlers independientes. `RouteContext` contiene `params` como Promise, por lo que el código usa `await context.params`. `getProxyTarget` acepta HTTP(S), rechaza credenciales embebidas y prepara el destino. `jsonError` produce errores del proxy con no-store.
 
-El GET utiliza `STATIC_READ_ENDPOINTS` más una expresión para bundle por ID. El POST está limitado a `/api/tracking/correct`; el PUT a las tres selecciones globales. El proxy distingue payloads manuales y reconstruye los campos permitidos, evitando reenviar combinaciones ambiguas. No habilita reset, escrituras OPC, inyección de eventos ni comandos QMOS de impresión.
+El GET utiliza `STATIC_READ_ENDPOINTS` más una expresión para bundle por ID. El POST permite `/api/tracking/correct` y el reset explícito `/api/tracking/reset`; el PUT, las tres selecciones globales. El proxy reconstruye payloads de corrección sin combinaciones ambiguas. Reset exige header `X-Tracking-Reset-Confirmation: RESET`, rechaza Origin incompatible, query y cuerpo; reenvía un POST sin payload. Es una barrera de intención, no autenticación. No habilita escrituras OPC, inyección de eventos ni impresión QMOS.
 
 La allowlist es una restricción técnica, no una identidad de operador. El proyecto actual no implementa login/roles corporativos en esos handlers. Proteger red, acceso al HMI y comandos backend sigue siendo una decisión de infraestructura y del servicio.
 
@@ -105,6 +107,7 @@ Los paths de esta tabla son del backend; el navegador antepone `/tracking-api`. 
 | GET `/api/tracking/capabilities` | `getCapabilities` | `TrackingCapabilitiesDto` / `isTrackingCapabilitiesDto` | Bootstrap y preflight manual. |
 | GET `/api/tracking/map` | `getMap` | `TrackingMapDto` / `isTrackingMapDto` | Bootstrap, validación layout, destinos manuales. |
 | GET `/api/tracking/state` | `getState` | `TrackingStateDto` / `isTrackingStateDto` | Polling, preflight y verificación manual. |
+| POST `/api/tracking/reset` | `resetTracking` | `TrackingResetAcceptedDto` / `isTrackingResetAcceptedDto` | `TrackingResetControl`; sin cuerpo, acuse RESET y verificación separada. |
 | GET `/api/tracking/bundles/{id}` | `getBundle` | `TrackedBundleDto` / `isTrackedBundleDto` | Disponible para consultas; la lista principal usa state. |
 | GET `/api/qmos/mill-orders?max=...` | `getQmosMillOrders` | `QmosMillOrdersResponseDto` / `isQmosMillOrdersResponseDto` | Catálogo de órdenes. Normaliza array o wrapper a `{ value, Count }`. |
 | GET `/api/qmos/bundle-locations` | `getQmosBundleLocations` | `QmosBundleLocationsResponseDto` / su guard | Catálogo Destination; normaliza `id/description` o `Id/Description`. |
@@ -150,7 +153,7 @@ En `hooks/use-tracking-api.ts`:
 
 `components/app-header.tsx`: `TABS`, `ViewTabs` y `AppHeader`. `components/dashboard.tsx`: estado `view` y render condicional. Para añadir otra pestaña habría que extender `PlantView`, declarar la pestaña y renderizar su componente; no basta con cambiar el label del menú.
 
-`components/plant/plant-map.tsx`: `PlantMap` envuelve el overview y llama `MainSchematic`; su `ResizeObserver` limita escala entre 0.95 y 1.3. `components/plant/schematic-screen.tsx`: `SchematicScreen` es el marco compartido de las vistas detalladas, escala entre 0.9 y 1.45, encabezado, badge y leyenda. Mantienen scroll horizontal cuando el lienzo no cabe.
+`components/plant/plant-map.tsx`: `PlantMap` envuelve el overview y llama `MainSchematic`; su `ResizeObserver` limita escala entre 0.95 y 1.3. `components/plant/schematic-screen.tsx`: `SchematicScreen` es el marco compartido de las vistas detalladas, con mínimo 0.9 y `maxScale` por defecto 1.45 (Bundler usa 1.3), encabezado, badge y leyenda. Mantienen scroll horizontal cuando el lienzo no cabe.
 
 ### Geometría que se mantiene a mano
 
@@ -158,7 +161,7 @@ En `hooks/use-tracking-api.ts`:
 | --- | --- | --- |
 | Overview | `main-schematic.tsx`: `MainSchematic`, `MAIN_SCHEMATIC_WIDTH`, `MAIN_SCHEMATIC_HEIGHT`, `BUNDLER_ROW_TOP`, `MachineOutline`, `HorizontalSequence`, `VerticalSection` | Mover grupos, ajustar alineación y flechas. `BUNDLER_ROW_TOP` ya relaciona contenedor y transferencias Bundler. |
 | Stackers | `stackers-schematic.tsx`: `SOURCE_POSITIONS`, `COMMON_LINE_POSITIONS`, `EXIT_POSITIONS`, `ZoneSlot` | Coordenadas de fuentes, línea común, NCCT/IMRT1. |
-| Bundler | `bundler-schematic.tsx`: `SOURCE_POSITIONS`, `COMMON_LINE_POSITIONS`, `ZoneSlot` | RTOUT y RTTY/IMRT2. |
+| Bundler | `bundler-schematic.tsx`: `BundlerSchematic` llama `MainSchematic` con `variant="bundler"`; `main-schematic.tsx`: `BUNDLER_LEFT_OFFSET`, `BUNDLER_SCHEMATIC_WIDTH` | Overview sin la rama ERT/STRT/LFRT. Traslada el conjunto restante 480 px, conserva relaciones y usa lienzo 1000 × 760. El Overview predeterminado sigue en 1480 × 760. |
 | Bay 1 | `bay-one-schematic.tsx`: `BayOneSchematic`, `EquipmentContext`, `Zone` | SGRT/NCCT y contexto de báscula/manual station. |
 | Bay 2 | `bay-two-schematic.tsx`: `STK_ROUTE_ZONES`, `FINAL_ROUTE_ZONES`, `LaneFlowArrows`, `Zone` | Dos rutas A/B, dimensiones CCH y transferencias ilustrativas. |
 | Primitivas de detalle | `zoom-schematic-primitives.tsx`: `DiagramArrow`, `EquipmentHeader` | Estilo común de flechas y títulos de equipo. |
@@ -210,9 +213,9 @@ Para investigar un guardado no visible, comprobar: catálogo elegido, request ex
 
 ### Panel y estados
 
-`components/tracking-bundles-panel.tsx` exporta `TrackingBundlesPanel`. Recibe `tracking`, `config` y `onRefresh`. `displayIdentity` sólo decide el texto; `selectBundle` prepara acción y formulario. `handleCommand` organiza confirmación, preflight, envío y paso a verificación.
+`components/tracking-bundles-panel.tsx` exporta `TrackingBundlesPanel`. Recibe `tracking`, `config`, `onRefresh` y `commandGate`. `displayIdentity` sólo decide el texto; `selectBundle` prepara acción y formulario. `handleCommand` organiza confirmación, preflight, envío y paso a verificación. `getActiveBundles` excluye removidos del listado; la verificación sigue leyendo el snapshot completo.
 
-`CommandStatus` distingue `idle`, `checking`, `sending`, `pending`, `uncertain`, `success`, `error`. `commandLocked` es un ref para bloquear doble envío en la instancia montada; no un lock distribuido. `verificationPaused` y `verificationRevision` permiten pausar/reanudar consultas GET sin repetir el comando. `VERIFICATION_WINDOW_MS` vale 60000.
+`CommandStatus` distingue `idle`, `checking`, `sending`, `pending`, `uncertain`, `success`, `error`. `commandLocked` evita doble envío; `useTrackingCommandGate`, creado en Dashboard, coordina acciones manuales y reset de esa página. No es un lock distribuido y se pierde al recargar. `verificationPaused` y `verificationRevision` permiten pausar/reanudar GET sin repetir el comando. `VERIFICATION_WINDOW_MS` vale 60000.
 
 `commandMayHaveBeenAccepted` trata timeout/red/respuesta ilegible y errores HTTP como 408/5xx como posibles resultados inciertos. Un botón inhabilitado tras eso evita repetir una escritura cuyo resultado no se conoce. No resolverlo quitando el lock o recargando para reenviar.
 
@@ -235,11 +238,11 @@ El preflight toma status/capabilities/map frescos en paralelo y state al final. 
 
 `removeBundle`: `TrackingRemovalRequestDto`, Operation exactamente REMOVE, cuatro campos sanitizados. `repositionBundle`: `TrackingRepositionRequestDto`, CurrentZone, sin Operation ni MillOrder1. Los guards rechazan payloads incompatibles y el proxy evita mezclarlos con `TrackingCorrectionRequestDto`, que representa el otro camino con MillOrder1.
 
-`OperatorId` y `Reason` se validan como strings no vacíos, no como credenciales ni como números de empleado verificados. Un rechazo previo por stale/preflight no acredita que “a1 no es válido”: comprobar en qué etapa se detuvo el flujo y si hubo POST.
+`OperatorId` y `Reason` se validan como strings no vacíos, no como credenciales ni empleados verificados. v0.39 exige ambos explícitamente para REMOVE; v0.6 exige operador en correcciones, mientras Reason en reposicionamiento aparece en el ejemplo. No extrapolar obligación contractual de Reason a todos los casos. La implementación mantiene ambos requeridos hasta acordar los cambios solicitados, sin valores ficticios. Un rechazo previo por stale/preflight no acredita que “a1 no es válido”: comprobar si hubo POST.
 
-## 10. Pendiente conocido de la base, sin ocultarlo en el training
+## 10. Ciclo de vida REMOVED y reset: ajuste local frente a evidencia histórica
 
-Después del evento 154605, la evidencia directa para `TRK-0000103919` / bundle `101637697` mostró Status REMOVED, CurrentZone null y OccupiedZones vacío, **con el registro aún en Bundles**. La rama remove de `manualOutcomeObserved` sólo devuelve true si `matches.length === 0`.
+Después del evento 154605, la evidencia de `7fc34e8` para `TRK-0000103919` / bundle `101637697` mostró REMOVED, CurrentZone null y OccupiedZones vacío, **con el registro aún en Bundles**. En esa versión REMOVE sólo confirmaba si `matches.length === 0`.
 
 Consecuencias concretas de `7fc34e8`:
 
@@ -248,7 +251,18 @@ Consecuencias concretas de `7fc34e8`:
 3. El preflight no contiene una política completa de elegibilidad por estado terminal. No volver a seleccionar ese registro para “forzar” la confirmación.
 4. La evidencia JSON no certifica de manera independiente PLC, señal física ni auditoría completa.
 
-El bug de confirmación **no está resuelto en esta base**. Antes de ajustar, acordar si ausencia o terminal REMOVED son resultados válidos, qué combinación de zonas se exige y cómo se trata la colección de registros históricos. Añadir pruebas contra payloads representativos y separar mensajes “aceptado”, “reflejado en state” y “verificado operativamente”. Un 202 solo acredita aceptación del comando, no cada efecto posterior.
+**Cambio local posterior:** `lib/tracking-api/bundle-lifecycle.ts` centraliza `isRemovedBundle` (trim/mayúsculas, sólo REMOVED) y `getActiveBundles` (proyección sin mutar). Agrupación de zonas, lista, KPI, banner, tarjeta y báscula excluyen removidos. Raw state se conserva para preflight/verificación. `reportedZoneOccupants` conserva incluso huellas inconsistentes de removidos para no relajar controles.
+
+`manualPreflightProblem` impide actuar sobre una selección removida, incluso si se removió después de mostrarla. `manualOutcomeObserved` admite ausencia o un único registro del mismo escenario con REMOVED, zona exactamente null y array OccupiedZones explícito vacío. Reposition exige registro único no removido en destino. Los casos incoherentes permanecen sin confirmar; esto no prueba PLC/auditoría.
+
+### Reset global separado
+
+- `components/tracking-reset-control.tsx` → `TrackingResetControl`: escribir RESET, casilla de autorización operativa y confirmación global nativa; estado de envío/acuse/verificación.
+- `lib/tracking-api/tracking-reset.ts` → `supportsTrackingReset`, `resetPreflightProblem`, `resetOutcomeObserved`: disponibilidad anunciada, preflight fresco de escenario/alcance y observación posterior; vacío inicial no prueba ejecución.
+- `hooks/use-tracking-command-gate.ts` → `useTrackingCommandGate`: lock local compartido manual/reset; no identidad ni lock backend.
+- `TrackingApiClient.resetTracking` → POST sin cuerpo → proxy → `/api/tracking/reset`. Acuse 202/accepted/eventId/eventType RESET, sin TrackingId requerido; no equivale a éxito final.
+
+No se reenvía automáticamente un reset incierto. Leer [commissioning de reset](tracking-reset-commissioning.md) antes de una prueba; el desarrollo local no ejecutó un reset industrial.
 
 ## 11. Recetas de cambios comunes: por dónde empezar y qué comprobar
 
@@ -299,7 +313,7 @@ Estas recetas describen desarrollo posterior, no modificaciones en caliente dura
 2. Revisar `manualOutcomeObserved`, `manualPreflightProblem` y elegibilidad UI; no limitar la revisión al texto del mensaje.
 3. Evaluar listado y KPI separadamente: confirmar retiro no significa borrar registros del snapshot artificialmente.
 4. Añadir pruebas para ausencia, REMOVED retenido, zonas no liberadas, duplicados, escenario distinto y timeout incierto.
-5. Validar contra API real en ventana acordada y con bundle autorizado. Esta receta no modifica el bug existente por estar documentada.
+5. Validar el ajuste local contra API real en ventana acordada y con bundle autorizado. Documentación o pruebas locales no sustituyen ese commissioning.
 
 ## 12. Diagnóstico por síntoma: evidencia antes de cambiar código
 
@@ -332,12 +346,15 @@ Pruebas disponibles, para leer durante la sesión y ejecutar únicamente en un e
 | --- | --- |
 | `scripts/test-fifo-ordering.mjs` | Orden lógico, datos parciales y preservación de grupos. |
 | `scripts/test-manual-position.mjs` | Preflight, destinos, ocupación y reglas puras manuales. |
+| `scripts/test-bundle-lifecycle.mjs` | Filtro REMOVED, renderizado, snapshot intacto, huellas inconsistentes y resultados manuales. |
+| `scripts/test-tracking-reset.mjs` | Transporte/proxy/acuse de reset sin cuerpo y rechazos de contrato. |
+| `scripts/test-tracking-reset-state.mjs` | Preflight y observación de estado de reset. |
 | `scripts/test-manual-removal.mjs` | Contrato y flujo de retiro. |
 | `scripts/test-manual-reposition.mjs` | Contrato y flujo de reposicionamiento. |
 | `scripts/test-integrated-tracking.mjs` | Convivencia de las funciones integradas. |
 | `scripts/test-manual-actions-ui.mjs` | Flujo en navegador, confirmación, bloqueo y verificación. |
 | `scripts/tracking-api-test-helpers.mjs` | Infraestructura de pruebas compartida. |
 
-No dar por sentado que las pruebas existentes cubren el caso real REMOVED retenido: esa brecha es precisamente un pendiente de esta versión. Éxito de TypeScript/build prueba compilación, no compatibilidad de todos los estados futuros del servicio.
+La regresión de ciclo de vida incluye ahora REMOVED retenido, huella residual, ausencia, identidad duplicada y escenario incorrecto. Los resultados de la suite completa deben registrarse al verificar el cambio final. Éxito de pruebas/TypeScript/build no acredita commissioning real ni compatibilidad de todos los estados futuros.
 
 La entrega Git debe contener fuente y documentación revisados, no `.git` del autor, `.env.local`, `node_modules`, `.next`, dumps ni artefactos personales. El ZIP fuente y el runtime son productos diferentes; relacionarlos por commit y metadata, no sólo por nombre de archivo. Ver [Entrega Git](entrega-git.md) y [Despliegue Windows](windows-standalone-deployment.md) antes de una publicación posterior al training.
