@@ -457,7 +457,7 @@ export function isTrackingRemovalRequestDto(value: unknown): value is TrackingRe
     isNonEmptyString(value.TrackingId) &&
     value.Operation === "REMOVE" &&
     isNonEmptyString(value.OperatorId) &&
-    isNonEmptyString(value.Reason)
+    isNullableString(value.Reason)
   )
 }
 

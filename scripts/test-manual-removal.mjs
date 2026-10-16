@@ -65,8 +65,10 @@ function invalidRemovals(valid = removal) {
   for (const field of Object.keys(valid)) {
     const missing = { ...valid }
     delete missing[field]
-    cases.push(missing, { ...valid, [field]: " \t " }, { ...valid, [field]: 123 })
+    cases.push(missing, { ...valid, [field]: undefined }, { ...valid, [field]: 123 })
+    if (field !== "Reason") cases.push({ ...valid, [field]: " \t " }, { ...valid, [field]: null })
   }
+  for (const Reason of [false, true, {}, []]) cases.push({ ...valid, Reason })
   return cases
 }
 
@@ -79,9 +81,11 @@ function routeRequest(handler, body, { path = correctionPath, contentType = "app
   return handler(request, { params: Promise.resolve({ path: path.slice(1).split("/") }) })
 }
 
-test("REMOVE validator requires its four fields and rejects RETIRE", () => {
+test("REMOVE validator requires explicit Reason but accepts null or text; operator and identity remain required", () => {
   assert.equal(validation.isTrackingRemovalRequestDto(removal), true)
-  assert.equal(validation.isTrackingRemovalRequestDto({ ...removal, Reason: " reason " }), true)
+  for (const Reason of [null, "", " \t ", " reason "]) {
+    assert.equal(validation.isTrackingRemovalRequestDto({ ...removal, Reason }), true)
+  }
   for (const body of invalidRemovals()) {
     assert.equal(validation.isTrackingRemovalRequestDto(body), false, JSON.stringify(body))
   }
@@ -120,6 +124,24 @@ test("client trims and allowlists REMOVE, validates requests and acknowledgement
     await assert.rejects(client.removeBundle(removal), (error) =>
       isApiError(error) && error.kind === "invalid-payload" && error.status === 202)
   }
+})
+
+test("REMOVE client preserves explicit null and normalizes blank comments without inventing values", async () => {
+  const calls = []
+  const client = new TrackingApiClient({
+    baseUrl: "http://hmi.invalid",
+    fetchImpl: async (url, options) => {
+      calls.push(JSON.parse(options.body))
+      return Response.json(acknowledgement, { status: 202 })
+    },
+  })
+  for (const Reason of [null, "", " \t\r\n ", "  Written comment  "]) {
+    const input = Object.freeze({ ...removal, Reason, BundleId: "discard", CurrentZone: "discard" })
+    await client.removeBundle(input)
+    assert.deepEqual(calls.at(-1), { ...removal, Reason: Reason?.trim() || null })
+    assert.equal(input.Reason, Reason, "Normalization must not mutate the caller's payload")
+  }
+  assert.equal(calls.length, 4, "Each valid action must send exactly one request")
 })
 
 test("proxy restricts POST, sanitizes removal and preserves legacy correction", async () => {
@@ -162,6 +184,87 @@ test("proxy restricts POST, sanitizes removal and preserves legacy correction", 
   assert.equal((await proxy.PUT(new Request("http://hmi.invalid" + correctionPath, { method: "PUT" }), context)).status, 404)
   assert.equal(calls.length, 2, "Rejected requests must never reach the backend")
   assert.ok(calls.every(({ url }) => new URL(url).pathname === correctionPath), "No reset is forwarded")
+})
+
+test("proxy normalizes REMOVE comments but keeps reposition and Mill Order correction fields mandatory", async () => {
+  const calls = []
+  const proxy = loadTypeScript("app/tracking-api/[...path]/route.ts", {
+    env: { TRACKING_API_PROXY_TARGET: "http://127.0.0.1:1" },
+    fetchImpl: async (url, options) => {
+      calls.push(JSON.parse(options.body))
+      return Response.json(acknowledgement, { status: 202 })
+    },
+  })
+  for (const Reason of [null, "", " \t\r\n ", "  Written comment  "]) {
+    const response = await routeRequest(proxy.POST, {
+      ...removal, Reason, BundleId: "discard", TagNumber: "discard", MillOrder1: "discard", CurrentZone: "discard",
+    })
+    assert.equal(response.status, 202)
+    assert.deepEqual(calls.at(-1), { ...removal, Reason: Reason?.trim() || null })
+  }
+  const { Operation, ...identity } = removal
+  const variants = [
+    { body: { ...identity, CurrentZone: "SGRT2A" }, validate: validation.isTrackingRepositionRequestDto, method: "repositionBundle" },
+    { body: { ...identity, MillOrder1: "MO-123" }, validate: validation.isTrackingCorrectionRequestDto, method: "correctBundle" },
+  ]
+  const client = new TrackingApiClient({
+    baseUrl: "http://hmi.invalid",
+    fetchImpl: () => { throw new Error("Invalid correction must not be sent") },
+  })
+  for (const { body, validate, method } of variants) {
+    for (const field of ["Reason", "OperatorId"]) {
+      for (const value of [null, undefined, "", " \t ", 123, false, {}, []]) {
+        const invalid = { ...body, [field]: value }
+        assert.equal(validate(invalid), false, JSON.stringify(invalid))
+        assert.throws(() => client[method](invalid))
+        assert.equal((await routeRequest(proxy.POST, invalid)).status, 400, JSON.stringify(invalid))
+      }
+    }
+  }
+  assert.equal(calls.length, 4, "Invalid variants never reach the backend")
+})
+
+test("optional-comment REMOVE never retries backend rejection, network failure or client timeout", async () => {
+  for (const outcome of [400, 500, "network"]) {
+    let backendCalls = 0
+    let browserCalls = 0
+    const proxy = loadTypeScript("app/tracking-api/[...path]/route.ts", {
+      env: { TRACKING_API_PROXY_TARGET: "http://127.0.0.1:1" },
+      fetchImpl: async (url, options) => {
+        backendCalls += 1
+        assert.deepEqual(JSON.parse(options.body), { ...removal, Reason: null })
+        if (outcome === "network") throw new Error("Response lost after request was sent")
+        return Response.json({ error: "Fixture rejection" }, { status: outcome })
+      },
+    })
+    const client = new TrackingApiClient({
+      baseUrl: "http://hmi.invalid",
+      fetchImpl: (url, options) => {
+        browserCalls += 1
+        return proxy.POST(new Request(url, options), {
+          params: Promise.resolve({ path: correctionPath.slice(1).split("/") }),
+        })
+      },
+    })
+    await assert.rejects(client.removeBundle({ ...removal, Reason: null }), (error) =>
+      isApiError(error) && error.status === (outcome === "network" ? 502 : outcome))
+    assert.equal(browserCalls, 1)
+    assert.equal(backendCalls, 1)
+  }
+  let timeoutCalls = 0
+  const timeoutClient = new TrackingApiClient({
+    baseUrl: "http://hmi.invalid",
+    timeoutMs: 10,
+    fetchImpl: (url, options) => {
+      timeoutCalls += 1
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener("abort", () => reject(new Error("Aborted fixture")), { once: true })
+      })
+    },
+  })
+  await assert.rejects(timeoutClient.removeBundle({ ...removal, Reason: null }), (error) =>
+    isApiError(error) && error.kind === "timeout")
+  assert.equal(timeoutCalls, 1)
 })
 
 async function unusedLoopbackPort() {
@@ -291,6 +394,52 @@ test("simulator removes only TrackingId, preserves other bundles and rejects inv
     await assert.rejects(client.removeBundle(selectedRemoval), (error) => isApiError(error) && error.status === 404)
     assert.deepEqual((await directClient.getState()).Bundles, afterRemoval.Bundles, "Duplicate removal must not affect other bundles")
     assert.ok(forwarded.every(({ path }) => path === correctionPath), "No global reset is requested")
+  } finally {
+    await simulator.close()
+  }
+})
+
+test("simulator accepts null/blank REMOVE comments only and preserves neighbors and strict correction variants", { timeout: 20000 }, async () => {
+  const simulator = await startSimulator()
+  try {
+    const direct = new TrackingApiClient({ baseUrl: simulator.baseUrl, fetchImpl: simulator.fetch })
+    const initial = await direct.getState()
+    const { Operation, ...identity } = removal
+    const variants = [
+      { ...identity, CurrentZone: "SGRT2A" },
+      { ...identity, MillOrder1: "MO-123" },
+    ]
+    const post = (body) => simulator.fetch(simulator.baseUrl + correctionPath, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    })
+    for (const body of variants) {
+      for (const field of ["Reason", "OperatorId"]) {
+        for (const value of [null, undefined, "", " \t ", 123]) {
+          const invalid = { ...body, [field]: value }
+          assert.equal((await post(invalid)).status, 400, JSON.stringify(invalid))
+        }
+      }
+    }
+    for (const invalid of invalidRemovals({ ...removal, Reason: null })) {
+      assert.equal((await post(invalid)).status, 400, JSON.stringify(invalid))
+    }
+    assert.deepEqual((await direct.getState()).Bundles, initial.Bundles, "Invalid fields never mutate the simulator")
+
+    const removed = new Set()
+    for (const [index, Reason] of [null, "", " \t\r\n "].entries()) {
+      const TrackingId = "SIM-DEMO-BUFFER-" + (index + 1)
+      const response = await post({ ...removal, TrackingId, Reason, BundleId: "discard", CurrentZone: "discard" })
+      assert.equal(response.status, 202)
+      const accepted = await response.json()
+      assert.equal(accepted.accepted, true)
+      assert.equal(accepted.trackingId, TrackingId)
+      removed.add(TrackingId)
+      const after = await direct.getState()
+      assert.deepEqual(after.Bundles, initial.Bundles.filter((bundle) => !removed.has(bundle.TrackingId)))
+      await assert.rejects(direct.getBundle(TrackingId), (error) => isApiError(error) && error.status === 404)
+    }
+    // The original nonblank-comment regression above exercises the full
+    // client/proxy/simulator path; these direct requests cover API boundaries.
   } finally {
     await simulator.close()
   }

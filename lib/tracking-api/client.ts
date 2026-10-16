@@ -469,7 +469,7 @@ export class TrackingApiClient {
     signal?: AbortSignal,
   ): Promise<TrackingCommandAcceptedDto> {
     if (!isTrackingRemovalRequestDto(request)) {
-      throw new Error("Removal requires a TrackingId, REMOVE operation, OperatorId, and Reason")
+      throw new Error("Removal requires a TrackingId, REMOVE operation, OperatorId, and a string or null Reason")
     }
 
     return this.post(
@@ -478,7 +478,7 @@ export class TrackingApiClient {
         TrackingId: request.TrackingId.trim(),
         Operation: "REMOVE",
         OperatorId: request.OperatorId.trim(),
-        Reason: request.Reason.trim(),
+        Reason: request.Reason?.trim() || null,
       } satisfies TrackingRemovalRequestDto,
       isTrackingCommandAcceptedDto,
       signal,

@@ -123,12 +123,12 @@ test("retained cards match Overview exactly and the shared source snapshot is ne
   assert.equal(JSON.stringify({ Bundles, grouped }), before)
 })
 
-test("screen catalogs match the expanded Bundler view without changing other screens", () => {
+test("screen catalogs match Bundler, Stackers and the expanded Bay views", () => {
   const expectedScreens = {
     bundler: RETAINED_ZONES,
     stackers: [...BLUE_ZONES, "SGRT1", "SGRT2", "NCCT1", "NCCT2", "IMRT1"],
-    "bay-1": ["SGRT1", "SGRT2", "NCCT1", "NCCT2"],
-    "bay-2": ["IMRT2", "IMRT1", "SGRT1A", "SGRT1B", "LCH1A", "LCH1B", "CCH1A", "CCH1B", "SGRT2A", "SGRT2B", "LCH2A", "LCH2B", "CCH2A", "CCH2B"],
+    "bay-1": [...BLUE_ZONES, "SGRT1", "SGRT2", "NCCT1", "NCCT2"],
+    "bay-2": ["RTTY1", "RTTY2", "SGRT1", "SGRT2", "NCCT1", "NCCT2", "IMRT2", "IMRT1", "SGRT1A", "SGRT1B", "LCH1A", "LCH1B", "CCH1A", "CCH1B", "SGRT2A", "SGRT2B", "LCH2A", "LCH2B", "CCH2A", "CCH2B"],
   }
   for (const [screen, expected] of Object.entries(expectedScreens)) {
     assert.deepEqual(Array.from(TRACKING_ZONES_BY_SCREEN[screen]).sort(), [...expected].sort(), screen + " catalog")

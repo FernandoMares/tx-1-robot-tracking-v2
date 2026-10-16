@@ -560,6 +560,13 @@ function sanitizeCorrection(value) {
     : ["TrackingId", "OperatorId", "Reason", reposition ? "CurrentZone" : "MillOrder1"]
   const sanitized = {}
   for (const field of fields) {
+    // Real API v0.44 accepted and applied REMOVE with Reason=null. Other
+    // correction variants still require a reason until verified separately.
+    if (field === "Reason" && value.Operation === "REMOVE") {
+      if (value[field] !== null && typeof value[field] !== "string") return null
+      sanitized[field] = value[field]?.trim() || null
+      continue
+    }
     if (typeof value[field] !== "string" || value[field].trim().length === 0) return null
     sanitized[field] = value[field].trim()
   }
@@ -708,7 +715,7 @@ const server = createServer(async (request, response) => {
     const correction = sanitizeCorrection(body)
     if (!correction) {
       return sendJson(response, 400, {
-        error: "Specify CurrentZone for reposition, MillOrder1 for an order correction, or Operation=REMOVE. TrackingId, OperatorId, and Reason are required.",
+        error: "Specify CurrentZone for reposition, MillOrder1 for an order correction, or Operation=REMOVE. TrackingId and OperatorId must be nonempty strings. Reason must be present and may be null only for REMOVE.",
       })
     }
 

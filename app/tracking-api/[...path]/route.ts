@@ -182,10 +182,10 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       TrackingId: body.TrackingId.trim(),
       Operation: "REMOVE",
       OperatorId: body.OperatorId.trim(),
-      Reason: body.Reason.trim(),
+      Reason: body.Reason?.trim() || null,
     }
   } else if (body && typeof body === "object" && "Operation" in body) {
-    return jsonError(400, "Removal requires Operation=REMOVE, TrackingId, OperatorId, and Reason.")
+    return jsonError(400, "Removal requires Operation=REMOVE, TrackingId, OperatorId, and a string or null Reason.")
   } else if (isTrackingRepositionRequestDto(body)) {
     sanitizedBody = {
       TrackingId: body.TrackingId.trim(),

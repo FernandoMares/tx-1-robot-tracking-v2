@@ -232,7 +232,9 @@ Para peso, terminar en `components/plant/scale-weight-readout.tsx`, `ScaleWeight
 
 ### 49. ¿Ya está oculto Operator ID y puedo omitir Comments?
 
-No todavía. v0.39, sección 4, exige `OperatorId` y `Reason` para REMOVE; v0.6, sección 5.8, exige operador en correcciones. Reason aparece en el ejemplo de reposicionamiento, pero eso no demuestra que sea obligatorio para todas las variantes. Hoy formulario, cliente y proxy requieren ambos; falta acordar qué admite backend antes de relajarlos u ocultarlos. No inventar operador ni motivo automático. Operator ID es texto de auditoría, no autenticación.
+Operator ID todavía no se oculta: API 0.44 rechazó `OperatorId: null` con 400 y el mensaje `OperatorId is required for HMI corrections.`. Se requiere un cambio del backend o mecanismo de identidad acordado, no un operador fijo. **Comments sí es opcional en el código local de REMOVE**: vacío/espacios → `Reason: null`, texto no vacío recortado. La prueba directa con operador informado y Reason null recibió 202/evento 237102 y posteriormente reportó REMOVED sin posiciones para `TRK-0000110850`; no prueba que el nuevo formulario esté desplegado ni acredita PLC/auditoría.
+
+Reposition y corrección legacy aún conservan comentario obligatorio: sus variantes no se han probado con null. El apéndice histórico v0.39 exigía ambos campos para REMOVE y v0.6 operador en correcciones; pedir actualización del contrato según la evidencia 0.44. No inventar identidad ni motivo automático. Operator ID es texto de auditoría, no autenticación. Ver [Estado de entrega](estado-entrega.md#prueba-directa-api-044-nulidad-de-campos-evento-237102).
 
 ### 50. ¿Reset reinicia Windows o equivale a retirar un bundle?
 

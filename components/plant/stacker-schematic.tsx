@@ -10,6 +10,8 @@ import type { TrackingRuntimeState } from "@/lib/tracking-api"
 import type { BundlesByZone } from "@/lib/tracking-zone-layout"
 
 interface StackerSchematicProps {
+  /** Bay 1 temporarily shares this view, keeping its own tab/header identity. */
+  title?: "Stacker" | "Bay 1"
   updatedAt: Date | null
   animationRunning: boolean
   matchedIds: Set<string> | null
@@ -18,8 +20,9 @@ interface StackerSchematicProps {
   bundlesByZone: BundlesByZone
 }
 
-/** New singular Stacker tab; the existing Stackers worksheet stays separate. */
+/** Shared Stacker/Bay 1 view; the existing plural Stackers stays separate. */
 export function StackerSchematic({
+  title = "Stacker",
   updatedAt,
   animationRunning,
   matchedIds,
@@ -28,7 +31,7 @@ export function StackerSchematic({
 }: StackerSchematicProps) {
   return (
     <SchematicScreen
-      title="Stacker"
+      title={title}
       description="Overview layout · Stacker route, SGRT scale and NCCT exits"
       updatedAt={updatedAt}
       animationRunning={animationRunning}

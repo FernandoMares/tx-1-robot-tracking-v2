@@ -1,12 +1,12 @@
 # TX1 Tracking HMI — release integrado
 
-Frontend de seguimiento de bundles para Texas 1 / Nucor. **Esta rama reúne FIFO, retiro manual y reposicionamiento en una sola aplicación**, además de Mill Order, Destination, impresora global, peso de SGRT2 y las cinco vistas de planta.
+Frontend de seguimiento de bundles para Texas 1 / Nucor. **Esta rama reúne FIFO, retiro manual y reposicionamiento en una sola aplicación**, además de Mill Order, Destination, impresora global, peso de SGRT2 y las seis vistas de planta.
 
 ## Versión y alcance
 
-Rama: `release/integrated-hmi`. Última base funcional desplegada documentada: **`7fc34e863ed0a9b12e955ae28a224996e84fd011`**. Checkpoint anterior de documentación: `c7df85a`. Este checkpoint de fuente del **13 de octubre de 2026** reúne el filtro de removidos, la confirmación de retiro retenido y el reset de mantenimiento del día 9, más Bundler reutilizando el Overview sin la rama Stackers/STRT/LFRT. El identificador exacto se consulta con `git log -1 --oneline`; guardar/publicar el fuente no actualiza el servidor ni los ZIP existentes. Estos ajustes siguen pendientes de empaquetado, despliegue y validación en planta. Procedencia funcional: FIFO `77f79bf` + operaciones manuales `5338300`, sobre `600d20f`.
+Rama: `release/integrated-hmi`. Última base funcional desplegada documentada: **`7fc34e863ed0a9b12e955ae28a224996e84fd011`**. El checkpoint de fuente del **16 de octubre de 2026**, posterior a `f11002b`, guarda Bay 1 igual a Stacker, el recorte de Bay 2 y Comments opcional sólo en REMOVE, junto con pruebas y documentación. También conserva el filtro de removidos, la confirmación de retiro retenido, el reset de mantenimiento y los layouts Bundler/Stacker de los checkpoints anteriores. El identificador exacto se consulta con `git log -1 --oneline`; guardar/publicar el fuente no actualiza el servidor ni los ZIP existentes. Estos ajustes siguen pendientes de empaquetado, despliegue y validación en planta. Procedencia funcional: FIFO `77f79bf` + operaciones manuales `5338300`, sobre `600d20f`.
 
-El checkpoint anterior está guardado/publicado como `90c849c`. Este nuevo checkpoint de fuente añade una pestaña **Stacker** (singular), independiente de **Stackers** (plural), que conserva su vista anterior. El cambio Stacker no forma parte de `90c849c` ni del paquete instalado; guardar/publicar Git no equivale a desplegarlo.
+El checkpoint `90c849c` reúne Bundler y mantenimiento; `f11002b` añade **Stacker** (singular), independiente de **Stackers** (plural). Ambos están guardados/publicados. Este checkpoint incorpora que **Bay 1** reutilice temporalmente Stacker y que **Bay 2** muestre sólo el sector derecho del Overview. Estos ajustes están incluidos en el fuente y siguen pendientes de despliegue; guardar/publicar Git no actualiza el paquete instalado.
 
 La base funcional `7fc34e8` se publicó y desplegó en el servidor sobre el **puerto 3000**, contra Tracking 8085/API 0.42. Sus verificaciones locales previas fueron FIFO 8/8, retiro 4/4, reposicionamiento 4/4, prevalidación 7/7, integración 2/2, TypeScript, build live y siete comprobaciones de navegador. No equivalen a aceptación física de planta ni validan los nuevos cambios de trabajo.
 
@@ -16,19 +16,21 @@ La base funcional `7fc34e8` se publicó y desplegó en el servidor sobre el **pu
 | --- | --- |
 | Plant Overview, Stackers, Stacker, Bundler, Bay 1, Bay 2 | Posiciones según `CurrentZone`; diagramas no controlan equipos |
 | Tab Stacker (singular) | Nueva vista del Overview limitada a ERT, STRT, LFRT, SGRT1/2, NCCT1/2 y báscula SGRT2; sin Bundler, RTTY, IMRT ni secciones Bay 2. Stackers (plural) conserva su pantalla anterior |
+| Tab Bay 1 (temporal) | Mismo componente, 13 zonas, datos, báscula y distribución que Stacker; conserva el título Bay 1. No tiene un polling separado ni cambia posiciones en Tracking |
+| Tab Bay 2 | Recorte derecho del Overview: 16 zonas, desde RTTY1/2 e IMRT2 y desde báscula/SGRT/NCCT e IMRT1 hacia las dos secciones CCH/SGRT A/B y Robot 2. Sin Stackers ni salidas RTOUT |
 | Tab Bundler | Mismo layout del Overview, sin ERT1A/B, ERT2C/D, STRT1/2 ni LFRT1/2/3; conserva báscula, SGRT/NCCT, buffers y Robot 2. Overview permanece completo |
 | Selecciones globales | Mill Order, Destination e impresora con confirmación y GET posterior |
 | Báscula | `Weight` de la zona exacta SGRT2; no calcula peso ni inventa unidad |
 | Buffers CCH | Cinco filas y desplazamiento; LCH ocultas en las vistas acordadas, sin borrar datos |
 | FIFO v0.42 | `LogicalBufferName` + `QueueSequence`, orden ascendente dentro de cada buffer |
-| Remove from Tracking | POST `/api/tracking/correct`, `Operation: "REMOVE"`, identidad técnica, operador y motivo |
+| Remove from Tracking | POST `/api/tracking/correct`, `Operation: "REMOVE"`, identidad técnica y operador obligatorio; comentario opcional, enviado como `Reason: null` si está vacío |
 | Reposition | Mismo endpoint, `CurrentZone` destino y **sin Operation**, con revalidación y lectura posterior |
 | Bundles removidos | Fuera de listas, diagramas, peso y contadores activos; snapshot original conservado |
 | Reset de mantenimiento | POST `/api/tracking/reset` sin cuerpo, confirmación global explícita, preflight y verificación por GET; pendiente de commissioning |
 
 No se agrega un comando `MOVE`, botón `RETIRE`, escritura OPC ni impresión QMOS desde el HMI. El reset global se incorpora como acción separada de mantenimiento, no como alternativa a retirar un bundle ni como recuperación de un comando incierto. Toda escritura requiere coordinación con operación.
 
-**Operator ID y comentarios:** ocultar Operator ID y hacer comentarios opcionales **sigue pendiente**. v0.39, sección 4, exige `OperatorId` y `Reason` para **REMOVE**; el contrato base v0.6, sección 5.8, exige operador para correcciones. No hay evidencia de que Reason sea obligatorio por contrato en todas las variantes: en reposicionamiento aparece en el ejemplo. La implementación actual exige ambos en los tres caminos de `/correct`; se conserva así hasta acordar el cambio con backend, sin operador ficticio ni motivo automático. Reset no lleva esos campos.
+**Operator ID y comentarios:** la prueba directa del 13 de octubre contra API **0.44** rechazó `OperatorId: null` con HTTP 400 (`OperatorId is required for HMI corrections.`), pero aceptó **REMOVE con `Reason: null`** y posteriormente reportó el bundle `REMOVED` sin posiciones (evento **237102**). Este fuente permite comentario opcional sólo en REMOVE: texto vacío/espacios se envía como `null`, texto no vacío se recorta; no inventa un motivo. Operator ID permanece visible y obligatorio, sin valor fijo. Reposition y corrección legacy conservan comentario obligatorio hasta validar sus variantes con backend. El apéndice histórico v0.39 exigía ambos para REMOVE: solicitar actualizar el contrato según la evidencia v0.44. Reset no lleva esos campos. El ajuste está incluido en este checkpoint, pendiente de despliegue; ver [evidencia y pendientes](docs/estado-entrega.md).
 
 ## Por dónde empezar
 
@@ -129,7 +131,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Falló integración FIFO/manual.' }
 node scripts/test-bundler-layout.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló layout Bundler/Overview.' }
 node scripts/test-stacker-layout.mjs
-if ($LASTEXITCODE -ne 0) { throw 'Falló layout Stacker o preservación de Stackers.' }
+if ($LASTEXITCODE -ne 0) { throw 'Falló equivalencia Stacker/Bay 1 o preservación de Stackers.' }
+node scripts/test-bay-two-layout.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló recorte Bay 2/Overview.' }
 pnpm typecheck
 if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript.' }
 $env:NEXT_PUBLIC_PLANT_DATA_MODE = 'live'

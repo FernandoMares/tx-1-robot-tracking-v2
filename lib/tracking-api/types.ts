@@ -296,7 +296,8 @@ export interface TrackingRemovalRequestDto {
   TrackingId: string
   Operation: "REMOVE"
   OperatorId: string
-  Reason: string
+  /** Send explicit null when the optional removal comment is blank. */
+  Reason: string | null
 }
 
 /** Asynchronous command acknowledgement returned by tracking. */

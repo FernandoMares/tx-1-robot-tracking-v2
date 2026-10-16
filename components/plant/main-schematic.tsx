@@ -15,13 +15,15 @@ interface MainSchematicProps {
   bundlesByZone: BundlesByZone
   hasSnapshot: boolean
   /** Detail variants select branches without changing the overview geometry. */
-  variant?: "overview" | "bundler" | "stacker"
+  variant?: "overview" | "bundler" | "stacker" | "bay-2"
 }
 
 export const MAIN_SCHEMATIC_WIDTH = 1480
 export const MAIN_SCHEMATIC_HEIGHT = 760
 const BUNDLER_LEFT_OFFSET = 480
 export const BUNDLER_SCHEMATIC_WIDTH = MAIN_SCHEMATIC_WIDTH - BUNDLER_LEFT_OFFSET
+const BAY_TWO_LEFT_OFFSET = 880
+export const BAY_TWO_SCHEMATIC_WIDTH = MAIN_SCHEMATIC_WIDTH - BAY_TWO_LEFT_OFFSET
 const STACKER_TOP_OFFSET = 320
 export const STACKER_SCHEMATIC_WIDTH = 1104
 export const STACKER_SCHEMATIC_HEIGHT = MAIN_SCHEMATIC_HEIGHT - STACKER_TOP_OFFSET
@@ -250,16 +252,17 @@ export function MainSchematic({
 }: MainSchematicProps) {
   const bundlerOnly = variant === "bundler"
   const stackerOnly = variant === "stacker"
+  const bayTwoOnly = variant === "bay-2"
   const overview = variant === "overview"
   return (
     <div
       className={cn("relative shrink-0 overflow-hidden", overview && "rounded-lg border border-slate-200 bg-white shadow-sm")}
       style={{
-        width: bundlerOnly ? BUNDLER_SCHEMATIC_WIDTH : stackerOnly ? STACKER_SCHEMATIC_WIDTH : MAIN_SCHEMATIC_WIDTH,
+        width: bundlerOnly ? BUNDLER_SCHEMATIC_WIDTH : stackerOnly ? STACKER_SCHEMATIC_WIDTH : bayTwoOnly ? BAY_TWO_SCHEMATIC_WIDTH : MAIN_SCHEMATIC_WIDTH,
         height: stackerOnly ? STACKER_SCHEMATIC_HEIGHT : MAIN_SCHEMATIC_HEIGHT,
       }}
       role="group"
-      aria-label={bundlerOnly ? "Bundler overview without the stacker branch" : stackerOnly ? "Stacker overview without bundler or Bay 2 handoffs" : "Mirrored Exit Tracking physical overview"}
+      aria-label={bundlerOnly ? "Bundler overview without the stacker branch" : stackerOnly ? "Stacker overview without bundler or Bay 2 handoffs" : bayTwoOnly ? "Bay 2 overview tracking sections" : "Mirrored Exit Tracking physical overview"}
     >
       {overview && <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-zone via-cell-fill to-zone" aria-hidden />}
 
@@ -269,7 +272,7 @@ export function MainSchematic({
       </div>
 
       <p className="absolute top-5 left-7 text-xs font-bold tracking-[0.12em] text-slate-700 uppercase">
-        {bundlerOnly ? "Bundler tracking sections" : stackerOnly ? "Stacker tracking sections" : "Tracking sections overview"}
+        {bundlerOnly ? "Bundler tracking sections" : stackerOnly ? "Stacker tracking sections" : bayTwoOnly ? "Bay 2 tracking sections" : "Tracking sections overview"}
       </p>
 
       {/* Translate the retained diagram as one unit; all zone relationships
@@ -277,13 +280,13 @@ export function MainSchematic({
       <div
         className="absolute"
         style={{
-          left: bundlerOnly ? -BUNDLER_LEFT_OFFSET : 0,
+          left: bundlerOnly ? -BUNDLER_LEFT_OFFSET : bayTwoOnly ? -BAY_TWO_LEFT_OFFSET : 0,
           top: stackerOnly ? -STACKER_TOP_OFFSET : 0,
           width: MAIN_SCHEMATIC_WIDTH,
           height: MAIN_SCHEMATIC_HEIGHT,
         }}
       >
-        {!bundlerOnly && (
+        {!bundlerOnly && !bayTwoOnly && (
           <>
             <MachineOutline
               label="STK Stackers"
@@ -374,21 +377,25 @@ export function MainSchematic({
               style={{ left: 1200, top: 331 }}
             />
 
-            <MachineOutline
-              label="BUND Bundler"
-              detail="Four bundler outputs feeding the second tracking section"
-              style={{ left: 500, top: BUNDLER_ROW_TOP - 12, width: 376, height: 220 }}
-            >
-              <div className="absolute top-3 left-3 flex gap-1">
-                {BUNDLER_OUTPUTS.map((zone) => (
-                  <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
-                ))}
-              </div>
-            </MachineOutline>
+            {!bayTwoOnly && (
+              <>
+                <MachineOutline
+                  label="BUND Bundler"
+                  detail="Four bundler outputs feeding the second tracking section"
+                  style={{ left: 500, top: BUNDLER_ROW_TOP - 12, width: 376, height: 220 }}
+                >
+                  <div className="absolute top-3 left-3 flex gap-1">
+                    {BUNDLER_OUTPUTS.map((zone) => (
+                      <Zone key={zone} name={zone} bundlesByZone={bundlesByZone} hasSnapshot={hasSnapshot} />
+                    ))}
+                  </div>
+                </MachineOutline>
 
-            <div className="absolute" style={{ left: 880, top: BUNDLER_ROW_TOP + 28 }}>
-              <FlowArrow running={animationRunning} className="size-3" />
-            </div>
+                <div className="absolute" style={{ left: 880, top: BUNDLER_ROW_TOP + 28 }}>
+                  <FlowArrow running={animationRunning} className="size-3" />
+                </div>
+              </>
+            )}
 
             <div className="absolute" style={{ left: 900, top: BUNDLER_ROW_TOP }}>
               <HorizontalSequence
@@ -438,7 +445,7 @@ export function MainSchematic({
 
       <div
         className="absolute bottom-5 max-w-[35rem] rounded-md border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2 text-[10px] text-slate-500"
-        style={{ left: bundlerOnly ? 40 : 520 }}
+        style={{ left: bundlerOnly ? 40 : bayTwoOnly ? 20 : 520 }}
       >
         Operator view of the tracking sections. Zone occupancy comes only from the tracking API.
       </div>

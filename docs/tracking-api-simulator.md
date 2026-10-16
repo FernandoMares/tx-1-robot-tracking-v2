@@ -218,14 +218,16 @@ if ($LASTEXITCODE -ne 0) { throw 'Falló verificación de reset; revisar antes d
 node scripts/test-bundler-layout.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló layout Bundler/Overview; revisar antes de publicar.' }
 node scripts/test-stacker-layout.mjs
-if ($LASTEXITCODE -ne 0) { throw 'Falló layout Stacker o preservación de Stackers; revisar antes de publicar.' }
+if ($LASTEXITCODE -ne 0) { throw 'Falló equivalencia Stacker/Bay 1 o preservación de Stackers; revisar antes de publicar.' }
+node scripts/test-bay-two-layout.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló recorte Bay 2/Overview; revisar antes de publicar.' }
 pnpm typecheck
 if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript; no publicar.' }
 ```
 
 Los resultados pertenecen a la revisión exacta ensayada. Las pruebas históricas de ramas separadas no acreditan automáticamente la integración: registrar el resultado final. La prueba adicional `test-manual-actions-ui.mjs` necesita navegador local y puede iniciar procesos de prueba; revisar sus parámetros y requisitos antes de ejecutarla.
 
-Para verificar únicamente la navegación/layout de Bundler y Stacker frente a Overview y preservar Stackers, usar `node scripts/test-manual-actions-ui.mjs --layout-only` después del build live requerido por el runner. Stacker (singular, 13 zonas) y Stackers (plural, 14 zonas) son pestañas independientes. Crea su propio servidor/API loopback, bloquea solicitudes distintas de GET y guarda capturas desktop y de desplazamiento horizontal; no usa el backend de planta.
+Para verificar únicamente la navegación/layout de Bundler, Stacker y Bay 2 frente a Overview, la equivalencia temporal Bay 1/Stacker y preservar Stackers, usar `node scripts/test-manual-actions-ui.mjs --layout-only` después del build live requerido por el runner. Stacker (singular, 13 zonas) y Stackers (plural, 14 zonas) son pestañas independientes; Bay 1 comparte las 13 zonas y el componente de Stacker, con su propio título. Bay 2 muestra las 16 zonas del sector derecho, con báscula y Robot 2. Crea su propio servidor/API loopback, bloquea solicitudes distintas de GET y guarda capturas desktop y de desplazamiento horizontal; no usa el backend de planta.
 
 ## 8. Endpoints y límites del simulador
 
@@ -249,6 +251,8 @@ GET /api/qmos/printers
 ```
 
 Las escrituras simuladas comunes son los tres PUT globales y POST `/api/tracking/correct` legacy con `TrackingId, OperatorId, Reason, MillOrder1`. En esta versión integrada también se simulan REMOVE y reposicionamiento por CurrentZone. No se simula `POST /api/qmos/print`.
+
+El ajuste local de comentario opcional afecta **sólo REMOVE**: el formulario/cliente/proxy normalizan texto vacío o espacios a `Reason: null` y recortan texto no vacío. El simulador contempla ese payload sin motivo ficticio. Operator ID sigue obligatorio; Reposition y corrección legacy mantienen comentario obligatorio. Las regresiones locales no establecen un contrato nuevo de planta: el soporte de null en REMOVE se fundamenta en la prueba directa API 0.44/evento 237102 registrada en [Estado de entrega](estado-entrega.md#prueba-directa-api-044-nulidad-de-campos-evento-237102). No extrapolar ese soporte a las otras variantes ni a reset.
 
 El cambio local del 9 de octubre (`sim-1.6.0`) agrega reset ficticio **deshabilitado por defecto**: sólo con `TRACKING_SIMULATOR_ENABLE_RESET=true` anuncia y acepta POST `/api/tracking/reset` sin cuerpo. Limpia únicamente el estado en memoria de esa instancia; no conecta a PLC/SQL. `test-manual-actions-ui.mjs` habilita esta opción en su propio simulador loopback para probar confirmaciones, bloqueo compartido y resultado incierto sin reintentos. No usar ese flag ni ese resultado como evidencia de autorización o ejecución en planta.
 

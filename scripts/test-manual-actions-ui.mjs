@@ -3,7 +3,7 @@
 // NEXT_PUBLIC_TRACKING_API_URL=/tracking-api. Run: node scripts/test-manual-actions-ui.mjs
 // EDGE_PATH may point to Edge/Chrome/Chromium on any OS. The runner creates its
 // own loopback simulator/HMI, blocks other page origins, and removes its profile.
-// Add --layout-only to check Overview/Bundler/Stacker geometry without any command POST.
+// Add --layout-only to check all production view geometry without any command POST.
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
@@ -284,6 +284,30 @@ try {
       return {cards,width:bounds.width/scale,height:bounds.height/scale,scale};
     })()`)
   }
+  async function diagramContents(label) {
+    return evaluate(`(()=>{
+      const root=document.querySelector('[role="group"][aria-label=${JSON.stringify(label)}]');
+      return {
+        cards:Array.from(root.querySelectorAll('[data-zone-name]')).map(card=>({
+          name:card.dataset.zoneName,content:card.textContent,occupied:card.dataset.zoneOccupied ?? null,fifo:card.dataset.fifoOrder ?? null,
+          bundles:Array.from(card.querySelectorAll('[data-tracking-id]')).map(bundle=>({id:bundle.dataset.trackingId,title:bundle.title,text:bundle.textContent})),
+        })),
+        weight:root.querySelector('[aria-label="SGRT2 bundle weight"]')?.textContent,
+      };
+    })()`)
+  }
+  function assertSameDiagramGeometry(actual, expected, label) {
+    for (const property of ["width", "height", "scale"]) {
+      assert.ok(Math.abs(actual[property]-expected[property])<0.001, label + " preserves canvas " + property)
+    }
+    for (const card of actual.cards) {
+      const source = expected.cards.find(candidate=>candidate.name === card.name)
+      assert.ok(source, label + " must not introduce zone " + card.name)
+      for (const property of ["x", "y", "width", "height"]) {
+        assert.ok(Math.abs(card[property]-source[property])<0.3, label + " preserves " + card.name + " " + property)
+      }
+    }
+  }
   function assertZoneNames(geometry, expected) {
     assert.deepEqual(geometry.cards.map(card=>card.name).sort(), [...expected].sort(), "Exactly the intended unique zones are rendered")
   }
@@ -296,12 +320,15 @@ try {
   const overviewLabel = "Mirrored Exit Tracking physical overview"
   const bundlerLabel = "Bundler overview without the stacker branch"
   const stackerLabel = "Stacker overview without bundler or Bay 2 handoffs"
+  const bayTwoLabel = "Bay 2 overview tracking sections"
   const omittedZones = ["ERT1A", "ERT1B", "ERT2C", "ERT2D", "STRT1", "STRT2", "LFRT1", "LFRT2", "LFRT3"]
   const retainedZones = ["RTOUTA", "RTOUTB", "RTOUTC", "RTOUTD", "RTTY1", "RTTY2", "IMRT2", "CCH2A", "CCH2B", "SGRT2A", "SGRT2B", "CCH1A", "CCH1B", "SGRT1A", "SGRT1B", "SGRT1", "SGRT2", "NCCT1", "NCCT2", "IMRT1"]
   const stackerZones = [...omittedZones, "SGRT1", "SGRT2", "NCCT1", "NCCT2"]
+  const bayTwoZones = retainedZones.filter(name=>!name.startsWith("RTOUT"))
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1350, deviceScaleFactor: 1, mobile: false })
   await waitFor(`document.querySelector('[role="group"][aria-label="${overviewLabel}"] [data-zone-name="RTOUTA"]')`, "Overview zones ready")
   const overviewGeometry = await diagramGeometry(overviewLabel, 1480)
+  const overviewContents = await diagramContents(overviewLabel)
   assertZoneNames(overviewGeometry, [...retainedZones, ...omittedZones])
   await selectView("Bundler", bundlerLabel)
   await waitFor(`Math.abs(document.querySelector('[role="group"][aria-label="${bundlerLabel}"]').getBoundingClientRect().width-1300)<1`, "Bundler desktop scale settled")
@@ -353,6 +380,7 @@ try {
   await selectView("Stacker", stackerLabel)
   await waitFor(`Math.abs(document.querySelector('[role="group"][aria-label="${stackerLabel}"]').getBoundingClientRect().width-1435.2)<1`, "Stacker desktop scale settled at its 1.3 maximum")
   const stackerGeometry = await diagramGeometry(stackerLabel, 1104)
+  const stackerContents = await diagramContents(stackerLabel)
   assertZoneNames(stackerGeometry, stackerZones)
   assert.ok(Math.abs(stackerGeometry.height-440)<0.3, "Stacker crops the unused upper area to a 440px canvas")
   assert.ok(Math.abs(stackerGeometry.scale-1.3)<0.001)
@@ -393,6 +421,84 @@ try {
   await screenshot("stacker-overview-narrow-right.png")
   checks.push("Narrow Stacker keeps all 13 card geometries; horizontal scrolling exposes all four source slots and the complete scale/SGRT/NCCT group")
 
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1100, deviceScaleFactor: 1, mobile: false })
+  await selectView("Bay 1", "Bay 1 official worksheet layout")
+  await waitFor(`Math.abs(document.querySelector('section[aria-label="Bay 1"] [role="group"][aria-label="${stackerLabel}"]').getBoundingClientRect().width-1435.2)<1`, "Bay 1 desktop scale settled at the same 1.3 maximum as Stacker")
+  const bayOneGeometry = await diagramGeometry(stackerLabel, 1104)
+  assertZoneNames(bayOneGeometry, stackerZones)
+  assertSameDiagramGeometry(bayOneGeometry, stackerGeometry, "Bay 1 matches Stacker desktop")
+  assert.deepEqual(await diagramContents(stackerLabel), stackerContents, "Bay 1 must show the same cards, bundle identities, occupancy and SGRT2 weight as Stacker")
+  assert.equal(await evaluate(`document.querySelector('section[aria-label="Bay 1"] h2').textContent`), "Bay 1")
+  assert.equal(await evaluate(`(()=>{const root=document.querySelector('section[aria-label="Bay 1"]');return /Bay 1 Manual Station|Bay 1 tracked positions|Handoff from Stackers/i.test(root.textContent) || Boolean(root.querySelector('[aria-label="Physical equipment context"]'))})()`), false, "Bay 1 replaces the old four-zone/manual-station worksheet")
+  await screenshot("bay-one-stacker-desktop.png")
+  checks.push("Bay 1 reuses the singular Stacker layout: identical 13-zone geometry, 1104x440 canvas, bundle identities/occupancy, SGRT2 weight and desktop scale; old manual station removed")
+
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 760, height: 1100, deviceScaleFactor: 1, mobile: false })
+  const bayOneViewport = `document.querySelector('[aria-label="Scrollable Bay 1 production diagram"]')`
+  await waitFor(`(${bayOneViewport}).scrollWidth>(${bayOneViewport}).clientWidth && Math.abs(document.querySelector('section[aria-label="Bay 1"] [role="group"][aria-label="${stackerLabel}"]').getBoundingClientRect().width-993.6)<1`, "Bay 1 narrow horizontal overflow at the same minimum scale")
+  const bayOneNarrowGeometry = await diagramGeometry(stackerLabel, 1104)
+  assertZoneNames(bayOneNarrowGeometry, stackerZones)
+  assertSameDiagramGeometry(bayOneNarrowGeometry, stackerNarrowGeometry, "Bay 1 matches Stacker narrow")
+  assert.deepEqual(await diagramContents(stackerLabel), stackerContents, "Bay 1 narrow layout retains the same tracking content and SGRT2 weight")
+  await evaluate(`(${bayOneViewport}).scrollLeft=0`)
+  assert.equal(await evaluate(`(()=>{const viewport=(${bayOneViewport}).getBoundingClientRect();return ['ERT1A','ERT2D'].every(name=>{const card=document.querySelector('section[aria-label="Bay 1"] [data-zone-name="'+name+'"]').getBoundingClientRect();return card.left>=viewport.left && card.right<=viewport.right})})()`), true, "Bay 1 exposes all four source slots at the left edge")
+  await screenshot("bay-one-stacker-narrow-left.png")
+  await evaluate(`(${bayOneViewport}).scrollLeft=(${bayOneViewport}).scrollWidth`)
+  await waitFor(`(${bayOneViewport}).scrollLeft>0`, "Bay 1 horizontal scroll changed")
+  assert.equal(await evaluate(`(()=>{const viewport=(${bayOneViewport}).getBoundingClientRect();const root=document.querySelector('section[aria-label="Bay 1"]');const elements=['SGRT1','SGRT2','NCCT1','NCCT2'].map(name=>root.querySelector('[data-zone-name="'+name+'"]'));elements.push(root.querySelector('aside[aria-label^="Scale Weight Station, showing"]'));return elements.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=viewport.left && rect.right<=viewport.right})})()`), true, "Bay 1 exposes the full scale/SGRT/NCCT group at the right edge")
+  await screenshot("bay-one-stacker-narrow-right.png")
+  checks.push("Bay 1 matches Stacker on a narrow viewport at scale 0.9, preserving all 13 card geometries and content with horizontal access to both layout edges")
+
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1350, deviceScaleFactor: 1, mobile: false })
+  await selectView("Bay 2", bayTwoLabel)
+  await waitFor(`Math.abs(document.querySelector('[role="group"][aria-label="${bayTwoLabel}"]').getBoundingClientRect().width-780)<1`, "Bay 2 desktop scale settled at its 1.3 maximum")
+  const bayTwoGeometry = await diagramGeometry(bayTwoLabel, 600)
+  assertZoneNames(bayTwoGeometry, bayTwoZones)
+  assert.ok(Math.abs(bayTwoGeometry.height-760)<0.3, "Bay 2 preserves the Overview's full height")
+  assert.ok(Math.abs(bayTwoGeometry.scale-1.3)<0.001)
+  const bayTwoAnchor = bayTwoGeometry.cards.find(card=>card.name === "RTTY1")
+  const overviewBayTwoAnchor = overviewGeometry.cards.find(card=>card.name === "RTTY1")
+  for (const card of bayTwoGeometry.cards) {
+    const original = overviewGeometry.cards.find(candidate=>candidate.name === card.name)
+    for (const axis of ["x", "y"]) {
+      assert.ok(Math.abs((card[axis]-bayTwoAnchor[axis])-(original[axis]-overviewBayTwoAnchor[axis]))<0.3, card.name + " preserves Overview " + axis + " relative position in Bay 2")
+    }
+    assert.ok(Math.abs(card.width-original.width)<0.3 && Math.abs(card.height-original.height)<0.3, card.name + " preserves Overview card size in Bay 2")
+    assert.ok(card.x>=0 && card.y>=0 && card.x+card.width<=bayTwoGeometry.width+0.3 && card.y+card.height<=bayTwoGeometry.height+0.3, card.name + " is not clipped by the Bay 2 canvas")
+  }
+  for (const name of ["CCH1A", "CCH1B", "CCH2A", "CCH2B"]) {
+    assert.ok(bayTwoGeometry.cards.find(card=>card.name === name).height>=149, name + " retains its five-row buffer height in Bay 2")
+  }
+  const bayTwoExpectedContents = { cards: overviewContents.cards.filter(card=>bayTwoZones.includes(card.name)), weight: overviewContents.weight }
+  assert.deepEqual(await diagramContents(bayTwoLabel), bayTwoExpectedContents, "Bay 2 retains the same bundle identities, occupancy, FIFO metadata and SGRT2 weight as Overview")
+  assert.equal(await evaluate(`(()=>{const root=document.querySelector('section[aria-label="Bay 2"]');return root.querySelector('h2').textContent==='Bay 2' && Boolean(root.querySelector('aside[aria-label^="Scale Weight Station, showing"]')) && Boolean(root.querySelector('aside[aria-label="Robot 2 physical equipment context"]'))})()`), true)
+  assert.equal(await evaluate(`(()=>{const root=document.querySelector('section[aria-label="Bay 2"]');return /STK Stackers|BUND Bundler|LMD [123]/i.test(root.textContent)})()`), false)
+  await screenshot("bay-two-overview-desktop.png")
+  checks.push("Bay 2 contains exactly 16 retained Overview zones, SGRT2 scale and Robot 2 in a 600x760 canvas; excludes all ERT/STRT/LFRT/RTOUT/LCH zones and machine outlines")
+  checks.push("Bay 2 preserves Overview relative geometry, card sizes, five-row CCH buffers, bundle/FIFO metadata and SGRT2 weight at desktop scale 1.3")
+
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 460, height: 1350, deviceScaleFactor: 1, mobile: false })
+  const bayTwoViewport = `document.querySelector('[aria-label="Scrollable Bay 2 production diagram"]')`
+  await waitFor(`(${bayTwoViewport}).scrollWidth>(${bayTwoViewport}).clientWidth && Math.abs(document.querySelector('[role="group"][aria-label="${bayTwoLabel}"]').getBoundingClientRect().width-540)<1`, "Bay 2 narrow horizontal overflow at minimum scale")
+  const bayTwoNarrowGeometry = await diagramGeometry(bayTwoLabel, 600)
+  assertZoneNames(bayTwoNarrowGeometry, bayTwoZones)
+  assert.ok(Math.abs(bayTwoNarrowGeometry.scale-0.9)<0.001)
+  for (const card of bayTwoNarrowGeometry.cards) {
+    const desktop = bayTwoGeometry.cards.find(candidate=>candidate.name === card.name)
+    for (const property of ["x", "y", "width", "height"]) {
+      assert.ok(Math.abs(card[property]-desktop[property])<0.3, card.name + " retains narrow Bay 2 " + property)
+    }
+  }
+  assert.deepEqual(await diagramContents(bayTwoLabel), bayTwoExpectedContents, "Bay 2 narrow layout retains all tracking content and weight")
+  await evaluate(`(${bayTwoViewport}).scrollLeft=0`)
+  assert.equal(await evaluate(`(()=>{const viewport=(${bayTwoViewport}).getBoundingClientRect();const root=document.querySelector('section[aria-label="Bay 2"]');const elements=['RTTY1','RTTY2','IMRT2','SGRT1','SGRT2','NCCT1','NCCT2'].map(name=>root.querySelector('[data-zone-name="'+name+'"]'));elements.push(root.querySelector('aside[aria-label^="Scale Weight Station, showing"]'));return elements.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=viewport.left && rect.right<=viewport.right})})()`), true, "Bay 2 exposes the transfer sequence and full scale group at its left edge")
+  await screenshot("bay-two-overview-narrow-left.png")
+  await evaluate(`(${bayTwoViewport}).scrollLeft=(${bayTwoViewport}).scrollWidth`)
+  await waitFor(`(${bayTwoViewport}).scrollLeft>0`, "Bay 2 horizontal scroll changed")
+  assert.equal(await evaluate(`(()=>{const viewport=(${bayTwoViewport}).getBoundingClientRect();const root=document.querySelector('section[aria-label="Bay 2"]');const elements=['CCH1A','CCH1B','SGRT1A','SGRT1B','CCH2A','CCH2B','SGRT2A','SGRT2B'].map(name=>root.querySelector('[data-zone-name="'+name+'"]'));elements.push(root.querySelector('aside[aria-label="Robot 2 physical equipment context"]'));return elements.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=viewport.left && rect.right<=viewport.right})})()`), true, "Bay 2 exposes both tracking sections and Robot 2 at its right edge")
+  await screenshot("bay-two-overview-narrow-right.png")
+  checks.push("Bay 2 at 460px viewport preserves all 16 card geometries/content with horizontal scroll to the RTTY/scale group and the rightmost tracking columns/Robot 2")
+
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false })
   await selectView("Stackers", "Stackers official worksheet layout")
   const legacyStackersGeometry = await diagramGeometry("Stackers official worksheet layout", 1440)
@@ -404,7 +510,7 @@ try {
   assert.equal(commandRequests.length, 0)
   assert.equal(resetRequests.length, 0)
   assert.equal(requests.some(request=>request.method!=="GET"), false, "Layout navigation must remain read-only")
-  checks.push("Returning from Bundler, Stacker and legacy Stackers to Overview restores all 29 original zones; all layout checks sent GET requests only")
+  checks.push("Returning from Bundler, Stacker, both Bays and legacy Stackers to Overview restores all 29 original zones; all layout checks sent GET requests only")
 
   if (!layoutOnly) {
   await evaluate(`document.querySelector('button[aria-label^="View tracked bundles"]').click()`)
@@ -414,7 +520,14 @@ try {
   assert.equal(await evaluate(`document.querySelector('#reposition-zone option[value="SGRT1B"]').disabled`), true)
   assert.equal(await evaluate(`Boolean(document.querySelector('#reposition-zone option[value="LCH1A"]'))`), true)
   assert.equal(await evaluate(`Boolean(document.querySelector('#reposition-zone option[value="LCH2A"]'))`), false)
+  assert.equal(await evaluate(`document.getElementById('reposition-operator-id').value`), "", "Operator ID must not have an invented default")
+  assert.equal(await evaluate(`document.getElementById('reposition-reason').required`), true, "Reposition reason remains required pending API verification")
   await input("reposition-operator-id", " a1 ")
+  await input("reposition-zone", "SGRT2A")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Reposition must not accept an empty reason")
+  await input("reposition-reason", "   ")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Reposition must not accept a whitespace-only reason")
+  await input("reposition-zone", "")
   await input("reposition-reason", " Simulator reposition smoke ")
   assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Destination is required")
   await input("reposition-zone", "SGRT1B")
@@ -481,9 +594,28 @@ try {
   checks.push("native confirmation open 4.1 seconds revalidates before exactly one four-field POST", "202 stays pending; shared lock survives close/reopen; fresh state confirms position")
 
   await selectAction("SIM-TRACK-HOLD", "Remove")
+  assert.equal(await evaluate(`document.getElementById('removal-operator-id').value`), "", "Remove must not reuse or invent an Operator ID")
+  assert.equal(await evaluate(`document.getElementById('removal-operator-id').required && document.getElementById('removal-operator-id').getBoundingClientRect().height>0`), true, "Operator ID remains required and visible")
+  assert.equal(await evaluate(`document.querySelector('label[for="removal-reason"]').textContent`), "Comments (optional)")
+  assert.equal(await evaluate(`document.getElementById('removal-reason').required`), false)
+  assert.equal(await evaluate(`document.getElementById('removal-reason').value`), "", "Optional Comments must not have a fabricated default")
+  await input("removal-reason", " Comment without operator ")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Comments cannot substitute for an Operator ID")
+  await input("removal-operator-id", "   ")
+  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Whitespace is not an Operator ID")
   await input("removal-operator-id", " a1 ")
+  await input("removal-reason", "")
+  await waitFor(`!document.querySelector('form button[type="submit"]').disabled`, "removal permits empty Comments with an entered Operator ID")
+  await screenshot("manual-removal-optional-comments.png")
+  await submitConfirmation({ accept: false })
+  assert.equal(commandRequests.length, 1, "Cancelling a removal with empty Comments sends no POST")
   await input("removal-reason", " Simulator removal smoke ")
-  await waitFor(`!document.querySelector('form button[type="submit"]').disabled`, "removal form")
+  await waitFor(`!document.querySelector('form button[type="submit"]').disabled`, "removal still permits an entered comment")
+  await submitConfirmation({ accept: false })
+  assert.equal(commandRequests.length, 1, "Cancelling a removal with entered Comments sends no POST")
+  await input("removal-reason", "   \t  ")
+  await waitFor(`!document.querySelector('form button[type="submit"]').disabled`, "removal permits whitespace-only Comments")
+  checks.push("REMOVE keeps a blank, visible, required Operator ID; optional Comments allow empty/whitespace/text values and native cancellation sends no POST; Reposition still requires a nonblank reason")
   const retainedRemoved = {
     ...movedState.Bundles.find((bundle) => bundle.TrackingId === "SIM-TRACK-HOLD"),
     Status: "REMOVED", CurrentZone: null, OccupiedZones: [],
@@ -501,7 +633,7 @@ try {
   }
   await submitConfirmation()
   await waitFor(`document.body.innerText.includes('101623999 is no longer in active tracking.')`, "observed removal success")
-  assert.deepEqual(commandRequests[1], { TrackingId: "SIM-TRACK-HOLD", OperatorId: "a1", Reason: "Simulator removal smoke", Operation: "REMOVE" })
+  assert.deepEqual(commandRequests[1], { TrackingId: "SIM-TRACK-HOLD", OperatorId: "a1", Reason: null, Operation: "REMOVE" })
   const removedState = await (await simulator.fetch(simulator.baseUrl + "/api/tracking/state")).json()
   assert.deepEqual(removedState.Bundles, initialState.Bundles.filter((bundle) => bundle.TrackingId !== "SIM-TRACK-HOLD"))
   assert.equal(observedRetainedState, true, "Success must be observed with the REMOVED record retained")
@@ -509,7 +641,7 @@ try {
   assert.equal(await evaluate(`document.querySelector('[data-slot="sheet-content"] li [title="SIM-TRACK-HOLD"]')===null`), true)
   assert.equal(await evaluate(`Array.from(document.querySelectorAll('dl[aria-label="Current tracking metrics"] dt')).find(dt=>dt.textContent==='Active tracked bundles').parentElement.querySelector('dd').textContent`), "9")
   stateOverride = null
-  checks.push("removal preserves other bundles; retained REMOVED with empty occupancy confirms success and disappears from the active list and KPI")
+  checks.push("whitespace-only REMOVE Comments send explicit Reason:null through the real local proxy/simulator; retained REMOVED with empty occupancy confirms success and disappears from the active list and KPI without affecting other bundles")
 
   await selectAction("SIM-DEMO-BUFFER-1", "Reposition")
   await input("reposition-operator-id", "a1")

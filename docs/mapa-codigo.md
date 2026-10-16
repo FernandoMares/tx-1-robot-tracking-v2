@@ -30,12 +30,12 @@ app/page.tsx — Page
       ├─ StackersSchematic → SchematicScreen
       ├─ StackerSchematic → SchematicScreen → MainSchematic (variant="stacker")
       ├─ BundlerSchematic → SchematicScreen
-      ├─ BayOneSchematic → SchematicScreen
-      └─ BayTwoSchematic → SchematicScreen
+      ├─ BayOneSchematic → StackerSchematic (title="Bay 1") → MainSchematic (variant="stacker")
+      └─ BayTwoSchematic → SchematicScreen → MainSchematic (variant="bay-2")
          └─ TrackingZoneSlot → orderBundlesByLogicalFifo
 ```
 
-`ScaleWeightReadout` se reutiliza desde `MainSchematic` y `BayOneSchematic`. `RobotCard` muestra contexto de Robot 2 desde `ROBOT_2_UNKNOWN`; no recibe telemetría del robot desde Tracking.
+`ScaleWeightReadout` se utiliza desde `MainSchematic`, compartido por Overview, Bundler, Stacker, Bay 2 y temporalmente Bay 1. `RobotCard` muestra contexto de Robot 2 desde `ROBOT_2_UNKNOWN`; no recibe telemetría del robot desde Tracking.
 
 `@/` es el alias definido en `tsconfig.json` para la raíz del fuente. Un import como `@/lib/tracking-api` resuelve el barrel `lib/tracking-api/index.ts`, que reexporta cliente, configuración, fechas, runtime, tipos y validación. No es otro servicio ni una dependencia externa.
 
@@ -154,7 +154,7 @@ En `hooks/use-tracking-api.ts`:
 
 `components/app-header.tsx`: `TABS`, `ViewTabs` y `AppHeader`. `components/dashboard.tsx`: estado `view` y render condicional. Para añadir otra pestaña habría que extender `PlantView`, declarar la pestaña y renderizar su componente; no basta con cambiar el label del menú.
 
-`components/plant/plant-map.tsx`: `PlantMap` envuelve el overview y llama `MainSchematic`; su `ResizeObserver` limita escala entre 0.95 y 1.3. `components/plant/schematic-screen.tsx`: `SchematicScreen` es el marco compartido de las vistas detalladas, con mínimo 0.9 y `maxScale` por defecto 1.45 (Bundler y Stacker singular usan 1.3), encabezado, badge y leyenda. Mantienen scroll horizontal cuando el lienzo no cabe.
+`components/plant/plant-map.tsx`: `PlantMap` envuelve el overview y llama `MainSchematic`; su `ResizeObserver` limita escala entre 0.95 y 1.3. `components/plant/schematic-screen.tsx`: `SchematicScreen` es el marco compartido de las vistas detalladas, con mínimo 0.9 y `maxScale` por defecto 1.45 (Bundler, Stacker singular, Bay 1 y Bay 2 usan 1.3), encabezado, badge y leyenda. Mantienen scroll horizontal cuando el lienzo no cabe.
 
 ### Geometría que se mantiene a mano
 
@@ -164,8 +164,8 @@ En `hooks/use-tracking-api.ts`:
 | Stackers | `stackers-schematic.tsx`: `SOURCE_POSITIONS`, `COMMON_LINE_POSITIONS`, `EXIT_POSITIONS`, `ZoneSlot` | Coordenadas de fuentes, línea común, NCCT/IMRT1. |
 | Stacker (singular, nueva) | `stacker-schematic.tsx`: `StackerSchematic` llama `MainSchematic` con `variant="stacker"`; `main-schematic.tsx`: `STACKER_TOP_OFFSET`, `STACKER_SCHEMATIC_WIDTH`, `STACKER_SCHEMATIC_HEIGHT` | 13 zonas ERT/STRT/LFRT/SGRT/NCCT y báscula. Omite Bundler, RTTY, IMRT y secciones Bay 2; traslada las zonas retenidas juntas 320 px hacia arriba en lienzo 1104 × 440. No reemplaza Stackers ni modifica CurrentZone. |
 | Bundler | `bundler-schematic.tsx`: `BundlerSchematic` llama `MainSchematic` con `variant="bundler"`; `main-schematic.tsx`: `BUNDLER_LEFT_OFFSET`, `BUNDLER_SCHEMATIC_WIDTH` | Overview sin la rama ERT/STRT/LFRT. Traslada el conjunto restante 480 px, conserva relaciones y usa lienzo 1000 × 760. El Overview predeterminado sigue en 1480 × 760. |
-| Bay 1 | `bay-one-schematic.tsx`: `BayOneSchematic`, `EquipmentContext`, `Zone` | SGRT/NCCT y contexto de báscula/manual station. |
-| Bay 2 | `bay-two-schematic.tsx`: `STK_ROUTE_ZONES`, `FINAL_ROUTE_ZONES`, `LaneFlowArrows`, `Zone` | Dos rutas A/B, dimensiones CCH y transferencias ilustrativas. |
+| Bay 1 (temporal) | `bay-one-schematic.tsx`: `BayOneSchematic` delega a `StackerSchematic` con `title="Bay 1"` | Mismos 13 slots, datos, filtro, báscula y lienzo que Stacker; sólo cambia la identidad del encabezado. La antigua distribución SGRT/NCCT/manual station ya no se renderiza. |
+| Bay 2 | `bay-two-schematic.tsx`: `BayTwoSchematic` llama `MainSchematic` con `variant="bay-2"`; `BAY_TWO_LEFT_OFFSET`, `BAY_TWO_SCHEMATIC_WIDTH` | Recorte derecho, 16 zonas desde RTTY y SGRT/NCCT hacia las secciones CCH/SGRT A/B y Robot 2. Traslación conjunta 880 px a la izquierda en lienzo 600 × 760; sin las fuentes ERT/STRT/LFRT ni RTOUT. |
 | Primitivas de detalle | `zoom-schematic-primitives.tsx`: `DiagramArrow`, `EquipmentHeader` | Estilo común de flechas y títulos de equipo. |
 
 Todos reciben datos, no calculan el próximo destino industrial. Cambiar `left/top` sólo mueve una tarjeta en pantalla. No cambia `CurrentZone` ni crea una ruta backend.
@@ -176,13 +176,13 @@ Archivo `components/plant/tracking-zone-slot.tsx`. Props relevantes: `zoneName`,
 
 Calcula `fifo = orderBundlesByLogicalFifo(bundles)` y renderiza `fifo.bundles`; decide si está ocupada y si hay espera QMOS, muestra count e identidades. Los atributos `data-zone-name`, `data-tracking-id`, `data-fifo-buffer` y `data-queue-sequence` permiten correlacionar el DOM con datos reales sin depender del texto truncado.
 
-`compactVisibleRows={5}` reserva cinco filas visibles y permite overflow; no descarta la sexta ni cambia capacidad. El overview lo decide para nombres que comienzan con CCH; Bay 2 lo declara como `visibleRows: 5` en ambos arreglos de rutas.
+`compactVisibleRows={5}` reserva cinco filas visibles y permite overflow; no descarta la sexta ni cambia capacidad. El helper `Zone` de `MainSchematic` lo decide para nombres que comienzan con CCH, compartido por Overview, Bundler y Bay 2; ya no hay arreglos de coordenadas CCH separados en Bay 2.
 
 Los KPI se calculan aparte en `components/kpi-cards.tsx`: cantidad total del array Bundles, cantidad de CurrentZone distintos no vacíos, zonas habilitadas del mapa y número de UNMATCHED. Es posible que esos números no coincidan con tarjetas visibles, porque el layout omite LCH y state puede conservar registros sin zona o terminales. No corregir diferencias ocultando datos sin acordar semántica.
 
 ### Peso: `ScaleWeightReadout`
 
-En `components/plant/scale-weight-readout.tsx`: props `bundles`, `hasSnapshot`, `compact`. Los llamadores de overview y Bay 1 seleccionan SGRT2; el componente muestra cada `Weight` por identidad. El peso de un catálogo `QmosMillOrderDto.Weight` es otro dato y no debe conectarse a este readout por compartir nombre.
+En `components/plant/scale-weight-readout.tsx`: props `bundles`, `hasSnapshot`, `compact`. `ScaleContext` del `MainSchematic` compartido selecciona SGRT2, también para Bay 1; el componente muestra cada `Weight` por identidad. El peso de un catálogo `QmosMillOrderDto.Weight` es otro dato y no debe conectarse a este readout por compartir nombre.
 
 ## 7. Algoritmo FIFO: razonar antes de modificar
 
@@ -240,7 +240,7 @@ El preflight toma status/capabilities/map frescos en paralelo y state al final. 
 
 `removeBundle`: `TrackingRemovalRequestDto`, Operation exactamente REMOVE, cuatro campos sanitizados. `repositionBundle`: `TrackingRepositionRequestDto`, CurrentZone, sin Operation ni MillOrder1. Los guards rechazan payloads incompatibles y el proxy evita mezclarlos con `TrackingCorrectionRequestDto`, que representa el otro camino con MillOrder1.
 
-`OperatorId` y `Reason` se validan como strings no vacíos, no como credenciales ni empleados verificados. v0.39 exige ambos explícitamente para REMOVE; v0.6 exige operador en correcciones, mientras Reason en reposicionamiento aparece en el ejemplo. No extrapolar obligación contractual de Reason a todos los casos. La implementación mantiene ambos requeridos hasta acordar los cambios solicitados, sin valores ficticios. Un rechazo previo por stale/preflight no acredita que “a1 no es válido”: comprobar si hubo POST.
+`OperatorId` se valida como string no vacío, no como credencial ni empleado verificado. Sigue visible y obligatorio: API 0.44 rechazó operador null con 400. En el cambio local, el comentario es opcional **sólo para REMOVE**: `Reason` es string o null explícito, texto vacío/espacios produce null y texto no vacío se recorta, de formulario a cliente/proxy. Reposition y legacy conservan Reason no vacío hasta confirmar sus variantes. El requisito histórico de ambos campos en v0.39 para REMOVE debe actualizarse con backend porque la prueba directa v0.44/evento 237102 aceptó Reason null y reportó REMOVED sin posiciones; ver [evidencia](estado-entrega.md#prueba-directa-api-044-nulidad-de-campos-evento-237102). No se inventa identidad/motivo ni se presume soporte de null en otros caminos. Un rechazo previo por stale/preflight no acredita que “a1 no es válido”: comprobar si hubo POST.
 
 ## 10. Ciclo de vida REMOVED y reset: ajuste local frente a evidencia histórica
 
@@ -275,12 +275,12 @@ Estas recetas describen desarrollo posterior, no modificaciones en caliente dura
 1. Abrir el diagrama exacto, no el proxy. Para overview: `MainSchematic`, `BUNDLER_ROW_TOP` y coordenadas de `MachineOutline`/`HorizontalSequence`.
 2. Ajustar en conjunto tarjetas y flechas relacionadas; recordar dimensiones del lienzo y escalado del contenedor.
 3. No cambiar nombres de zonas para conseguir alineación. Verificar que cada `Zone` recibe el mismo `bundlesByZone[name]`.
-4. Revisar las cinco vistas afectadas y scroll a la resolución real del operador. Datos deben coincidir con el mismo snapshot, antes y después del cambio visual.
+4. Revisar las seis vistas y scroll a la resolución real del operador. Datos deben coincidir con el mismo snapshot, antes y después del cambio visual.
 
 ### B. Cambiar de cinco a otra cantidad de filas visibles CCH
 
 1. `main-schematic.tsx`: valor pasado a `compactVisibleRows` por el helper `Zone`.
-2. `bay-two-schematic.tsx`: `visibleRows` de `STK_ROUTE_ZONES` y `FINAL_ROUTE_ZONES`.
+2. `bay-two-schematic.tsx` reutiliza ese mismo helper vía `MainSchematic`; verificar también la variante `bay-2` y Bundler, no duplicar tamaños de CCH.
 3. `tracking-zone-slot.tsx`: comprobar cálculo de alto y scroll; normalmente no hace falta cambiar la API.
 4. Revisar que siguen estando todas las filas y que flechas/contenedores no se superponen. No renombrar este número como Capacity.
 

@@ -2,7 +2,7 @@
 
 Esta sesión se realiza **en el servidor, leyendo el fuente y observando el frontend existente en el puerto 3000 contra Tracking en 8085**. No requiere levantar otra instancia, usar un simulador, compilar, detener procesos ni ejecutar comandos industriales. El objetivo es que otro desarrollador pueda seguir el código, diagnosticar un dato y saber dónde implementar un cambio.
 
-La base funcional del servidor documentado es **`7fc34e8`**, en `release/integrated-hmi`. Después del checkpoint documental `c7df85a`, el checkpoint de fuente del **13 de octubre de 2026** reúne filtro REMOVED, confirmación de retiro retenido, reset de mantenimiento y el nuevo layout compartido de Bundler. Estos ajustes aún no están desplegados. Esta guía distingue lo instalado de lo nuevo: abrir la versión real antes de afirmar que un control ya está disponible. Operator ID y comentarios siguen obligatorios hasta acordar los cambios solicitados con backend.
+La base funcional del servidor documentado es **`7fc34e8`**, en `release/integrated-hmi`. Después del checkpoint documental `c7df85a`, el checkpoint de fuente del **13 de octubre de 2026** reúne filtro REMOVED, confirmación de retiro retenido, reset de mantenimiento y el nuevo layout compartido de Bundler. Estos ajustes aún no están desplegados. Esta guía distingue lo instalado de lo nuevo: abrir la versión real antes de afirmar que un control ya está disponible. El cambio local posterior permite comentario opcional sólo en REMOVE, tras la prueba directa de API 0.44 (evento 237102). Operator ID sigue visible/obligatorio porque null recibió 400; Reposition/legacy conservan comentario obligatorio hasta confirmar sus variantes.
 
 ## 1. Preparación en el servidor: abrir la carpeta correcta
 
@@ -63,8 +63,8 @@ Buscar las condiciones `view ===` y seguir sus componentes:
 - `stackers` → `StackersSchematic`.
 - `stacker` → `StackerSchematic`: pestaña nueva en singular; no sustituye `stackers`.
 - `bundler` → `BundlerSchematic`.
-- `bay-1` → `BayOneSchematic`.
-- `bay-2` → `BayTwoSchematic`.
+- `bay-1` → `BayOneSchematic` → `StackerSchematic`, temporalmente la misma vista con título Bay 1.
+- `bay-2` → `BayTwoSchematic` → `MainSchematic` con `variant="bay-2"`, sector derecho del Overview.
 
 Son cinco vistas dentro de `/`, no cinco rutas de Next. Al cambiar una pestaña se cambia el diagrama renderizado, no la fuente de datos del Dashboard. `AppHeader` recibe `view` y `onViewChange`; el callback comunica la elección hacia el componente que es dueño de ese estado.
 
@@ -187,6 +187,10 @@ Cambio local del 13 de octubre: la pestaña Bundler ahora reutiliza ese mismo co
 
 Después del checkpoint `90c849c` se añadió **Stacker**, en singular, como una pestaña adicional. `StackerSchematic` usa `variant="stacker"` para conservar ERT, STRT, LFRT, SGRT1/2, NCCT1/2 y báscula, sin Bundler/RTOUT, RTTY, IMRT ni secciones Bay 2. El desplazamiento vertical común elimina espacio vacío sin alterar relaciones entre tarjetas. **Stackers**, en plural, sigue llamando al componente anterior sin cambios. Ambas leen el mismo agrupamiento `bundlesByZone` del dashboard; no se agrega otro polling ni endpoint.
 
+Stacker quedó guardado en `f11002b`. El cambio local siguiente hace que **Bay 1 sea temporalmente igual a Stacker**: abrir `bay-one-schematic.tsx` para ver que delega directamente a `StackerSchematic` con `title="Bay 1"`. No hay copia de coordenadas ni otro readout: ambos renderizan el mismo componente y snapshot. El título distingue las pestañas; Stackers (plural) sigue independiente. La distribución anterior de Bay 1 se puede consultar en el checkpoint, no en la pantalla nueva.
+
+**Bay 2** ahora también reutiliza `MainSchematic`, con `variant="bay-2"`. Muestra sólo el sector derecho del Overview: RTTY1/2, IMRT2, SGRT1/2, NCCT1/2, IMRT1, ambas secciones CCH/SGRT A/B, báscula SGRT2 y Robot 2. Son 16 zonas visibles en lienzo 600 × 760. Omite Stackers y salidas RTOUT sin borrar datos de Tracking; mantiene FIFO, cinco filas CCH y el mismo peso. La traslación horizontal mueve el grupo completo, no asigna nuevas posiciones a bundles. El cambio es local y no debe atribuirse al servidor antes de desplegarlo.
+
 Las LCH se omiten de los diagramas de operador, pero permanecen en el catálogo y pueden aparecer como destino manual si `/map` las habilita. CCH muestra cinco filas visibles con scroll, no una capacidad operativa máxima de cinco. `compactVisibleRows` controla presentación; `Capacity` pertenece al contrato del mapa.
 
 `PlantMap` y `SchematicScreen` ajustan escala mediante `ResizeObserver`; cada diagrama mantiene coordenadas propias. “Motion” controla indicación visual, no pausa el polling ni maquinaria. `ROBOT_2_UNKNOWN` expresa falta de telemetría del robot, no confirma que esté detenido.
@@ -216,19 +220,19 @@ Son dos escrituras separadas, **no una transacción atómica**. No hay rollback 
 
 Abrir [components/tracking-bundles-panel.tsx](../components/tracking-bundles-panel.tsx). Encontrar `selectBundle`, `handleCommand`, `commandLocked`, `CommandStatus` y el efecto de verificación. No ejecutar una operación industrial como parte de esta explicación.
 
-El panel conserva qué bundle se eligió y la acción (`remove` o `reposition`). El formulario pide Operator ID y Reason. Son strings no vacíos tras `trim`; la validación actual no restringe Operator ID a números ni comprueba una identidad corporativa. Esos datos acompañan el comando para auditoría; no equivalen a login.
+El panel conserva qué bundle se eligió y la acción (`remove` o `reposition`). El formulario mantiene Operator ID obligatorio: string no vacío tras `trim`, sin restricción a números ni comprobación de identidad corporativa. El comentario sigue visible, pero en el código local nuevo **es opcional sólo para REMOVE**: vacío/espacios produce `Reason: null`; texto no vacío se recorta. Reposition todavía requiere comentario; la corrección legacy también. Estos datos acompañan el comando para auditoría y no equivalen a login. Mostrar el valor real enviado en Network, sin rellenar un operador fijo ni motivo automático.
 
 Los dos payloads comparten endpoint pero no semántica:
 
 ```json
-{"TrackingId":"<tracking-id>","Operation":"REMOVE","OperatorId":"<operador>","Reason":"<motivo>"}
+{"TrackingId":"<tracking-id>","Operation":"REMOVE","OperatorId":"<operador>","Reason":null}
 ```
 
 ```json
 {"TrackingId":"<tracking-id>","OperatorId":"<operador>","Reason":"<motivo>","CurrentZone":"<zona-destino>"}
 ```
 
-Ambos usan `POST /api/tracking/correct`. Reposition no envía `Operation: "MOVE"`. Cambia una posición reportada de Tracking; no debe presentarse como orden de mover físicamente material con motores.
+Ambos usan `POST /api/tracking/correct`. El primer ejemplo muestra un retiro sin comentario; con comentario se envía un string recortado. La prueba directa v0.44 que respalda null está en [Estado de entrega](estado-entrega.md#prueba-directa-api-044-nulidad-de-campos-evento-237102), no valida todas las variantes del endpoint ni el despliegue del formulario. Reposition no envía `Operation: "MOVE"`. Cambia una posición reportada de Tracking; no debe presentarse como orden de mover físicamente material con motores.
 
 ### Confirmación y preflight
 

@@ -170,8 +170,8 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate 
     event.preventDefault()
     if (
       commandLocked.current || !selectedStillTracked || !tracking.trackingState || !client || !commandAvailable ||
-      commandStatus !== "idle" || !operatorId.trim() || !reason.trim() ||
-      (isReposition && (!selectedZone || destination === selectedStillTracked.CurrentZone))
+      commandStatus !== "idle" || !operatorId.trim() ||
+      (isReposition && (!reason.trim() || !selectedZone || destination === selectedStillTracked.CurrentZone))
     ) return
 
     const selected = selectedStillTracked
@@ -214,10 +214,10 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate 
       setCommandStatus("sending")
       setCommandMessage(isReposition ? "Sending reposition request..." : "Sending removal request...")
       commandDispatched = true
-      const identity = { TrackingId: trackingId, OperatorId: operatorId.trim(), Reason: reason.trim() }
+      const identity = { TrackingId: trackingId, OperatorId: operatorId.trim() }
       const acknowledgement = isReposition
-        ? await client.repositionBundle({ ...identity, CurrentZone: destination })
-        : await client.removeBundle({ ...identity, Operation: "REMOVE" })
+        ? await client.repositionBundle({ ...identity, Reason: reason.trim(), CurrentZone: destination })
+        : await client.removeBundle({ ...identity, Reason: reason.trim() || null, Operation: "REMOVE" })
       if (!mounted.current) return
       if (!acknowledgement.accepted || acknowledgement.trackingId !== trackingId) {
         throw new Error("Tracking did not acknowledge the command for the selected TrackingId.")
@@ -314,14 +314,14 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate 
                     <label className="block text-xs font-medium" htmlFor={`${fieldPrefix}-operator-id`}>Operator ID</label>
                     <Input id={`${fieldPrefix}-operator-id`} value={operatorId} onChange={(event) => setOperatorId(event.target.value)}
                       autoComplete="off" required disabled={!commandAvailable} />
-                    <p className="text-xs text-muted-foreground">Enter your real operator ID. This field is not an authentication check.</p>
-                    <label className="block text-xs font-medium" htmlFor={`${fieldPrefix}-reason`}>{isReposition ? "Reason for reposition" : "Reason for removal"}</label>
+                    <p className="text-xs text-muted-foreground">Required by the Tracking API. Enter your real operator ID; this field is not an authentication check.</p>
+                    <label className="block text-xs font-medium" htmlFor={`${fieldPrefix}-reason`}>{isReposition ? "Reason for reposition" : "Comments (optional)"}</label>
                     <textarea id={`${fieldPrefix}-reason`}
                       className="min-h-20 w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                      value={reason} onChange={(event) => setReason(event.target.value)} required disabled={!commandAvailable} />
+                      value={reason} onChange={(event) => setReason(event.target.value)} required={isReposition} disabled={!commandAvailable} />
                     <Button type="submit" variant={isReposition ? "default" : "destructive"} className="w-full"
-                      disabled={!commandAvailable || !selectedStillTracked || !operatorId.trim() || !reason.trim() ||
-                        (isReposition && (!selectedZone || destination === selectedStillTracked.CurrentZone))}>
+                      disabled={!commandAvailable || !selectedStillTracked || !operatorId.trim() ||
+                        (isReposition && (!reason.trim() || !selectedZone || destination === selectedStillTracked.CurrentZone))}>
                       {isReposition ? <ArrowRightLeft aria-hidden /> : <Trash2 aria-hidden />}
                       {isReposition ? "Reposition selected bundle" : "Remove selected bundle"}
                     </Button>
@@ -376,7 +376,7 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate 
             )}
           </div>
           <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
-            Actions use TrackingId, not the displayed number or zone. Operator ID and reason are sent for audit. An accepted request is not proof of completion.
+            Actions use TrackingId, not the displayed number or zone. Operator ID and any provided comment are sent for audit. An accepted request is not proof of completion.
           </p>
         </SheetContent>
       </Sheet>

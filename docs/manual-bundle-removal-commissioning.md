@@ -1,6 +1,6 @@
 # Retiro manual de bundles — commissioning del release integrado
 
-Esta guía distingue la base desplegada **`7fc34e8`** de los cambios locales del **9 de octubre de 2026**, posteriores al checkpoint documental `c7df85a`, en la misma rama `release/integrated-hmi`. El nuevo filtro y criterio de retiro retenido aún no se han desplegado. La evidencia real corresponde a HMI **3000** con Tracking **8085**. Abrir código y hacer GETs no equivale a autorizar una nueva remoción: toda escritura se coordina con operación.
+Esta guía distingue la base desplegada **`7fc34e8`** de los cambios locales del **9 y 13 de octubre de 2026**, posteriores al checkpoint documental `c7df85a`, en la misma rama `release/integrated-hmi`. El nuevo filtro, criterio de retiro retenido y comentario opcional en REMOVE aún no se han desplegado. La evidencia histórica corresponde a HMI **3000** con Tracking **8085**; la prueba de nulidad del 13 de octubre fue directa a la API **0.44/8085**, no por la UI. Abrir código y hacer GETs no equivale a autorizar una nueva remoción: toda escritura se coordina con operación.
 
 Fuente del despliegue documentado: `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`. Ver la sección 5 antes de repetir una prueba: ya existe evidencia histórica de un registro `REMOVED` retenido. No reenviar ese comando para comprobar el nuevo filtro.
 
@@ -12,7 +12,7 @@ Fuente del despliegue documentado: `C:\Users\ven.f.garciamares\Projects\tx1-inte
 - Usar el frontend en 3000 no autoriza cualquier retiro. Elegir con operación el bundle y la ventana permitidos.
 - Una segunda instancia en otro puerto no crea otro backend ni aislamiento de datos.
 - `OperatorId` es texto de trazabilidad, no autenticación.
-- `OperatorId` y `Reason` son obligatorios para REMOVE según v0.39, sección 4; ocultar operador y volver opcional el comentario está solicitado, pero pendiente de acuerdo con backend. No extrapolar esta obligación de Reason a todas las variantes de corrección ni sustituir campos por valores ficticios.
+- v0.39, sección 4, exigía `OperatorId` y `Reason` para REMOVE. La prueba API 0.44 confirmó `Reason: null` aceptado con resultado REMOVED (evento 237102), pero rechazó `OperatorId: null` con 400. El código local mantiene operador visible/obligatorio y permite comentario opcional en REMOVE: vacío/espacios → `null`, texto no vacío recortado. Solicitar actualizar el contrato. No extrapolar la nulidad a Reposition/legacy ni sustituir campos por valores ficticios.
 - Que capabilities anuncie `/api/tracking/correct` no demuestra por sí solo soporte ni permisos de REMOVE.
 
 ## 1. Preparación del código y del entorno
@@ -50,9 +50,9 @@ La HMI no escribe una bitácora persistente propia: los mensajes de aceptación 
 1. Confirmar **Live API**, escenario y API esperados. Abrir **Tracked bundles**.
 2. Identificar el bundle autorizado, su numero visible, `TrackingId`, zona y
    huella de ocupacion. Registrar la hora y el estado inicial con backend.
-3. Pulsar **Remove from Tracking**. Sin operador o motivo no debe habilitarse
-   **Remove selected bundle**. Cancelar una confirmacion no debe enviar un POST.
-4. Capturar operador real y motivo. Revisar el `TrackingId` en la confirmacion.
+3. Pulsar **Remove from Tracking**. Sin operador no debe habilitarse
+   **Remove selected bundle**. En el código local actualizado el comentario vacío no bloquea REMOVE; en el paquete histórico aún era obligatorio. Cancelar una confirmacion no debe enviar un POST.
+4. Capturar operador real y, opcionalmente, comentario. Si queda vacío o sólo con espacios, el payload nuevo lleva `Reason: null`, nunca un motivo generado. Revisar el `TrackingId` en la confirmacion.
    Al aceptar, la HMI consulta nuevamente la configuracion y luego el estado.
    Si cambia la posicion/huella o no puede validar el bundle, no envia la remocion
    y pide revisar de nuevo. La duracion del dialogo no invalida por si sola el envio.
@@ -65,7 +65,7 @@ La HMI no escribe una bitácora persistente propia: los mensajes de aceptación 
    sin confirmacion permite consultar de nuevo con **Check state again (read only)**,
    sin reenviar el POST. Verificar tambien los demas bundles, considerando movimiento normal.
 7. Con backend/operacion, confirmar limpieza completa HEAD/TAIL y ocupacion
-   publicada al PLC, preservacion del historial y auditoria con operador/motivo.
+   publicada al PLC, preservacion del historial y auditoria con operador y el comentario enviado (incluido null si se omitió).
 
 Si hay timeout, error 5xx o respuesta incompatible, **no reenviar automaticamente**.
 El backend pudo aceptar la solicitud. Revisar primero estado y auditoria con su
@@ -77,6 +77,8 @@ de recargar o volver a intentar.
 El código local acepta los dos resultados descritos en el paso 6, sin tratar `REMOVED` por sí solo como éxito: zona/huella no vacías, identidad duplicada o escenario distinto mantienen la operación sin confirmar. Un REMOVED se oculta de vistas activas incluso si trae una posición inconsistente, pero el snapshot original permanece disponible para verificar esa inconsistencia. `reportedZoneOccupants` no descarta huellas al validar destinos de reposicionamiento.
 
 ## 4. Consultar el resultado sin reenviar el comando
+
+La prueba de comentario nulo ya cuenta con evidencia directa: evento **237102**, `TRK-0000110850`, bundle `101644628`, API **0.44**, el 13 de octubre a `23:37:50.6730520-05:00`; el GET de `23:39:33.3958373-05:00` conservó el registro como REMOVED sin posiciones. No reenviar ese retiro. Ver el registro completo, el rechazo previo de operador nulo y los pendientes de backend en [Estado de entrega](estado-entrega.md#prueba-directa-api-044-nulidad-de-campos-evento-237102). Esta prueba no valida el formulario local nuevo ni los efectos PLC/auditoría.
 
 Este bloque realiza un único GET directo al backend del servidor. El ID es el del caso ya probado; para otra consulta sustituirlo por el TrackingId exacto acordado. No contiene POST ni modifica el bundle.
 

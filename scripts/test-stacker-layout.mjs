@@ -51,6 +51,7 @@ const {
 const { StackerSchematic } = load("components/plant/stacker-schematic.tsx")
 const { StackersSchematic } = load("components/plant/stackers-schematic.tsx")
 const { BundlerSchematic } = load("components/plant/bundler-schematic.tsx")
+const { BayOneSchematic } = load("components/plant/bay-one-schematic.tsx")
 const {
   groupTrackingBundlesByZone, TRACKING_ZONE_LAYOUT, TRACKING_ZONE_NAMES,
   TRACKING_ZONES_BY_SCREEN, getTrackingZonesForScreen,
@@ -72,18 +73,21 @@ function bundle(TrackingId, CurrentZone, extra = {}) {
     CorrelationStatus: "MATCHED", Weight: null, ...extra,
   }
 }
-function renderViews(Bundles = [], { hasSnapshot = true, bundlesByZone } = {}) {
+function renderViews(Bundles = [], {
+  hasSnapshot = true, bundlesByZone, mode = "live", matchedIds = null, animationRunning = false,
+} = {}) {
   const grouped = bundlesByZone ?? groupTrackingBundlesByZone(Bundles).byZone
   const tracking = {
-    mode: "live", syncStatus: hasSnapshot ? "live" : "connecting",
+    mode, syncStatus: hasSnapshot ? "live" : "connecting",
     trackingState: hasSnapshot ? { ScenarioName: scenario, Bundles, LastUpdateUtc: null } : null,
   }
-  const shared = { updatedAt: null, animationRunning: false, matchedIds: null, tracking, bundlesByZone: grouped }
+  const shared = { updatedAt: null, animationRunning, matchedIds, tracking, bundlesByZone: grouped }
   return {
-    overview: render(MainSchematic, { animationRunning: false, bundlesByZone: grouped, hasSnapshot }),
+    overview: render(MainSchematic, { animationRunning, bundlesByZone: grouped, hasSnapshot: mode === "mock" || hasSnapshot }),
     stacker: render(StackerSchematic, shared),
     stackers: render(StackersSchematic, shared),
     bundler: render(BundlerSchematic, shared),
+    bay1: render(BayOneSchematic, shared),
   }
 }
 function zoneMarkup(html, name) {
@@ -147,13 +151,13 @@ test("retained Stacker cards match Overview exactly and never modify their sourc
   assert.equal(JSON.stringify({ Bundles, grouped }), before)
 })
 
-test("new Stacker screen has thirteen zones while all API zones and existing screen memberships remain", () => {
+test("Stacker and Bay 1 catalogs have thirteen zones while all API zones and other screens remain", () => {
   const expectedScreens = {
     stacker: RETAINED_ZONES,
     stackers: [...RETAINED_ZONES, "IMRT1"],
     bundler: BUNDLER_ZONES,
-    "bay-1": ["SGRT1", "SGRT2", "NCCT1", "NCCT2"],
-    "bay-2": ["IMRT2", "IMRT1", "SGRT1A", "SGRT1B", "LCH1A", "LCH1B", "CCH1A", "CCH1B", "SGRT2A", "SGRT2B", "LCH2A", "LCH2B", "CCH2A", "CCH2B"],
+    "bay-1": RETAINED_ZONES,
+    "bay-2": ["RTTY1", "RTTY2", "SGRT1", "SGRT2", "NCCT1", "NCCT2", "IMRT2", "IMRT1", "SGRT1A", "SGRT1B", "LCH1A", "LCH1B", "CCH1A", "CCH1B", "SGRT2A", "SGRT2B", "LCH2A", "LCH2B", "CCH2A", "CCH2B"],
   }
   for (const [screen, expected] of Object.entries(expectedScreens)) {
     assert.deepEqual(Array.from(TRACKING_ZONES_BY_SCREEN[screen]).sort(), [...expected].sort(), screen + " catalog")
@@ -166,42 +170,48 @@ test("new Stacker screen has thirteen zones while all API zones and existing scr
   assert.equal(TRACKING_ZONE_LAYOUT.IMRT1.label, "IMRT1")
 })
 
-test("Stacker uses CurrentZone, not logical buffer membership or secondary occupied positions", () => {
-  const { stacker } = renderViews([
+test("Stacker and Bay 1 use CurrentZone, not logical buffer membership or secondary occupied positions", () => {
+  const { stacker, bay1 } = renderViews([
     bundle("PHYSICAL-SGRT1", "SGRT1", { LogicalBufferName: "SGRT2", QueueSequence: 1, OccupiedZones: ["SGRT1", "SGRT2"] }),
     bundle("EXCLUDED-IMRT1", "IMRT1", { LogicalBufferName: "SGRT2", QueueSequence: 2 }),
     bundle("UNKNOWN-POSITION", "NOT-A-ZONE"),
     bundle("WITHOUT-POSITION", null),
   ])
-  assert.deepEqual(renderedIds(zoneMarkup(stacker, "SGRT1")), ["PHYSICAL-SGRT1"])
-  assert.deepEqual(renderedIds(zoneMarkup(stacker, "SGRT2")), [])
-  assert.doesNotMatch(stacker, /EXCLUDED-IMRT1|UNKNOWN-POSITION|WITHOUT-POSITION/)
+  for (const html of [stacker, bay1]) {
+    assert.deepEqual(renderedIds(zoneMarkup(html, "SGRT1")), ["PHYSICAL-SGRT1"])
+    assert.deepEqual(renderedIds(zoneMarkup(html, "SGRT2")), [])
+    assert.doesNotMatch(html, /EXCLUDED-IMRT1|UNKNOWN-POSITION|WITHOUT-POSITION/)
+  }
 })
 
-test("Stacker hides REMOVED records and their weights even when supplied with lingering zone positions", () => {
+test("Stacker and Bay 1 hide REMOVED records and their weights even when supplied with lingering zone positions", () => {
   const removed = bundle("HIDE-REMOVED", "SGRT2", { Status: " removed ", Weight: 99999 })
   const active = bundle("ACTIVE-ZERO", "SGRT2", { Weight: 0 })
   // Deliberately bypass dashboard filtering to test the rendered card and scale guards.
-  const { stacker } = renderViews([removed, active], { bundlesByZone: { SGRT2: [removed, active] } })
-  assert.doesNotMatch(stacker, /HIDE-REMOVED|99999/)
-  assert.deepEqual(renderedIds(zoneMarkup(stacker, "SGRT2")), ["ACTIVE-ZERO"])
-  assert.match(zoneMarkup(stacker, "SGRT2"), /aria-label="1 bundles"/)
-  assert.match(stacker, /Weight: 0/)
+  const { stacker, bay1 } = renderViews([removed, active], { bundlesByZone: { SGRT2: [removed, active] } })
+  for (const html of [stacker, bay1]) {
+    assert.doesNotMatch(html, /HIDE-REMOVED|99999/)
+    assert.deepEqual(renderedIds(zoneMarkup(html, "SGRT2")), ["ACTIVE-ZERO"])
+    assert.match(zoneMarkup(html, "SGRT2"), /aria-label="1 bundles"/)
+    assert.match(html, /Weight: 0/)
+  }
 })
 
-test("Stacker scale reads only SGRT2 weight, preserving unavailable values without inventing units", () => {
-  const { stacker } = renderViews([
+test("Stacker and Bay 1 scale reads only SGRT2 weight, preserving unavailable values without inventing units", () => {
+  const { stacker, bay1 } = renderViews([
     bundle("SCALE-WEIGHED", "SGRT2", { Weight: 1234.5 }),
     bundle("SCALE-PENDING", "SGRT2"),
     bundle("NOT-SCALE", "SGRT1", { Weight: 98765 }),
   ])
-  const scale = stacker.match(/<div\b[^>]*aria-label="SGRT2 bundle weight"[\s\S]*?<\/div>/)?.[0]
-  assert.ok(scale, "The scale readout remains visible")
-  assert.match(scale, /SCALE-WEIGHED/)
-  assert.match(scale, /Weight: 1234\.5/)
-  assert.match(scale, /SCALE-PENDING/)
-  assert.match(scale, /Weight: unavailable/)
-  assert.doesNotMatch(scale, /NOT-SCALE|98765|\bkg\b|\blbs\b/)
+  for (const html of [stacker, bay1]) {
+    const scale = html.match(/<div\b[^>]*aria-label="SGRT2 bundle weight"[\s\S]*?<\/div>/)?.[0]
+    assert.ok(scale, "The scale readout remains visible")
+    assert.match(scale, /SCALE-WEIGHED/)
+    assert.match(scale, /Weight: 1234\.5/)
+    assert.match(scale, /SCALE-PENDING/)
+    assert.match(scale, /Weight: unavailable/)
+    assert.doesNotMatch(scale, /NOT-SCALE|98765|\bkg\b|\blbs\b/)
+  }
 })
 
 test("Stacker distinguishes startup from a received empty snapshot", () => {
@@ -212,4 +222,64 @@ test("Stacker distinguishes startup from a received empty snapshot", () => {
   const empty = renderViews().stacker
   assert.match(zoneMarkup(empty, "SGRT2"), />Empty</)
   assert.match(empty, /No bundle in SGRT2/)
+})
+
+// Only the outer screen title/accessibility labels differ; the diagram itself
+// remains Stacker's shared Overview variant, including all card behavior.
+const normalizedBay1 = (html) => html.replaceAll("Bay 1", "Stacker")
+
+test("Bay 1 mirrors the complete Stacker markup without modifying the snapshot or rendering legacy manual equipment", () => {
+  const Bundles = Object.freeze([...RETAINED_ZONES, ...OMITTED_ZONES].map((name) => Object.freeze(bundle("VISIBLE-" + name, name))))
+  const grouped = groupTrackingBundlesByZone(Bundles).byZone
+  for (const list of Object.values(grouped)) Object.freeze(list)
+  Object.freeze(grouped)
+  const before = JSON.stringify({ Bundles, grouped })
+  const { overview, stacker, bay1 } = renderViews(Bundles, { bundlesByZone: grouped })
+  assert.match(bay1, /aria-label="Bay 1"/)
+  assert.match(bay1, />Bay 1<\/h2>/)
+  assert.match(bay1, /aria-label="Scrollable Bay 1 production diagram"/)
+  assert.equal(normalizedBay1(bay1), stacker, "Only the screen title and matching shell labels may differ")
+  assert.deepEqual(renderedZones(bay1), [...RETAINED_ZONES].sort())
+  assert.doesNotMatch(bay1, /Bay 1 Manual Station|Bay 1 tracked positions|Handoff from Stackers|physical equipment context/i)
+  for (const name of RETAINED_ZONES) assert.equal(zoneMarkup(bay1, name), zoneMarkup(overview, name))
+  for (const name of OMITTED_ZONES) assert.ok(!renderedIds(bay1).includes("VISIBLE-" + name))
+  assert.equal(JSON.stringify({ Bundles, grouped }), before)
+})
+
+test("Bay 1 matches Stacker in live startup, empty live state, and mock preview without a received API snapshot", () => {
+  for (const options of [
+    { mode: "live", hasSnapshot: false },
+    { mode: "live", hasSnapshot: true },
+    { mode: "mock", hasSnapshot: false },
+  ]) {
+    const populated = [bundle("STATE-SCALE", "SGRT2", { Weight: 4321 })]
+    const { stacker, bay1 } = renderViews(populated, options)
+    assert.equal(normalizedBay1(bay1), stacker)
+    if (options.mode === "live" && !options.hasSnapshot) {
+      assert.match(zoneMarkup(bay1, "SGRT2"), />Waiting</)
+      assert.doesNotMatch(bay1, /data-tracking-id|Weight: 4321|STATE-SCALE/)
+    } else {
+      assert.deepEqual(renderedIds(zoneMarkup(bay1, "SGRT2")), ["STATE-SCALE"])
+      assert.match(bay1, /Weight: 4321/)
+    }
+    const empty = renderViews([], options)
+    assert.equal(normalizedBay1(empty.bay1), empty.stacker)
+    if (options.mode === "mock" || options.hasSnapshot) {
+      assert.match(zoneMarkup(empty.bay1, "SGRT2"), />Empty</)
+      assert.match(empty.bay1, /No bundle in SGRT2/)
+    }
+  }
+})
+
+test("Bay 1 uses the same Stacker filter identities and motion state, without dropping zone cards", () => {
+  for (const matchedIds of [null, new Set(), new Set(["stk-a"]), new Set(["bay1-t1"])]) {
+    for (const animationRunning of [false, true]) {
+      const { stacker, bay1 } = renderViews([], { matchedIds, animationRunning })
+      assert.equal(normalizedBay1(bay1), stacker)
+      assert.deepEqual(renderedZones(bay1), [...RETAINED_ZONES].sort())
+      const muted = Boolean(matchedIds && !matchedIds.has("stk-a"))
+      assert.equal(/opacity-30 saturate-50/.test(bay1), muted)
+      assert.equal((bay1.match(/animate-soft-pulse/g) ?? []).length, animationRunning ? 9 : 0)
+    }
+  }
 })

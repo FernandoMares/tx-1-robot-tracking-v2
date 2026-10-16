@@ -179,7 +179,7 @@ El `correctBundle` legacy permanece disponible con `TrackingId, OperatorId, Reas
 
 | Camino | Método/DTO | POST `/api/tracking/correct` |
 | --- | --- | --- |
-| Retiro | `removeBundle`, `TrackingRemovalRequestDto` | `TrackingId, Operation: "REMOVE", OperatorId, Reason`. |
+| Retiro | `removeBundle`, `TrackingRemovalRequestDto` | `TrackingId, Operation: "REMOVE", OperatorId` obligatorio y `Reason` string o null explícito. Comentario vacío/espacios → null; no vacío recortado. |
 | Reposicionamiento | `repositionBundle`, `TrackingRepositionRequestDto` | `TrackingId, OperatorId, Reason, CurrentZone`, sin `Operation` ni `MillOrder1`. |
 | Corrección legacy | `correctBundle` | Los cuatro campos legacy, sin mezclar destino de reposicionamiento. |
 
@@ -219,7 +219,11 @@ Para explicar el flujo en el código, abrir estos símbolos en este orden:
 
 No hay una bitácora persistente de acciones propia del HMI: los mensajes/eventId se mantienen en React y el proxy no los almacena. Para la prueba coordinada se usa F12 → Network, **Preserve log**, y se conserva **Headers** (URL, método, HTTP, Date), **Payload** y **Response**. Preview es otra representación de Response, no evidencia adicional indispensable. No repetir el POST desde DevTools. La auditoría formal y los efectos PLC deben confirmarse en el backend con el evento 154605.
 
-`OperatorId` es texto aportado por el cliente, no identidad autenticada. **v0.39, sección 4, exige OperatorId y Reason para REMOVE**; v0.6, sección 5.8, exige operador para correcciones. Para reposicionamiento, Reason está en el ejemplo, sin demostrar obligación contractual general. La implementación actual —formularios disponibles, cliente y proxy— exige ambos en los tres caminos de `/correct`; ocultar operador y hacer Comments/Reason opcional sigue pendiente de acuerdo con backend. No se cambiaron esas validaciones ni se agregaron identificadores/motivos ficticios. No inventar Comments en selecciones globales ni reset.
+`OperatorId` es texto aportado por el cliente, no identidad autenticada. **v0.39, sección 4, exigía OperatorId y Reason para REMOVE**; v0.6, sección 5.8, exige operador para correcciones. Para reposicionamiento, Reason está en el ejemplo, sin demostrar obligación contractual general.
+
+La evidencia directa contra API **0.44** del 13 de octubre cambió el alcance implementable: `OperatorId: null` recibió **400** (`OperatorId is required for HMI corrections.`). En cambio REMOVE con operador informado y **`Reason: null`** recibió **202/evento 237102**, y el GET posterior conservó `TRK-0000110850` como `REMOVED`, `CurrentZone: null`, `OccupiedZones: []`, mismo escenario. Ver [horas, cuerpos y límites de la prueba](estado-entrega.md#prueba-directa-api-044-nulidad-de-campos-evento-237102). La consulta directa no atravesó el proxy HMI y no prueba que el nuevo formulario esté desplegado.
+
+El cambio local permite comentario opcional **sólo en REMOVE**, coherente de formulario a DTO, cliente y proxy: se conserva el campo `Reason`; se envía `null` si no hay texto útil y se recorta el comentario no vacío. No equivale a omitir arbitrariamente la propiedad ni a permitir tipos numéricos/objetos. Operator ID sigue visible y debe contener texto no vacío tras `trim`, sin valor fijo. **Reposition y corrección legacy mantienen Reason obligatorio** hasta validar sus propias variantes; no se ha demostrado aquí que rechacen o acepten null. Solicitar actualizar el contrato histórico y acordar cómo resolver identidad en fase 1 si se oculta el campo. No inventar identidad/motivo ni Comments en selecciones globales o reset.
 
 Antes del POST, el panel vuelve a consultar status, capabilities, map y finalmente state. Solo ofrece reposicionar a nombres únicos de `map.Zones` con `IsEnabled: true`; son posiciones de Tracking, no el catálogo QMOS Destination. Una LCH oculta puede seguir siendo destino si está habilitada en el mapa. Se muestran capacidad/ocupación como información, no como un permiso industrial.
 
@@ -243,7 +247,7 @@ Siguen fuera de alcance del proxy: escritura OPC, inyección de eventos y POST d
 
 Tras el acuse se hacen GET nuevos: se distingue aceptación, resultado observado, pendiente e incierto. Para observar estado vaciado se exige un alcance inicial con activos, escenario/identidades coherentes y cero activos posteriores; si quedan registros, todos deben ser REMOVED con zona null y huella explícita vacía. Un estado inicialmente vacío no demuestra que reset se procesó; nuevas entradas pueden impedir esa observación. Un timeout/resultado incierto no provoca otro POST: consultar evento/auditoría. El lock compartido evita solapar reset y acciones manuales sólo desde ese Dashboard.
 
-No se ha ejecutado reset real como parte de este desarrollo ni se presume aprobación industrial. Ver [commissioning de reset](tracking-reset-commissioning.md). La implementación de correcciones mantiene OperatorId/Reason obligatorios; la exigencia contractual explícita de ambos corresponde a REMOVE. No se añaden al cuerpo vacío de reset.
+No se ha ejecutado reset real como parte de este desarrollo ni se presume aprobación industrial. Ver [commissioning de reset](tracking-reset-commissioning.md). Las correcciones mantienen OperatorId obligatorio; el comentario local sólo es opcional en REMOVE, respaldado por el caso v0.44 anterior. Estos campos no se añaden al cuerpo vacío de reset; probar REMOVE con Reason null no valida el reset.
 
 ## Criterios de verificación
 
