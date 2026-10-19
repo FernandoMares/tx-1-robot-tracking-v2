@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { RotateCcw, TriangleAlert } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import type { TrackingCommandGate } from "@/hooks/use-tracking-command-gate"
 import {
@@ -46,7 +45,6 @@ function resetMayHaveBeenAccepted(error: unknown): boolean {
 /** Owns its pending state outside the sheet; closing it never unlocks a dispatched reset. */
 export function TrackingResetControl({ tracking, config, onRefresh, commandGate }: TrackingResetControlProps) {
   const [open, setOpen] = useState(false)
-  const [confirmation, setConfirmation] = useState("")
   const [authorized, setAuthorized] = useState(false)
   const [status, setStatus] = useState<ResetStatus>("idle")
   const [message, setMessage] = useState<string | null>(null)
@@ -129,7 +127,6 @@ export function TrackingResetControl({ tracking, config, onRefresh, commandGate 
       setStatus("idle")
       setMessage(null)
       setVerificationMessage(null)
-      setConfirmation("")
       setAuthorized(false)
     }
     setOpen(true)
@@ -138,7 +135,7 @@ export function TrackingResetControl({ tracking, config, onRefresh, commandGate 
   async function handleReset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (locked.current || busy || !commandAvailable || !client || !tracking.trackingState ||
-      confirmation !== "RESET" || !authorized || !tryAcquire("reset")) return
+      !authorized || !tryAcquire("reset")) return
 
     const displayedState = tracking.trackingState
     locked.current = true
@@ -214,17 +211,12 @@ export function TrackingResetControl({ tracking, config, onRefresh, commandGate 
             {!busy && status !== "success" && (
               <form onSubmit={handleReset} className="space-y-4">
                 <label className="flex items-start gap-2 text-xs">
-                  <input type="checkbox" checked={authorized} onChange={(event) => setAuthorized(event.target.checked)}
+                  <input id="tracking-reset-authorization" type="checkbox" required checked={authorized} onChange={(event) => setAuthorized(event.target.checked)}
                     className="mt-0.5 size-4 shrink-0" />
                   <span>I have Operations authorization and have verified the approved maintenance condition. This acknowledgment is not authentication or an equipment interlock.</span>
                 </label>
-                <div className="space-y-1">
-                  <label htmlFor="tracking-reset-confirmation" className="text-xs font-medium">Type RESET to enable confirmation</label>
-                  <Input id="tracking-reset-confirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)}
-                    autoComplete="off" spellCheck={false} placeholder="RESET" />
-                </div>
                 {(!commandAvailable || owner === "manual") && <p className="text-xs text-muted-foreground">{unavailableMessage}</p>}
-                <Button type="submit" variant="destructive" className="w-full" disabled={!commandAvailable || owner === "manual" || confirmation !== "RESET" || !authorized}>
+                <Button type="submit" variant="destructive" className="w-full" disabled={!commandAvailable || owner === "manual" || !authorized}>
                   <RotateCcw className="size-4" />Confirm global reset
                 </Button>
               </form>

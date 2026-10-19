@@ -4,6 +4,14 @@ Esta sesión se realiza **en el servidor, leyendo el fuente y observando el fron
 
 La base funcional del servidor documentado es **`7fc34e8`**, en `release/integrated-hmi`. Después del checkpoint documental `c7df85a`, el checkpoint de fuente del **13 de octubre de 2026** reúne filtro REMOVED, confirmación de retiro retenido, reset de mantenimiento y el nuevo layout compartido de Bundler. Estos ajustes aún no están desplegados. Esta guía distingue lo instalado de lo nuevo: abrir la versión real antes de afirmar que un control ya está disponible. El cambio local posterior permite comentario opcional sólo en REMOVE, tras la prueba directa de API 0.44 (evento 237102). Operator ID sigue visible/obligatorio porque null recibió 400; Reposition/legacy conservan comentario obligatorio hasta confirmar sus variantes.
 
+### Adición de desarrollo: selector LPN QMOS v0.44
+
+El checkpoint del **19 de octubre de 2026**, sobre la base publicada `7fe8474`, incorpora el control global **QMOS LPN mode**, pendiente de despliegue. Para explicarlo abrir `QmosLpnModeControl` en `components/qmos-lpn-mode-control.tsx`, seguir `getQmosLpnMode/updateQmosLpnMode` en el cliente y el GET/PUT allowlisted del proxy. La selección, operador (100 máximo) y motivo (500 máximo) son obligatorios; no se usa un operador fijo ni se aplica aquí la excepción de comentario opcional en REMOVE.
+
+Texto sugerido: “El selector guarda cómo creará el motor los siguientes bundles. ON continúa el flujo QMOS; OFF crea una identidad interna sin LPN. Los que ya existen mantienen su política y el adaptador mantiene su propia configuración. Confirmamos el cambio sólo con la respuesta de guardado; si se pierde, primero consultamos el estado actual.”
+
+Para mostrar el efecto en código, abrir `bundle-presentation.ts` y luego `TrackingZoneSlot`, `TrackingBundlesPanel`, `ScaleWeightReadout` y `KpiCards`. DisplayId es la identidad visible; TrackingId sigue siendo la identidad del comando. OFF muestra “ID interno / sin LPN”, su UNMATCHED no es espera de QMOS y conserva acciones manuales/peso/FIFO. Comprobar la versión instalada antes de presentar esta función como disponible en servidor; [alcance y validación](estado-entrega.md#trabajo-posterior-a-7fe8474-selector-global-lpn-qmos-v044).
+
 ## 1. Preparación en el servidor: abrir la carpeta correcta
 
 Abrir en el editor esta carpeta de **fuente**, no la carpeta compilada:
@@ -292,7 +300,7 @@ No ver filas significa que el filtro no encontró el ID en esa lectura; no prueb
 
 ### Recorrido adicional: reset de mantenimiento
 
-Sólo leer el código: `components/tracking-reset-control.tsx` → `lib/tracking-api/tracking-reset.ts` → `TrackingApiClient.resetTracking` → POST del proxy. El control exige escribir RESET, declarar autorización y aceptar el diálogo global; después revalida servicio/capacidad/escenario/alcance y comparte lock con operaciones individuales. El POST no lleva cuerpo; el ACK trae RESET/eventId, no TrackingId obligatorio. Se verifica por GET; 202 y vacío inicial no prueban finalización. No ejecutarlo como demostración ni para desbloquear otro comando. Ver [procedimiento de reset](tracking-reset-commissioning.md).
+Sólo leer el código: `components/tracking-reset-control.tsx` → `lib/tracking-api/tracking-reset.ts` → `TrackingApiClient.resetTracking` → POST del proxy. Desde el ajuste del 19 de octubre, el formulario exige marcar la casilla de autorización y pulsar el botón; ya no pide escribir RESET. Conserva el diálogo global nativo; después revalida servicio/capacidad/escenario/alcance y comparte lock con operaciones individuales. El POST no lleva cuerpo y mantiene el header `X-Tracking-Reset-Confirmation: RESET` hacia el proxy; el ACK trae RESET/eventId, no TrackingId obligatorio. Se verifica por GET; 202 y vacío inicial no prueban finalización. No ejecutarlo como demostración ni para desbloquear otro comando. Ver [procedimiento de reset](tracking-reset-commissioning.md).
 
 ### Desarrollo y empaquetado
 

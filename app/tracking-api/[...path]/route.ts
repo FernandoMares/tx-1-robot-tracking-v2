@@ -5,6 +5,7 @@ import type {
   TrackingCorrectionRequestDto,
   TrackingRemovalRequestDto,
   TrackingRepositionRequestDto,
+  QmosLpnModeUpdateRequestDto,
 } from "@/lib/tracking-api/types"
 import {
   isGlobalDestinationUpdateRequestDto,
@@ -13,6 +14,7 @@ import {
   isTrackingCorrectionRequestDto,
   isTrackingRemovalRequestDto,
   isTrackingRepositionRequestDto,
+  isQmosLpnModeUpdateRequestDto,
 } from "@/lib/tracking-api/validation"
 
 const STATIC_READ_ENDPOINTS = new Set([
@@ -23,6 +25,7 @@ const STATIC_READ_ENDPOINTS = new Set([
   "/api/tracking/mill-order",
   "/api/tracking/destination",
   "/api/tracking/printer",
+  "/api/tracking/qmos-lpn-mode",
   "/api/tracking/opc",
   "/api/tracking/events/recent",
   "/api/qmos/status",
@@ -36,6 +39,7 @@ const TRACKING_RESET_ENDPOINT = "/api/tracking/reset"
 const GLOBAL_MILL_ORDER_ENDPOINT = "/api/tracking/mill-order"
 const GLOBAL_DESTINATION_ENDPOINT = "/api/tracking/destination"
 const GLOBAL_PRINTER_ENDPOINT = "/api/tracking/printer"
+const QMOS_LPN_MODE_ENDPOINT = "/api/tracking/qmos-lpn-mode"
 const QMOS_MILL_ORDERS_ENDPOINT = "/api/qmos/mill-orders"
 const DEFAULT_QMOS_MILL_ORDERS = 20
 const MAX_QMOS_MILL_ORDERS = 100
@@ -329,7 +333,8 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
   if (
     decodedPath !== GLOBAL_MILL_ORDER_ENDPOINT &&
     decodedPath !== GLOBAL_DESTINATION_ENDPOINT &&
-    decodedPath !== GLOBAL_PRINTER_ENDPOINT
+    decodedPath !== GLOBAL_PRINTER_ENDPOINT &&
+    decodedPath !== QMOS_LPN_MODE_ENDPOINT
   ) {
     return jsonError(404, "Tracking API endpoint not found.")
   }
@@ -350,6 +355,7 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
     | GlobalMillOrderUpdateRequestDto
     | GlobalDestinationUpdateRequestDto
     | GlobalPrinterUpdateRequestDto
+    | QmosLpnModeUpdateRequestDto
   if (decodedPath === GLOBAL_MILL_ORDER_ENDPOINT) {
     if (!isGlobalMillOrderUpdateRequestDto(body)) {
       return jsonError(400, "millOrder must be a non-empty string of at most 32 characters.")
@@ -360,6 +366,11 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
       return jsonError(400, "destinationId must be a positive integer.")
     }
     sanitizedBody = { destinationId: body.destinationId }
+  } else if (decodedPath === QMOS_LPN_MODE_ENDPOINT) {
+    if (!isQmosLpnModeUpdateRequestDto(body)) {
+      return jsonError(400, "Enabled must be boolean; OperatorId (1–100 characters) and Reason (1–500 characters) are required.")
+    }
+    sanitizedBody = { Enabled: body.Enabled, OperatorId: body.OperatorId.trim(), Reason: body.Reason.trim() }
   } else {
     if (!isGlobalPrinterUpdateRequestDto(body)) {
       return jsonError(400, "PrinterId must be a positive integer.")
@@ -382,6 +393,7 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
     const upstream = await fetch(upstreamUrl, {
       method: "PUT",
       cache: "no-store",
+      redirect: decodedPath === QMOS_LPN_MODE_ENDPOINT ? "error" : undefined,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",

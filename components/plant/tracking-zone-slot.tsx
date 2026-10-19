@@ -6,6 +6,12 @@ import {
 } from "@/lib/tracking-zone-layout"
 import type { TrackedBundleDto } from "@/lib/tracking-api"
 import { getActiveBundles } from "@/lib/tracking-api/bundle-lifecycle"
+import {
+  displayBundleIdentity,
+  INTERNAL_IDENTIFIER_LABEL,
+  isAwaitingQmosIdentifier,
+  isInternalIdentifierBundle,
+} from "@/lib/tracking-api/bundle-presentation"
 import { getFifoMembership, orderBundlesByLogicalFifo } from "@/lib/tracking-fifo"
 import { cn } from "@/lib/utils"
 
@@ -19,10 +25,6 @@ export interface TrackingZoneSlotProps {
   hasSnapshot?: boolean
   className?: string
   style?: CSSProperties
-}
-
-function bundleIdentity(bundle: TrackedBundleDto): string {
-  return bundle.BundleId ?? (bundle.L2Id != null ? String(bundle.L2Id) : bundle.TrackingId)
 }
 
 /**
@@ -48,10 +50,7 @@ export function TrackingZoneSlot({
       (fifo.hasDuplicateSequences ? " Duplicate sequences: equal entries have no confirmed FIFO precedence." : "")
     : undefined
   const occupied = hasSnapshot && bundles.length > 0
-  const waitingForQmos = bundles.some(
-    (bundle) =>
-      bundle.Status === "WAITING_QMOS_ID" || bundle.CorrelationStatus === "UNMATCHED",
-  )
+  const waitingForQmos = bundles.some(isAwaitingQmosIdentifier)
   const visibleRows =
     compact && compactVisibleRows !== undefined && Number.isInteger(compactVisibleRows) && compactVisibleRows > 0
       ? compactVisibleRows
@@ -112,10 +111,11 @@ export function TrackingZoneSlot({
           <span className="self-center text-[11px] text-slate-400">Empty</span>
         ) : (
           fifo.bundles.map((bundle, index) => {
-            const identity = bundleIdentity(bundle)
+            const identity = displayBundleIdentity(bundle)
+            const internalIdentifier = isInternalIdentifierBundle(bundle)
             const numericIdentity = /^\d+$/.test(identity)
             const status = bundle.Status ?? "Unknown status"
-            const correlation = bundle.CorrelationStatus ?? "Unknown correlation"
+            const correlation = internalIdentifier ? INTERNAL_IDENTIFIER_LABEL : bundle.CorrelationStatus ?? "Unknown correlation"
             const membership = getFifoMembership(bundle)
             const fifoDetail = membership
               ? ` · FIFO ${membership.bufferName} · QueueSequence ${membership.sequence}`
@@ -124,8 +124,7 @@ export function TrackingZoneSlot({
                 : bundle.LogicalBufferName != null || bundle.QueueSequence !== undefined
                   ? " · FIFO order unavailable"
                   : ""
-            const bundleWaitingForQmos =
-              bundle.Status === "WAITING_QMOS_ID" || bundle.CorrelationStatus === "UNMATCHED"
+            const bundleWaitingForQmos = isAwaitingQmosIdentifier(bundle)
 
             return (
               <span
@@ -144,6 +143,7 @@ export function TrackingZoneSlot({
                         : "px-1 py-1 text-[10px]"
                     : "px-2 py-1 text-[11px]",
                   compact && numericIdentity && "w-full text-center",
+                  compact && internalIdentifier && "w-full py-0",
                 )}
                 title={`${bundle.TrackingId} · ${status} · ${correlation}${fifoDetail}`}
               >
@@ -151,10 +151,16 @@ export function TrackingZoneSlot({
                   className={cn(
                     "block font-semibold",
                     numericIdentity ? "whitespace-nowrap tabular-nums tracking-tight" : "truncate",
+                    compact && internalIdentifier && "leading-[10px]",
                   )}
                 >
                   {identity}
                 </strong>
+                {internalIdentifier && (
+                  <span className={cn("block truncate text-emerald-800", compact ? "text-[7px] leading-[8px]" : "text-[10px]")}>
+                    {INTERNAL_IDENTIFIER_LABEL}
+                  </span>
+                )}
                 {!compact && <span className="block truncate text-[10px] text-slate-500">{status}</span>}
               </span>
             )

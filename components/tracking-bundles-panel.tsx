@@ -9,6 +9,11 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import type { TrackingCommandGate } from "@/hooks/use-tracking-command-gate"
 import { getActiveBundles, isRemovedBundle } from "@/lib/tracking-api/bundle-lifecycle"
 import {
+  displayBundleIdentity,
+  INTERNAL_IDENTIFIER_LABEL,
+  isInternalIdentifierBundle,
+} from "@/lib/tracking-api/bundle-presentation"
+import {
   ApiError,
   createTrackingApiClient,
   type TrackedBundleDto,
@@ -34,10 +39,6 @@ interface TrackingBundlesPanelProps {
 
 type CommandStatus = "idle" | "checking" | "sending" | "pending" | "uncertain" | "success" | "error"
 const VERIFICATION_WINDOW_MS = 60_000
-
-function displayIdentity(bundle: TrackedBundleDto) {
-  return bundle.BundleId ?? (bundle.L2Id != null ? String(bundle.L2Id) : bundle.TrackingId)
-}
 
 function describeCommandError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -95,7 +96,7 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate 
   const visibleBundles = useMemo(() => {
     const query = search.trim().toLowerCase()
     return bundles?.filter((bundle) => !query ||
-      [displayIdentity(bundle), bundle.TrackingId, bundle.CurrentZone ?? ""].some((value) => value.toLowerCase().includes(query)),
+      [displayBundleIdentity(bundle), bundle.TrackingId, bundle.CurrentZone ?? ""].some((value) => value.toLowerCase().includes(query)),
     )
   }, [bundles, search])
 
@@ -127,8 +128,8 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate 
           setVerificationMessage(null)
           setCommandMessage(
             (action === "remove"
-              ? `${displayIdentity(selectedBundle!)} is no longer in active tracking.`
-              : `${displayIdentity(selectedBundle!)} is now reported at ${destination}.`) +
+              ? `${displayBundleIdentity(selectedBundle!)} is no longer in active tracking.`
+              : `${displayBundleIdentity(selectedBundle!)} is now reported at ${destination}.`) +
             (commandStatus === "uncertain" ? " The command response was not verified; check the backend audit log." : "") +
             (action === "reposition" ? " This confirms the reported position, not physical equipment motion." : ""),
           )
@@ -181,7 +182,7 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate 
     if (!tryAcquire("manual")) return
     commandLocked.current = true
     const confirmed = window.confirm(
-      (isReposition ? `Reposition bundle ${displayIdentity(selected)} in tracking?` : `Remove bundle ${displayIdentity(selected)} from active tracking?`) +
+      (isReposition ? `Reposition bundle ${displayBundleIdentity(selected)} in tracking?` : `Remove bundle ${displayBundleIdentity(selected)} from active tracking?`) +
       `\n\nTrackingId: ${trackingId}\nCurrent zone: ${selected.CurrentZone ?? "Unknown"}\n` +
       (isReposition
         ? `New zone: ${destination}\nReported occupants in destination: ${reportedOccupants.length}\n\n` +
@@ -274,7 +275,8 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate 
                     <h3 className={`text-sm font-semibold ${isReposition ? "text-primary" : "text-destructive"}`}>
                       {isReposition ? "Reposition in Tracking" : "Remove from Tracking"}
                     </h3>
-                    <p className="text-xs text-muted-foreground">{displayIdentity(selectedBundle)} · {currentSelection?.CurrentZone ?? "Unknown zone"}</p>
+                    <p className="text-xs text-muted-foreground">{displayBundleIdentity(selectedBundle)} · {currentSelection?.CurrentZone ?? "Unknown zone"}</p>
+                    {isInternalIdentifierBundle(selectedBundle) && <p className="text-xs font-medium text-emerald-700">{INTERNAL_IDENTIFIER_LABEL}</p>}
                     <p className="break-all font-mono text-xs text-foreground">TrackingId: {selectedBundle.TrackingId}</p>
                   </div>
                   {!busy && <Button type="button" variant="ghost" size="xs" onClick={() => { if (!commandLocked.current) setSelectedBundle(null) }}>Close</Button>}
@@ -352,22 +354,25 @@ export function TrackingBundlesPanel({ tracking, config, onRefresh, commandGate 
                   <li key={`${bundle.TrackingId}-${index}`}>
                     <div className="w-full rounded-lg border border-border px-3 py-2.5 text-left">
                       <div className="flex items-start justify-between gap-2">
-                        <span className="min-w-0 truncate text-sm font-semibold text-foreground" title={bundle.TrackingId}>{displayIdentity(bundle)}</span>
+                        <span className="min-w-0 truncate text-sm font-semibold text-foreground" title={bundle.TrackingId}>{displayBundleIdentity(bundle)}</span>
                         <span className={`shrink-0 text-xs font-medium ${bundle.CurrentZone && isTrackingZoneName(bundle.CurrentZone) ? "text-muted-foreground" : "text-warning-fg"}`}>
                           {bundle.CurrentZone ?? "Unknown zone"}
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                        <span>{bundle.Status ?? "Unknown status"}</span><span aria-hidden>·</span><span>{bundle.CorrelationStatus ?? "Unknown correlation"}</span>
+                        <span>{bundle.Status ?? "Unknown status"}</span><span aria-hidden>·</span>
+                        {isInternalIdentifierBundle(bundle)
+                          ? <span className="font-medium text-emerald-700">{INTERNAL_IDENTIFIER_LABEL}</span>
+                          : <span>{bundle.CorrelationStatus ?? "Unknown correlation"}</span>}
                       </div>
                       {bundle.MillOrder1 && <p className="mt-1 truncate text-xs font-medium text-primary">MO {bundle.MillOrder1}</p>}
                       <div className="mt-2 flex flex-wrap gap-2">
                         <Button type="button" variant="outline" size="xs" onClick={() => selectBundle(bundle, "reposition")}
-                          disabled={!commandAvailable || busy || zones.length === 0} aria-label={`Reposition ${displayIdentity(bundle)} in Tracking`}>
+                          disabled={!commandAvailable || busy || zones.length === 0} aria-label={`Reposition ${displayBundleIdentity(bundle)} in Tracking`}>
                           <ArrowRightLeft aria-hidden /> Reposition
                         </Button>
                         <Button type="button" variant="destructive" size="xs" onClick={() => selectBundle(bundle, "remove")}
-                          disabled={!commandAvailable || busy} aria-label={`Remove ${displayIdentity(bundle)} from Tracking`}>Remove from Tracking</Button>
+                          disabled={!commandAvailable || busy} aria-label={`Remove ${displayBundleIdentity(bundle)} from Tracking`}>Remove from Tracking</Button>
                       </div>
                     </div>
                   </li>

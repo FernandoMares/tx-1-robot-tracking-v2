@@ -247,9 +247,27 @@ try {
     await waitFor(`document.querySelector('[data-slot="sheet-content"]')`, "reset sheet opened")
   }
   async function authorizeReset() {
-    await input("tracking-reset-confirmation", "RESET")
     await evaluate(`{const box=document.querySelector('form input[type="checkbox"]');if(!box.checked)box.click()}`)
-    await waitFor(`!document.querySelector('form button[type="submit"]').disabled`, "reset authorized and typed")
+    await waitFor(`!document.querySelector('form button[type="submit"]').disabled`, "reset acknowledgement enables submission")
+  }
+  async function assertUnacknowledgedResetBlocked() {
+    assert.equal(await evaluate(`document.querySelector('form input[type="checkbox"]').checked`), false)
+    assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Maintenance acknowledgement is required")
+    const beforeRequests = resetRequests.length
+    let unexpectedDialog = false
+    dialogWaiter = () => {
+      unexpectedDialog = true
+      void cdp("Page.handleJavaScriptDialog", { accept: false })
+    }
+    try {
+      await evaluate(`document.querySelector('form button[type="submit"]').click()`)
+      await evaluate(`document.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))`)
+      await delay(300)
+      assert.equal(unexpectedDialog, false, "Unchecked submission must not open native confirmation")
+      assert.equal(resetRequests.length, beforeRequests, "Unchecked button and programmatic form submission must not send reset")
+    } finally {
+      dialogWaiter = null
+    }
   }
   async function reloadTestPage(activeCount) {
     // Only used to separate injected test scenarios on this owned loopback HMI.
@@ -669,18 +687,18 @@ try {
   commandOverride = null
   await reloadTestPage(9)
   await openReset()
-  await waitFor(`document.getElementById('tracking-reset-confirmation')`, "reset confirmation input")
-  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true)
-  await input("tracking-reset-confirmation", "RESET")
-  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Authorization acknowledgement is required")
+  await waitFor(`document.querySelector('form input[type="checkbox"]')`, "reset acknowledgement checkbox")
+  assert.equal(await evaluate(`document.getElementById('tracking-reset-confirmation')`), null, "Reset must not require a typed confirmation field")
+  assert.equal(await evaluate(`document.querySelector('form input[type="text"]')`), null, "Reset form has no replacement typed confirmation field")
+  await assertUnacknowledgedResetBlocked()
+  await authorizeReset()
   await evaluate(`document.querySelector('form input[type="checkbox"]').click()`)
-  await input("tracking-reset-confirmation", "reset")
-  assert.equal(await evaluate(`document.querySelector('form button[type="submit"]').disabled`), true, "Exact uppercase RESET is required")
+  await assertUnacknowledgedResetBlocked()
   await authorizeReset()
   await screenshot("tracking-reset-confirmation.png")
   await submitConfirmation({ kind: "reset", accept: false })
   assert.equal(resetRequests.length, 0)
-  checks.push("global reset requires typed RESET and maintenance acknowledgement; native cancel sends no POST")
+  checks.push("global reset has no typed confirmation; acknowledgement alone enables submission, unchecked button and programmatic submission send no POST, unchecking blocks again, and native cancel sends no POST")
 
   const noResetCapabilities = await (await simulator.fetch(simulator.baseUrl + "/api/tracking/capabilities")).json()
   noResetCapabilities.commands = noResetCapabilities.commands.filter((command) => !command.includes("/api/tracking/reset"))

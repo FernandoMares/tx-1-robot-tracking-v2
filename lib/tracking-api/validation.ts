@@ -14,6 +14,9 @@ import type {
   QmosMillOrdersResponseDto,
   QmosPrinterDto,
   QmosStatusDto,
+  QmosLpnModeDto,
+  QmosLpnModeUpdateRequestDto,
+  QmosLpnModeUpdateResponseDto,
   TrackedBundleDto,
   TrackingCapabilitiesDto,
   TrackingCommandAcceptedDto,
@@ -164,7 +167,10 @@ export function isTrackedBundleDto(value: unknown): value is TrackedBundleDto {
       ["ProductionMode", "CreationSectionGroup", "CreationSignalName", "LogicalBufferName"],
       isNullableString,
     ) &&
-    optionalFieldsMatch(value, ["QueueSequence"], isNullableNumber)
+    optionalFieldsMatch(value, ["QueueSequence"], isNullableNumber) &&
+    optionalFieldsMatch(value, ["QmosLpnEnabled", "CanPrint"], (field) => typeof field === "boolean") &&
+    optionalFieldsMatch(value, ["DisplayId"], isNullableString) &&
+    optionalFieldsMatch(value, ["IdentifierSource"], (field) => field === "QMOS" || field === "INTERNAL")
   )
 }
 
@@ -425,6 +431,25 @@ export function isGlobalPrinterUpdateResponseDto(
     isNonEmptyString(value.updatedUtc) &&
     isNonEmptyString(value.appliesTo)
   )
+}
+
+export const MAX_QMOS_LPN_OPERATOR_ID_LENGTH = 100
+export const MAX_QMOS_LPN_REASON_LENGTH = 500
+
+export function isQmosLpnModeDto(value: unknown): value is QmosLpnModeDto {
+  return isObject(value) && typeof value.Enabled === "boolean" &&
+    isNullableString(value.UpdatedUtc) && isNullableString(value.OperatorId) && isNullableString(value.Reason)
+}
+
+export function isQmosLpnModeUpdateRequestDto(value: unknown): value is QmosLpnModeUpdateRequestDto {
+  return isObject(value) && typeof value.Enabled === "boolean" &&
+    isNonEmptyString(value.OperatorId) && value.OperatorId.trim().length <= MAX_QMOS_LPN_OPERATOR_ID_LENGTH &&
+    isNonEmptyString(value.Reason) && value.Reason.trim().length <= MAX_QMOS_LPN_REASON_LENGTH
+}
+
+export function isQmosLpnModeUpdateResponseDto(value: unknown): value is QmosLpnModeUpdateResponseDto {
+  return isObject(value) && typeof value.updated === "boolean" && typeof value.enabled === "boolean" &&
+    isNonEmptyString(value.updatedUtc) && isNonEmptyString(value.appliesTo)
 }
 
 export function isTrackingCorrectionRequestDto(

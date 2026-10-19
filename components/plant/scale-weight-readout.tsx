@@ -1,15 +1,16 @@
 import type { TrackedBundleDto } from "@/lib/tracking-api"
 import { getActiveBundles } from "@/lib/tracking-api/bundle-lifecycle"
+import {
+  displayBundleIdentity,
+  INTERNAL_IDENTIFIER_LABEL,
+  isInternalIdentifierBundle,
+} from "@/lib/tracking-api/bundle-presentation"
 import { cn } from "@/lib/utils"
 
 interface ScaleWeightReadoutProps {
   bundles: readonly TrackedBundleDto[]
   hasSnapshot: boolean
   compact?: boolean
-}
-
-function bundleIdentity(bundle: TrackedBundleDto): string {
-  return bundle.BundleId ?? (bundle.L2Id != null ? String(bundle.L2Id) : bundle.TrackingId)
 }
 
 /** The scale displays only Weight from bundles currently reported in SGRT2. */
@@ -35,12 +36,13 @@ export function ScaleWeightReadout({
             <li
               key={`${bundle.TrackingId}-${index}`}
               className="flex flex-wrap items-baseline justify-center gap-x-2"
-              title={`Bundle ${bundleIdentity(bundle)}: ${bundle.Weight == null ? "weight unavailable" : `weight ${bundle.Weight}`}`}
+              title={`Bundle ${displayBundleIdentity(bundle)}${isInternalIdentifierBundle(bundle) ? ` · ${INTERNAL_IDENTIFIER_LABEL}` : ""}: ${bundle.Weight == null ? "weight unavailable" : `weight ${bundle.Weight}`}`}
             >
-              <span className="whitespace-nowrap tabular-nums">{bundleIdentity(bundle)}</span>
+              <span className="whitespace-nowrap tabular-nums">{displayBundleIdentity(bundle)}</span>
               <strong className={cn("whitespace-nowrap tabular-nums", compact && "text-[11px]")}>
                 Weight: {bundle.Weight == null ? "unavailable" : bundle.Weight}
               </strong>
+              {isInternalIdentifierBundle(bundle) && <span className="w-full text-emerald-800">{INTERNAL_IDENTIFIER_LABEL}</span>}
             </li>
           ))}
         </ul>

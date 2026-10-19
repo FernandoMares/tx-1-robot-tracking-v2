@@ -13,6 +13,7 @@ import { BundlerSchematic } from "@/components/plant/bundler-schematic"
 import { PlantMap } from "@/components/plant/plant-map"
 import { StackerSchematic } from "@/components/plant/stacker-schematic"
 import { StackersSchematic } from "@/components/plant/stackers-schematic"
+import { QmosLpnModeControl } from "@/components/qmos-lpn-mode-control"
 import { TrackingBundlesPanel } from "@/components/tracking-bundles-panel"
 import { TrackingConnectionBanner } from "@/components/tracking-connection-banner"
 import { TrackingResetControl } from "@/components/tracking-reset-control"
@@ -102,6 +103,7 @@ export function Dashboard() {
                 <>
                   <GlobalMillOrderPanel tracking={tracking} config={trackingConfig} />
                   <div className="flex flex-wrap items-stretch gap-2">
+                    <QmosLpnModeControl tracking={tracking} config={trackingConfig} />
                     <div className="min-w-0 flex-1">
                       <TrackingBundlesPanel
                         tracking={tracking}

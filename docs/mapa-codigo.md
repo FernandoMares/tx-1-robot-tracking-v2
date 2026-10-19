@@ -4,6 +4,12 @@ Referencia: rama `release/integrated-hmi`, base funcional `7fc34e8`, checkpoint 
 
 Fuente usado en el servidor: `C:\Users\ven.f.garciamares\Projects\tx1-integrated-release-7fc34e8`. Aplicación existente: puerto 3000; proxy hacia MaterialTrackingService en 8085. Leer fuente no requiere reiniciar el runtime. Los ejemplos de código de este documento explican comportamiento; no son instrucciones para enviar comandos a planta.
 
+### Selector LPN QMOS v0.44, posterior a 7fe8474
+
+El checkpoint del **19 de octubre de 2026**, sobre la base publicada `7fe8474` del día 16, incorpora en la barra global de `Dashboard` `components/qmos-lpn-mode-control.tsx` → `QmosLpnModeControl`. Allí están los campos obligatorios, el bloqueo del PUT, la lectura del estado vigente y la reconciliación tras respuesta incierta. `TrackingApiClient.getQmosLpnMode/updateQmosLpnMode`, sus DTO/validadores y el proxy implementan GET/PUT `/api/tracking/qmos-lpn-mode`; el nuevo PUT sólo se confirma con HTTP 200 válido. Operator ID y Reason son obligatorios aquí (100/500 caracteres), aunque REMOVE admita comentario nulo.
+
+`lib/tracking-api/bundle-presentation.ts` concentra `displayBundleIdentity`, `isInternalIdentifierBundle`, `isAwaitingQmosIdentifier`, `isQmosUnmatchedBundle` y `canPrintBundle`. Lo usan las tarjetas, lista y báscula para respetar la política individual del bundle; KPI descarta el UNMATCHED normal de OFF. El selector global no reemplaza esos campos individuales. Estos cambios de fuente siguen pendientes de despliegue; ver [integración v0.44](tracking-api-integration.md#selector-global-lpn-qmos-v044).
+
 ## 1. Árbol de ejecución: seguir imports y props
 
 ```text
@@ -59,16 +65,17 @@ La UI no abre conexiones a SQL, QMOS ni PLC. Habla HTTP con Tracking mediante el
 | `TrackingApiConfig` | `lib/tracking-api/config.ts` | Modo, URL pública, polling, stale, timeout y error de configuración. |
 | `TrackingZoneName` | `lib/tracking-zone-layout.ts` | Unión derivada de claves del catálogo visual conocido. |
 | `BundlesByZone` | mismo | Record de listas de bundles agrupadas por `CurrentZone`. No es mapa de posiciones mecánicas. |
-| `PlantView` | `lib/types.ts` | Cinco IDs de pestañas. |
+| `PlantView` | `lib/types.ts` | Seis IDs de pestañas, con Stacker y Stackers independientes. |
 | `PlantTable`, `PlantKpis` | mismo | Modelos del modo visual/mock; no sustituir con ellos el DTO live ni sus KPI. |
 
 `ExtensibleDto` permite propiedades adicionales como `unknown`. Eso facilita evolución aditiva, pero no vuelve seguro usar una extensión sin comprobar su forma. Por ejemplo, `OccupiedZones` se comprueba con `Array.isArray` antes de usarlo en los helpers manuales; no debe asumirse que todo campo extra ya fue validado por `isTrackedBundleDto`.
 
-### Tres identificadores que no deben intercambiarse
+### Identificadores y presentación v0.44
 
 - `TrackingId`: clave que mandan REMOVE y Reposition al servicio.
-- `BundleId`: identificador mostrado preferentemente al operador.
-- `L2Id`: respaldo visual cuando BundleId falta; no reemplaza TrackingId en el comando.
+- `DisplayId`: identidad visible preferente en el contrato v0.44; LPN cuando está disponible en ON e identidad interna en OFF.
+- `BundleId`: respaldo visual en bundles ON/legacy cuando no se proporciona DisplayId.
+- `L2Id`: respaldo visual del camino anterior cuando falta BundleId. Un bundle OFF sin DisplayId usa TrackingId directamente; L2Id no se presenta como su LPN ni reemplaza la identidad del comando.
 
 `QueueSequence` es orden de entrada en un buffer lógico, no un ID de bundle ni posición física. `DisplayOrder` ordena metadatos de zonas; tampoco equivale a FIFO.
 
@@ -94,7 +101,7 @@ La respuesta sólo se devuelve si pasa su guard de runtime. `TrackingStateDto` e
 
 `GET`, `POST` y `PUT` son handlers independientes. `RouteContext` contiene `params` como Promise, por lo que el código usa `await context.params`. `getProxyTarget` acepta HTTP(S), rechaza credenciales embebidas y prepara el destino. `jsonError` produce errores del proxy con no-store.
 
-El GET utiliza `STATIC_READ_ENDPOINTS` más una expresión para bundle por ID. El POST permite `/api/tracking/correct` y el reset explícito `/api/tracking/reset`; el PUT, las tres selecciones globales. El proxy reconstruye payloads de corrección sin combinaciones ambiguas. Reset exige header `X-Tracking-Reset-Confirmation: RESET`, rechaza Origin incompatible, query y cuerpo; reenvía un POST sin payload. Es una barrera de intención, no autenticación. No habilita escrituras OPC, inyección de eventos ni impresión QMOS.
+El GET utiliza `STATIC_READ_ENDPOINTS` más una expresión para bundle por ID. El POST permite `/api/tracking/correct` y el reset explícito `/api/tracking/reset`; el PUT, las cuatro selecciones globales (Mill Order, Destination, Printer y LPN QMOS). El proxy reconstruye payloads de corrección sin combinaciones ambiguas. Reset exige header `X-Tracking-Reset-Confirmation: RESET`, rechaza Origin incompatible, query y cuerpo; reenvía un POST sin payload. Es una barrera de intención, no autenticación. No habilita escrituras OPC, inyección de eventos ni impresión QMOS.
 
 La allowlist es una restricción técnica, no una identidad de operador. El proyecto actual no implementa login/roles corporativos en esos handlers. Proteger red, acceso al HMI y comandos backend sigue siendo una decisión de infraestructura y del servicio.
 
@@ -119,6 +126,8 @@ Los paths de esta tabla son del backend; el navegador antepone `/tracking-api`. 
 | PUT `/api/tracking/destination` | `updateGlobalDestination` | Request `{ destinationId }`; respuesta `GlobalDestinationDto` | `handleSubmit`. |
 | GET `/api/tracking/printer` | `getGlobalPrinter` | `GlobalPrinterDto` / su guard | Impresora activa y verificación. |
 | PUT `/api/tracking/printer` | `updateGlobalPrinter` | Request `{ PrinterId }`; `GlobalPrinterUpdateResponseDto` | `handlePrinterSubmit`. |
+| GET `/api/tracking/qmos-lpn-mode` | `getQmosLpnMode` | `QmosLpnModeDto` / su guard | `QmosLpnModeControl`: modo global confirmado, separado del adaptador. |
+| PUT `/api/tracking/qmos-lpn-mode` | `updateQmosLpnMode` | `QmosLpnModeUpdateRequestDto`; `QmosLpnModeUpdateResponseDto` | ON/OFF, OperatorId y Reason obligatorios; HTTP 200 y GET posterior. |
 | POST `/api/tracking/correct` | `removeBundle` | `TrackingRemovalRequestDto`; `TrackingCommandAcceptedDto` | `handleCommand`, acción remove. |
 | POST `/api/tracking/correct` | `repositionBundle` | `TrackingRepositionRequestDto`; `TrackingCommandAcceptedDto` | `handleCommand`, acción reposition. |
 | POST `/api/tracking/correct` | `correctBundle` | `TrackingCorrectionRequestDto` con `MillOrder1` | Camino de cliente/proxy disponible; no es el formulario de reposicionamiento. |
@@ -148,7 +157,7 @@ En `hooks/use-tracking-api.ts`:
 
 `hooks/use-plant-state.ts` conecta ese runtime con los consumidores. Su `bundlePlacement` usa `useMemo` y `groupTrackingBundlesByZone`; `trackingLayoutValidation` compara el mapa conocido sólo para `TX1_TAGGER_TRACKING`. La lógica mock de ese archivo es una rama distinta; no se activa automáticamente ante fallos live.
 
-## 6. Renderizado de las cinco vistas
+## 6. Renderizado de las seis vistas
 
 ### Navegación y contenedores
 
@@ -259,7 +268,7 @@ Consecuencias concretas de `7fc34e8`:
 
 ### Reset global separado
 
-- `components/tracking-reset-control.tsx` → `TrackingResetControl`: escribir RESET, casilla de autorización operativa y confirmación global nativa; estado de envío/acuse/verificación.
+- `components/tracking-reset-control.tsx` → `TrackingResetControl`: casilla de autorización operativa y botón de envío, seguidos de confirmación global nativa; estado de envío/acuse/verificación. Desde el 19 de octubre el formulario ya no pide escribir RESET.
 - `lib/tracking-api/tracking-reset.ts` → `supportsTrackingReset`, `resetPreflightProblem`, `resetOutcomeObserved`: disponibilidad anunciada, preflight fresco de escenario/alcance y observación posterior; vacío inicial no prueba ejecución.
 - `hooks/use-tracking-command-gate.ts` → `useTrackingCommandGate`: lock local compartido manual/reset; no identidad ni lock backend.
 - `TrackingApiClient.resetTracking` → POST sin cuerpo → proxy → `/api/tracking/reset`. Acuse 202/accepted/eventId/eventType RESET, sin TrackingId requerido; no equivale a éxito final.

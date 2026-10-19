@@ -8,6 +8,10 @@ Rama: `release/integrated-hmi`. Última base funcional desplegada documentada: *
 
 El checkpoint `90c849c` reúne Bundler y mantenimiento; `f11002b` añade **Stacker** (singular), independiente de **Stackers** (plural). Ambos están guardados/publicados. Este checkpoint incorpora que **Bay 1** reutilice temporalmente Stacker y que **Bay 2** muestre sólo el sector derecho del Overview. Estos ajustes están incluidos en el fuente y siguen pendientes de despliegue; guardar/publicar Git no actualiza el paquete instalado.
 
+**Checkpoint del 19 de octubre de 2026, sobre `7fe8474`: selector global LPN QMOS v0.44.** La base `7fe8474` quedó publicada el 16 de octubre. El control **QMOS LPN mode** consulta y actualiza `/api/tracking/qmos-lpn-mode`. ON/OFF, Operator ID y Reason son obligatorios; operador admite hasta 100 caracteres y motivo hasta 500. La selección sólo se confirma con HTTP 200 y la respuesta esperada, seguida de una nueva consulta. Ante respuesta incierta se consulta el modo actual antes de permitir otro envío. Funcionalidad implementada y verificada localmente, incluida en este checkpoint; pendiente de empaquetado, despliegue y validación con la API real. Consultar el identificador final con `git log -1 --oneline`.
+
+El ajuste de **Reset tracking** solicitado el 19 de octubre elimina el campo donde se escribía RESET. El formulario conserva la casilla de autorización y el botón de envío; después mantiene la confirmación global nativa, el preflight fresco y la verificación posterior. El POST sigue sin cuerpo y el header de confirmación del proxy conserva `X-Tracking-Reset-Confirmation: RESET`.
+
 La base funcional `7fc34e8` se publicó y desplegó en el servidor sobre el **puerto 3000**, contra Tracking 8085/API 0.42. Sus verificaciones locales previas fueron FIFO 8/8, retiro 4/4, reposicionamiento 4/4, prevalidación 7/7, integración 2/2, TypeScript, build live y siete comprobaciones de navegador. No equivalen a aceptación física de planta ni validan los nuevos cambios de trabajo.
 
 **Hallazgo histórico y ajuste local:** el evento REMOVE **154605** dejó un registro `REMOVED` sin zona ni posiciones ocupadas. En `7fc34e8` la HMI seguía pendiente al exigir ausencia completa. El código de trabajo ahora oculta `REMOVED` de vistas activas y acepta ausencia o un único registro del mismo escenario con `REMOVED`, `CurrentZone: null` y `OccupiedZones: []`. Conserva el snapshot completo para verificar comandos; no acredita efectos PLC. Ver [evidencia y pendientes](docs/estado-entrega.md).
@@ -20,9 +24,11 @@ La base funcional `7fc34e8` se publicó y desplegó en el servidor sobre el **pu
 | Tab Bay 2 | Recorte derecho del Overview: 16 zonas, desde RTTY1/2 e IMRT2 y desde báscula/SGRT/NCCT e IMRT1 hacia las dos secciones CCH/SGRT A/B y Robot 2. Sin Stackers ni salidas RTOUT |
 | Tab Bundler | Mismo layout del Overview, sin ERT1A/B, ERT2C/D, STRT1/2 ni LFRT1/2/3; conserva báscula, SGRT/NCCT, buffers y Robot 2. Overview permanece completo |
 | Selecciones globales | Mill Order, Destination e impresora con confirmación y GET posterior |
+| LPN QMOS ON/OFF v0.44 | Selector global persistido por Tracking para nuevos bundles. OFF usa identidad interna; cada bundle conserva su política original y el adaptador QMOS mantiene su configuración independiente |
 | Báscula | `Weight` de la zona exacta SGRT2; no calcula peso ni inventa unidad |
 | Buffers CCH | Cinco filas y desplazamiento; LCH ocultas en las vistas acordadas, sin borrar datos |
 | FIFO v0.42 | `LogicalBufferName` + `QueueSequence`, orden ascendente dentro de cada buffer |
+| Identidad v0.44 | `DisplayId` en tarjetas/lista/báscula; bundles OFF muestran `ID interno / sin LPN` y no incrementan QMOS unmatched. Las correcciones siguen usando `TrackingId` |
 | Remove from Tracking | POST `/api/tracking/correct`, `Operation: "REMOVE"`, identidad técnica y operador obligatorio; comentario opcional, enviado como `Reason: null` si está vacío |
 | Reposition | Mismo endpoint, `CurrentZone` destino y **sin Operation**, con revalidación y lectura posterior |
 | Bundles removidos | Fuera de listas, diagramas, peso y contadores activos; snapshot original conservado |
@@ -31,6 +37,8 @@ La base funcional `7fc34e8` se publicó y desplegó en el servidor sobre el **pu
 No se agrega un comando `MOVE`, botón `RETIRE`, escritura OPC ni impresión QMOS desde el HMI. El reset global se incorpora como acción separada de mantenimiento, no como alternativa a retirar un bundle ni como recuperación de un comando incierto. Toda escritura requiere coordinación con operación.
 
 **Operator ID y comentarios:** la prueba directa del 13 de octubre contra API **0.44** rechazó `OperatorId: null` con HTTP 400 (`OperatorId is required for HMI corrections.`), pero aceptó **REMOVE con `Reason: null`** y posteriormente reportó el bundle `REMOVED` sin posiciones (evento **237102**). Este fuente permite comentario opcional sólo en REMOVE: texto vacío/espacios se envía como `null`, texto no vacío se recorta; no inventa un motivo. Operator ID permanece visible y obligatorio, sin valor fijo. Reposition y corrección legacy conservan comentario obligatorio hasta validar sus variantes con backend. El apéndice histórico v0.39 exigía ambos para REMOVE: solicitar actualizar el contrato según la evidencia v0.44. Reset no lleva esos campos. El ajuste está incluido en este checkpoint, pendiente de despliegue; ver [evidencia y pendientes](docs/estado-entrega.md).
+
+El nuevo PUT de modo LPN exige **OperatorId y Reason no vacíos**: la excepción de comentario opcional en REMOVE no se aplica a este setting. El motor asigna la política al procesar la creación; cambiar el selector no modifica bundles existentes. Un bundle OFF conserva TrackingId/L2Id, no tiene LPN ni impresión QMOS y mantiene movimientos, peso, FIFO y acciones manuales. Los bundles anteriores ON continúan su ciclo al pasar el selector global a OFF.
 
 ## Por dónde empezar
 
@@ -134,6 +142,8 @@ node scripts/test-stacker-layout.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló equivalencia Stacker/Bay 1 o preservación de Stackers.' }
 node scripts/test-bay-two-layout.mjs
 if ($LASTEXITCODE -ne 0) { throw 'Falló recorte Bay 2/Overview.' }
+node --test scripts/test-qmos-lpn-mode.mjs scripts/test-qmos-bundle-presentation.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Falló contrato o representación QMOS LPN ON/OFF.' }
 pnpm typecheck
 if ($LASTEXITCODE -ne 0) { throw 'Falló TypeScript.' }
 $env:NEXT_PUBLIC_PLANT_DATA_MODE = 'live'
@@ -143,6 +153,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Falló el build.' }
 ```
 
 La regresión UI adicional `scripts/test-manual-actions-ui.mjs` requiere Node 22 o posterior, navegador Chromium local y el standalone live generado por el bloque anterior: revisar su configuración antes de ejecutarla. Usa procesos propios en loopback; no necesita abrir ni cambiar la instancia de planta. Las pruebas de simulador no certifican efectos PLC, persistencia SQL ni aceptación en planta. El script heredado `lint` carece de configuración/dependencia ESLint funcional; no declararlo aprobado.
+
+La comprobación adicional de navegador `node scripts/test-qmos-lpn-ui.mjs` requiere el build standalone live y Chromium. Usa servidores/simuladores loopback propios para verificar campos obligatorios, guardado, respuestas inciertas y bundles con identidad interna.
 
 ## Empaquetar y ejecutar
 

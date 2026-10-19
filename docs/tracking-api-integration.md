@@ -14,7 +14,7 @@ Referencia para mantener el cliente HTTP, el proxy y la presentación de datos. 
 | Manual `5338300`, antecedente incorporado al integrado | Añade `REMOVE` y reposicionamiento por `CurrentZone`. El release manual histórico `ce3c8a9` sólo incorporaba REMOVE. |
 | Kit de entrega preparado en la raíz | Documentación y mejoras de empaquetado/servicio que no deben atribuirse automáticamente al commit FIFO. |
 
-La versión de backend reportada actualmente es v0.42. El HMI conserva `apiVersion` como dato diagnóstico: no compara rígidamente contra un número. La compatibilidad real depende de capacidades, campos y validadores.
+La evidencia más reciente compartida del backend reportó v0.44; el despliegue histórico FIFO se verificó con v0.42. El HMI conserva `apiVersion` como dato diagnóstico: no compara rígidamente contra un número. La compatibilidad real depende de capacidades, campos y validadores. El selector LPN QMOS implementado a partir de su contrato v0.44 está incluido en el checkpoint del **19 de octubre de 2026**, sobre la base publicada `7fe8474` del día 16; aún requiere empaquetado, despliegue y validación integrada en el servidor.
 
 ## Arquitectura y configuración
 
@@ -231,9 +231,32 @@ El bloqueo de `useTrackingCommandGate`, creado en Dashboard, se comparte entre R
 
 Procedimientos detallados: [retiro manual](manual-bundle-removal-commissioning.md) y [reposicionamiento](manual-bundle-reposition-commissioning.md). Combinar funciones no autoriza su ejecución sobre material real.
 
+## Selector global LPN QMOS v0.44
+
+El contrato `HMI_API_CONTRACT_v0_44_QMOS_LPN_MODE.md` agrega una política global para bundles que el motor cree posteriormente. El modo se toma al procesar la creación, no al detectar la señal OPC. No cambia bundles ya creados. El selector tiene estado propio: `/api/qmos/status` sigue describiendo el adaptador y no permite deducir el modo LPN.
+
+| Operación | Cuerpo y respuesta |
+| --- | --- |
+| GET `/api/tracking/qmos-lpn-mode` | `Enabled` boolean, `UpdatedUtc`, `OperatorId`, `Reason`; el frontend admite metadatos nulos tras una migración y no inventa identidad |
+| PUT `/api/tracking/qmos-lpn-mode` | `Enabled` boolean obligatorio, `OperatorId` texto no vacío de hasta 100 caracteres, `Reason` texto no vacío de hasta 500; se recortan espacios exteriores |
+| Respuesta de actualización | HTTP **200**, `updated`, `enabled`, `updatedUtc`, `appliesTo`; el frontend exige `updated: true` y el modo solicitado para confirmar |
+
+`QmosLpnModeControl` aparece en la barra global. Lee el modo al iniciar, abrir el panel, recuperar foco y cada 30 segundos con la página visible. El formulario mantiene selección, operador y motivo separados del estado confirmado; no hay un valor predeterminado de identidad o motivo. Campos vacíos/espacios y tamaños excesivos bloquean el envío tanto en UI como en cliente/proxy. El modo `false` es un boolean válido. Si el endpoint devuelve 404, sólo este control queda no disponible y el Tracking continúa funcionando.
+
+Durante el PUT se bloquean envíos simultáneos incluso si se cierra/reabre el panel. Se descartan GET anteriores al guardado para que no sobrescriban la respuesta nueva. No se confirma el modo al accionar el selector. Tras HTTP 200 verificado se consulta GET; si la respuesta PUT se pierde o es incompatible, se consulta GET antes de permitir otro cambio. Una lectura posterior describe el modo actual y no certifica por sí sola la autoría del cambio. No se reenvía PUT automáticamente ni se sigue un redirect de escritura.
+
+Los bundles incorporan campos aditivos `QmosLpnEnabled`, `IdentifierSource` (`QMOS`/`INTERNAL`), `DisplayId` y `CanPrint`. Se validan sus tipos cuando están presentes; payloads anteriores sin esos campos siguen admitidos. `bundle-presentation.ts` centraliza la identidad y estado visual:
+
+- Preferir `DisplayId` para tarjetas, listado, búsqueda, confirmaciones y báscula. Si un bundle es OFF/internal y falta DisplayId, usar **TrackingId**, nunca L2Id como LPN. Las correcciones siempre envían TrackingId.
+- Un bundle OFF muestra **ID interno / sin LPN**. Su `UNMATCHED` es normal: no se colorea como espera de QMOS ni incrementa el KPI QMOS unmatched. El criterio usa la política del bundle, no el modo global vigente.
+- OFF no imprime ni admite acciones QMOS sobre ese bundle. No existen botones manuales de impresión en esta HMI; no se habilitan nuevos endpoints POST de QMOS. `canPrintBundle` sólo permite una futura acción con política ON explícita, CanPrint true y TagNumber positivo; un OFF a la cabeza de FIFO no autoriza saltarlo.
+- Movimientos, peso local, FIFO, REMOVE y Reposition continúan disponibles. El formato de buffers no cambia: TagNumber nulo usa TrackingId y la política se consulta en state. La herramienta diagnóstica `print-forced` y los cambios de ocupación doble CCH2A/B quedan fuera de esta implementación.
+
+El backend persiste la selección y la política inmutable de cada bundle. ON no fuerza encender un adaptador deshabilitado por configuración; OFF tampoco impide terminar el ciclo de bundles creados ON. El frontend vuelve a consultar GET al recargar y no conserva una copia autoritativa en localStorage. La prueba de persistencia real después de reiniciar se realiza con el servicio de planta.
+
 ## Proxy y superficie permitida
 
-El [Route Handler](../app/tracking-api/%5B...path%5D/route.ts) permite los GET enumerados, los tres PUT globales, los tres cuerpos de corrección y el POST reset explícito sin cuerpo. Rutas/métodos fuera de la allowlist reciben 404. Las escrituras con payload requieren JSON y validan/sanitizan campos; reset rechaza cuerpo y query. El query `max` de órdenes admite un único entero de 1 a 100.
+El [Route Handler](../app/tracking-api/%5B...path%5D/route.ts) permite los GET enumerados, los cuatro PUT globales (Mill Order, Destination, Printer y QMOS LPN mode), los tres cuerpos de corrección y el POST reset explícito sin cuerpo. Rutas/métodos fuera de la allowlist reciben 404. Las escrituras con payload requieren JSON y validan/sanitizan campos; reset rechaza cuerpo y query. El query `max` de órdenes admite un único entero de 1 a 100.
 
 El proxy transmite la respuesta del backend sin seleccionar propiedades del estado. En particular, no elimina los campos FIFO del JSON recibido. Devuelve errores del backend; problemas de configuración o conexión del proxy pueden producir 503 o 502.
 
@@ -241,7 +264,7 @@ Siguen fuera de alcance del proxy: escritura OPC, inyección de eventos y POST d
 
 ## Reset global de mantenimiento — cambio local pendiente de commissioning
 
-`TrackingResetControl` es independiente del retiro individual. Antes del envío exige escribir `RESET`, declarar autorización operativa y aceptar la confirmación global nativa. Lee nuevamente status/capabilities/state y `resetPreflightProblem` comprueba servicio, capability anunciada, escenario y alcance de IDs activos consistente con el confirmado. Comparar IDs no constituye bloqueo atómico del backend ni una comprobación física.
+`TrackingResetControl` es independiente del retiro individual. Desde el ajuste solicitado el **19 de octubre**, el formulario sólo exige marcar la casilla de autorización operativa y pulsar el botón de envío; no incluye un campo para escribir RESET. Conserva la confirmación global nativa. Lee nuevamente status/capabilities/state y `resetPreflightProblem` comprueba servicio, capability anunciada, escenario y alcance de IDs activos consistente con el confirmado. Comparar IDs no constituye bloqueo atómico del backend ni una comprobación física.
 
 `TrackingApiClient.resetTracking` envía **POST `/api/tracking/reset` sin cuerpo**. La respuesta contractual esperada es HTTP 202 con `accepted: true`, `eventType: "RESET"` y `eventId`, sin `trackingId` obligatorio. `TrackingResetAcceptedDto` / `isTrackingResetAcceptedDto` validan boolean de aceptación, ID positivo y tipo RESET; la UI comprueba que `accepted` sea true. El transporte acepta status HTTP satisfactorios, no compara exclusivamente 202. El header HMI `X-Tracking-Reset-Confirmation: RESET` declara intención explícita y no se reenvía al servicio. El proxy rechaza Origin incompatible, cuerpo o query; el header y la casilla **no autentican ni autorizan usuarios**.
 

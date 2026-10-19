@@ -2,12 +2,14 @@
 
 Función añadida el 9 de octubre de 2026 en `release/integrated-hmi` e incluida en el checkpoint de fuente del día 13, después del checkpoint documental `c7df85a` y de la base funcional `7fc34e8`. **Pendiente de despliegue y prueba de reset real.** Esta guía no autoriza su ejecución y no contiene comandos POST listos para copiar.
 
+El checkpoint del **19 de octubre de 2026**, sobre `7fe8474` publicado el día 16, incorpora la simplificación solicitada del formulario: se retira el campo para escribir RESET y quedan la casilla de autorización y el botón. Se conserva la confirmación global nativa, el preflight, el bloqueo compartido y el protocolo del POST.
+
 ## Alcance y precauciones
 
 - El botón de mantenimiento llama a **POST `/api/tracking/reset` sin cuerpo**. No reinicia Windows, Node ni el servicio de API; solicita reset global al Tracking.
 - No es REMOVE individual ni una forma de cerrar un comando pendiente. Acordar antes con backend/operación el alcance sobre posiciones, PLC, históricos, reglas y auditoría.
 - Identificar servidor, escenario y ventana autorizados; coordinar otras estaciones. Otro puerto del HMI conectado al mismo backend no aísla efectos.
-- No hay autenticación/roles incorporados. Marcar autorización o escribir RESET declara intención, no valida permisos corporativos.
+- No hay autenticación/roles incorporados. Marcar la casilla de autorización declara intención, no valida permisos corporativos.
 - Conservar evidencia previa y plan operativo de recuperación. Reiniciar frontend, restaurar un ZIP o revertir Git no deshace lo que el backend haya aplicado.
 
 ## 1. Preparación de sólo lectura
@@ -41,7 +43,7 @@ Un 200 no certifica salud PLC/QMOS ni autorización. Si reset no está anunciado
 ## 2. Evidencia y única solicitud autorizada
 
 1. F12 → Network → Fetch/XHR, registro activo y Preserve log. Anotar commit/build, fecha/hora con zona, responsable y escenario. Filtrar `reset` para el POST y después quitar filtro para los GET de state.
-2. Sólo en la ventana aprobada, abrir el control separado de reset. Escribir **RESET**, declarar autorización operativa y revisar el alcance global antes de aceptar el diálogo nativo.
+2. Sólo en la ventana aprobada, abrir el control separado de reset. Revisar el alcance global, marcar la casilla de autorización operativa y pulsar el botón. El formulario ya no solicita escribir RESET; revisar y aceptar después el diálogo global nativo.
 3. El control adquiere el bloqueo local compartido con REMOVE/Reposition. Después del diálogo consulta contexto fresco y compara servicio, capability, escenario y conjunto de IDs activos confirmado. Si cambia el alcance o falla la lectura, no debe enviar; revisar de nuevo con operación.
 4. Confirmar una sola vez. Guardar **Headers** (URL, POST, código HTTP y Date), verificar que **no hay cuerpo** y guardar **Response** con `accepted`, `eventId`, `eventType: RESET`. No requiere `trackingId` porque no actúa sobre un bundle único.
 5. La HMI envía al proxy `X-Tracking-Reset-Confirmation: RESET`. El proxy no lo envía al backend; rechaza Origin incompatible, query o cuerpo. No es un token secreto ni sustituye controles de acceso.

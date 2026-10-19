@@ -238,7 +238,7 @@ Reposition y corrección legacy aún conservan comentario obligatorio: sus varia
 
 ### 50. ¿Reset reinicia Windows o equivale a retirar un bundle?
 
-No es un reinicio de Windows ni de Node. Es el comando **global de Tracking** `POST /api/tracking/reset`, sin cuerpo, separado de `/correct`. Su efecto industrial/histórico exacto se valida con backend y operación; no usarlo para resolver un pending individual. La UI exige RESET escrito, casilla de autorización, confirmación global y preflight fresco. Ver [commissioning de reset](tracking-reset-commissioning.md).
+No es un reinicio de Windows ni de Node. Es el comando **global de Tracking** `POST /api/tracking/reset`, sin cuerpo, separado de `/correct`. Su efecto industrial/histórico exacto se valida con backend y operación; no usarlo para resolver un pending individual. Desde el ajuste del 19 de octubre, la UI conserva la casilla de autorización y el botón; ya no pide escribir RESET. Mantiene la confirmación global nativa y el preflight fresco. El header `X-Tracking-Reset-Confirmation: RESET` sigue formando parte del transporte hacia el proxy. Ver [commissioning de reset](tracking-reset-commissioning.md).
 
 ### 51. ¿Cómo sé que el reset terminó y qué protege el botón?
 

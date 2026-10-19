@@ -3,6 +3,7 @@ import { TrendingUp } from "lucide-react"
 import { formatCount } from "@/lib/status"
 import type { TrackingRuntimeState } from "@/lib/tracking-api"
 import { getActiveBundles } from "@/lib/tracking-api/bundle-lifecycle"
+import { isQmosUnmatchedBundle } from "@/lib/tracking-api/bundle-presentation"
 import type { PlantKpis } from "@/lib/types"
 
 interface KpiCardsProps {
@@ -42,9 +43,9 @@ export function KpiCards({ kpis, tracking }: KpiCardsProps) {
     {
       label: "QMOS unmatched",
       value: liveBundles
-        ? formatCount(liveBundles.filter((bundle) => bundle.CorrelationStatus === "UNMATCHED").length)
+        ? formatCount(liveBundles.filter(isQmosUnmatchedBundle).length)
         : "—",
-      footnote: "CorrelationStatus = UNMATCHED",
+      footnote: "CorrelationStatus = UNMATCHED, excluding internal-ID bundles without LPN",
     },
   ]
 

@@ -231,6 +231,12 @@ Para verificar únicamente la navegación/layout de Bundler, Stacker y Bay 2 fre
 
 ## 8. Endpoints y límites del simulador
 
+La revisión `sim-1.7.0` agrega GET/PUT `/api/tracking/qmos-lpn-mode`. El PUT exige boolean Enabled y texto no vacío OperatorId/Reason con límites 100/500. El modo inicial es ON; `TRACKING_SIMULATOR_QMOS_LPN_ENABLED=false` permite iniciar una fixture OFF. La conexión QMOS conserva su flag independiente.
+
+La política de un bundle se toma del historial del modo a la hora simulada de creación, por lo que los anteriores conservan su ON/OFF al cambiar el selector. Los ciclos posteriores permiten ver nuevos OFF y el regreso de nuevas creaciones ON. Esta fixture mantiene el historial **sólo en memoria**; reiniciar el simulador restablece su estado inicial y no representa una prueba de persistencia SQL de planta. OFF conserva TrackingId/L2Id, usa DisplayId interno, deja LPN/TagNumber nulos y sigue disponible para correcciones/peso.
+
+Regresiones nuevas: `node --test scripts/test-qmos-lpn-mode.mjs scripts/test-qmos-bundle-presentation.mjs`. Tras crear el standalone live, `node scripts/test-qmos-lpn-ui.mjs` verifica el control en navegador y las respuestas inciertas con procesos de prueba propios. Estos runners no contactan la API de planta.
+
 Lecturas disponibles:
 
 ```text
@@ -244,6 +250,7 @@ GET /api/tracking/events/recent
 GET /api/tracking/mill-order
 GET /api/tracking/destination
 GET /api/tracking/printer
+GET /api/tracking/qmos-lpn-mode
 GET /api/qmos/status
 GET /api/qmos/mill-orders?max=20
 GET /api/qmos/bundle-locations

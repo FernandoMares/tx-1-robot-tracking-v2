@@ -15,6 +15,9 @@ import type {
   QmosMillOrdersResponseDto,
   QmosPrinterDto,
   QmosStatusDto,
+  QmosLpnModeDto,
+  QmosLpnModeUpdateRequestDto,
+  QmosLpnModeUpdateResponseDto,
   TrackedBundleDto,
   TrackingCapabilitiesDto,
   TrackingCommandAcceptedDto,
@@ -41,6 +44,9 @@ import {
   isQmosMillOrdersResponseDto,
   isQmosPrintersDto,
   isQmosStatusDto,
+  isQmosLpnModeDto,
+  isQmosLpnModeUpdateRequestDto,
+  isQmosLpnModeUpdateResponseDto,
   isTrackedBundleDto,
   isTrackingCapabilitiesDto,
   isTrackingCommandAcceptedDto,
@@ -158,7 +164,7 @@ export class TrackingApiClient {
     validate: (value: unknown) => value is T,
     externalSignal?: AbortSignal,
     requestBody?: unknown,
-    options: { headers?: HeadersInit; redirect?: RequestRedirect } = {},
+    options: { headers?: HeadersInit; redirect?: RequestRedirect; expectedStatus?: number } = {},
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`
     const controller = new AbortController()
@@ -203,6 +209,17 @@ export class TrackingApiClient {
         throw new ApiError({
           message: `Tracking API request failed with HTTP ${response.status}`,
           kind: "http",
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          body,
+        })
+      }
+
+      if (options.expectedStatus !== undefined && response.status !== options.expectedStatus) {
+        throw new ApiError({
+          message: `Tracking API returned HTTP ${response.status}; expected HTTP ${options.expectedStatus} to confirm persistence`,
+          kind: "invalid-payload",
           url,
           status: response.status,
           statusText: response.statusText,
@@ -320,6 +337,24 @@ export class TrackingApiClient {
 
   getQmosStatus(signal?: AbortSignal): Promise<QmosStatusDto> {
     return this.get("/api/qmos/status", isQmosStatusDto, signal)
+  }
+
+  getQmosLpnMode(signal?: AbortSignal): Promise<QmosLpnModeDto> {
+    return this.get("/api/tracking/qmos-lpn-mode", isQmosLpnModeDto, signal)
+  }
+
+  updateQmosLpnMode(
+    request: QmosLpnModeUpdateRequestDto,
+    signal?: AbortSignal,
+  ): Promise<QmosLpnModeUpdateResponseDto> {
+    if (!isQmosLpnModeUpdateRequestDto(request)) {
+      throw new Error("LPN QMOS mode requires Enabled (boolean), Operator ID (1–100 characters), and Reason (1–500 characters)")
+    }
+    return this.request("PUT", "/api/tracking/qmos-lpn-mode", isQmosLpnModeUpdateResponseDto, signal, {
+      Enabled: request.Enabled,
+      OperatorId: request.OperatorId.trim(),
+      Reason: request.Reason.trim(),
+    }, { expectedStatus: 200, redirect: "error" })
   }
 
   async getQmosMillOrders(max = 20, signal?: AbortSignal): Promise<QmosMillOrdersDto> {

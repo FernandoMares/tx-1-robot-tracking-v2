@@ -102,6 +102,11 @@ export interface TrackedBundleDto extends ExtensibleDto {
   BundleType: string | null
   L2Id: number | null
   TagNumber: number | null
+  /** v0.44: policy captured when the engine creates this bundle. */
+  QmosLpnEnabled?: boolean
+  IdentifierSource?: "QMOS" | "INTERNAL"
+  DisplayId?: string | null
+  CanPrint?: boolean
   Destination: string | null
   MillOrder1: string | null
   PieceCount1: number | null
@@ -271,6 +276,28 @@ export interface GlobalPrinterUpdateResponseDto extends ExtensibleDto {
   updated: boolean
   printerId: number
   printerName: string
+  updatedUtc: string
+  appliesTo: string
+}
+
+/** Global policy for subsequent engine-created bundles; independent of QMOS connectivity. */
+export interface QmosLpnModeDto extends ExtensibleDto {
+  Enabled: boolean
+  UpdatedUtc: ApiDateValue
+  OperatorId: string | null
+  Reason: string | null
+}
+
+export interface QmosLpnModeUpdateRequestDto {
+  Enabled: boolean
+  OperatorId: string
+  Reason: string
+}
+
+/** Synchronous persistence acknowledgement; wire casing differs from GET. */
+export interface QmosLpnModeUpdateResponseDto extends ExtensibleDto {
+  updated: boolean
+  enabled: boolean
   updatedUtc: string
   appliesTo: string
 }

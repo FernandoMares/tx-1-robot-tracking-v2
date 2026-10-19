@@ -22,7 +22,7 @@ const DISABLED_ZONES = new Set(
   (process.env.TRACKING_SIMULATOR_DISABLED_ZONES ?? "").split(",").map((name) => name.trim()).filter(Boolean),
 )
 const SCENARIO = "LOCAL_HMI_SIMULATOR"
-const API_VERSION = "sim-1.6.0"
+const API_VERSION = "sim-1.7.0"
 const STARTED_AT = Date.now()
 const CYCLE_STEPS = 9
 const MAX_REQUEST_BODY_BYTES = 64 * 1024
@@ -30,6 +30,21 @@ const bundleCorrections = new Map()
 const removedTrackingIds = new Set()
 let lastManualChangeAt = STARTED_AT
 let nextCorrectionEventId = 100_000
+// Memory-only fixture: the production service owns SQL persistence/restart recovery.
+let globalQmosLpnMode = {
+  Enabled: booleanSetting(process.env.TRACKING_SIMULATOR_QMOS_LPN_ENABLED, true),
+  UpdatedUtc: new Date(STARTED_AT).toISOString(),
+  OperatorId: null,
+  Reason: null,
+}
+const lpnModeHistory = [{ at: STARTED_AT, enabled: globalQmosLpnMode.Enabled }]
+
+function lpnModeAtCreation(createdAt) {
+  for (let index = lpnModeHistory.length - 1; index >= 0; index--) {
+    if (lpnModeHistory[index].at <= createdAt) return lpnModeHistory[index].enabled
+  }
+  return lpnModeHistory[0].enabled
+}
 let globalMillOrder = {
   millOrder: "SIM-MO-001",
   enabled: true,
@@ -162,7 +177,8 @@ function stepTimestamp(step) {
 }
 
 function makeBundle(options) {
-  const correlated = options.correlationStatus === "MATCHED"
+  const qmosLpnEnabled = lpnModeAtCreation(options.createdUtc)
+  const correlated = qmosLpnEnabled && options.correlationStatus === "MATCHED"
   return {
     ScenarioName: SCENARIO,
     TrackingId: options.trackingId,
@@ -174,6 +190,10 @@ function makeBundle(options) {
     BundleType: correlated ? "SIMULATED" : "UNKNOWN",
     L2Id: options.l2Id,
     TagNumber: correlated ? options.l2Id : null,
+    QmosLpnEnabled: qmosLpnEnabled,
+    IdentifierSource: qmosLpnEnabled ? "QMOS" : "INTERNAL",
+    DisplayId: qmosLpnEnabled ? correlated ? options.bundleId : null : options.trackingId,
+    CanPrint: qmosLpnEnabled && correlated && Number.isFinite(options.l2Id) && options.l2Id > 0,
     Destination: "SIM_DESTINATION",
     MillOrder1: correlated ? "SIM-MO-001" : null,
     PieceCount1: correlated ? 20 : null,
@@ -189,8 +209,8 @@ function makeBundle(options) {
     HoldCode: null,
     PrinterId: null,
     TagCopy: null,
-    Status: options.status,
-    CorrelationStatus: options.correlationStatus,
+    Status: qmosLpnEnabled ? options.status : "TRACKING",
+    CorrelationStatus: qmosLpnEnabled ? options.correlationStatus : "UNMATCHED",
     ProductionMode: "SIMULATION",
     CreationSectionGroup: "SIM",
     CreationSignalName: "SIM_BUNDLE_CREATED",
@@ -359,13 +379,14 @@ function trackingState(now = Date.now()) {
 
 function eventForStep(step) {
   const phase = step % CYCLE_STEPS
+  const qmosLpnEnabled = lpnModeAtCreation(stepTimestamp(step - phase))
   const zoneIndex = Math.min(Math.max(phase - 1, 0), movingRoute.length - 1)
   const zoneName = phase === CYCLE_STEPS - 1 ? null : movingRoute[zoneIndex].ZoneName
   const eventType =
     phase === 0
       ? "BUNDLE_CREATED"
       : phase === 1
-        ? QMOS_CONNECTED
+        ? !qmosLpnEnabled ? "ZONE_CHANGED" : QMOS_CONNECTED
           ? "QMOS_CORRELATED"
           : "QMOS_WAITING"
         : phase <= movingRoute.length
@@ -380,7 +401,7 @@ function eventForStep(step) {
     EventType: eventType,
     TrackingId: trackingId(step),
     BundleId:
-      phase === 0 || !QMOS_CONNECTED
+      !qmosLpnEnabled || phase === 0 || !QMOS_CONNECTED
         ? null
         : bundleId(step),
     SourceArea: "SIM",
@@ -392,7 +413,7 @@ function eventForStep(step) {
           : null,
     ToZone: zoneName,
     CurrentZone: zoneName,
-    CorrelationStatus: phase === 0 || !QMOS_CONNECTED ? "UNMATCHED" : "MATCHED",
+    CorrelationStatus: !qmosLpnEnabled || phase === 0 || !QMOS_CONNECTED ? "UNMATCHED" : "MATCHED",
     EventUtc: dotNetDate(stepTimestamp(step)),
   }
 }
@@ -452,6 +473,7 @@ function capabilities() {
       "/api/tracking/mill-order",
       "/api/tracking/destination",
       "/api/tracking/printer",
+      "/api/tracking/qmos-lpn-mode",
       "/api/tracking/bundles/{trackingId}",
       "/api/tracking/opc",
       "/api/tracking/events/recent",
@@ -466,6 +488,7 @@ function capabilities() {
       "PUT /api/tracking/mill-order",
       "PUT /api/tracking/destination",
       "PUT /api/tracking/printer",
+      "PUT /api/tracking/qmos-lpn-mode",
     ],
     engineeringOpc: [],
     qmosCommands: [],
@@ -588,7 +611,8 @@ const server = createServer(async (request, response) => {
     if (
       url.pathname !== "/api/tracking/mill-order" &&
       url.pathname !== "/api/tracking/destination" &&
-      url.pathname !== "/api/tracking/printer"
+      url.pathname !== "/api/tracking/printer" &&
+      url.pathname !== "/api/tracking/qmos-lpn-mode"
     ) {
       return sendJson(response, 404, { error: "Endpoint not found", path: url.pathname })
     }
@@ -603,6 +627,27 @@ const server = createServer(async (request, response) => {
       body = await readJsonBody(request)
     } catch {
       return sendJson(response, 400, { error: "A valid JSON request body is required" })
+    }
+
+    if (url.pathname === "/api/tracking/qmos-lpn-mode") {
+      if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.Enabled !== "boolean" ||
+        typeof body.OperatorId !== "string" || !body.OperatorId.trim() || body.OperatorId.trim().length > 100 ||
+        typeof body.Reason !== "string" || !body.Reason.trim() || body.Reason.trim().length > 500) {
+        return sendJson(response, 400, { error: "Enabled, OperatorId (1–100 characters), and Reason (1–500 characters) are required." })
+      }
+      globalQmosLpnMode = {
+        Enabled: body.Enabled,
+        UpdatedUtc: new Date(now).toISOString(),
+        OperatorId: body.OperatorId.trim(),
+        Reason: body.Reason.trim(),
+      }
+      lpnModeHistory.push({ at: now, enabled: body.Enabled })
+      return sendJson(response, 200, {
+        updated: true,
+        enabled: body.Enabled,
+        updatedUtc: globalQmosLpnMode.UpdatedUtc,
+        appliesTo: "bundles created afterward by the tracking engine; existing bundle policies are unchanged",
+      })
     }
 
     if (url.pathname === "/api/tracking/destination") {
@@ -785,6 +830,7 @@ const server = createServer(async (request, response) => {
     "/api/tracking/mill-order": () => globalMillOrder,
     "/api/tracking/destination": () => globalDestination,
     "/api/tracking/printer": () => globalPrinter,
+    "/api/tracking/qmos-lpn-mode": () => globalQmosLpnMode,
     "/api/tracking/opc": () => opcStatus(now),
     "/api/tracking/events/recent": () => recentEvents(now),
     "/api/qmos/status": () => ({ enabled: true, connected: QMOS_CONNECTED }),
