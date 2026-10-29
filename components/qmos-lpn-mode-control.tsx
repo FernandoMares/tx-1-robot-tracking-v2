@@ -6,6 +6,7 @@ import { CheckCircle2, LoaderCircle, RefreshCw, Settings2, TriangleAlert } from 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { cn } from "@/lib/utils"
 import {
   ApiError,
   createTrackingApiClient,
@@ -132,6 +133,11 @@ export function QmosLpnModeControl({ tracking, config }: QmosLpnModeControlProps
     tracking.syncStatus === "live" && tracking.service?.running === true
   const updatedAt = parseApiDate(mode?.UpdatedUtc)
   const label = loading ? "Checking..." : mode ? mode.Enabled ? "ON" : "OFF" : "Unavailable"
+  const modeTone = !loading && !saving && !loadError && mode
+    ? mode.Enabled
+      ? "border-active/30 bg-active/10 text-active-fg hover:bg-active/20 hover:text-active-fg aria-expanded:bg-active/10 aria-expanded:text-active-fg"
+      : "border-error-line bg-error-soft text-error-fg hover:bg-error/10 hover:text-error-fg aria-expanded:bg-error-soft aria-expanded:text-error-fg"
+    : null
 
   function openControl() {
     if (!locked.current && !saving) {
@@ -226,7 +232,7 @@ export function QmosLpnModeControl({ tracking, config }: QmosLpnModeControlProps
   return (
     <>
       <Button type="button" size="sm" variant="outline" onClick={openControl}
-        aria-label="QMOS LPN mode" className="h-auto min-h-8 shrink-0 gap-2 px-3 py-2">
+        aria-label="QMOS LPN mode" className={cn("h-auto min-h-8 shrink-0 gap-2 px-3 py-2", modeTone)}>
         <Settings2 className="size-3.5" aria-hidden />
         <span className="text-xs">QMOS LPN <strong>{saving ? "Saving..." : label}</strong></span>
       </Button>
